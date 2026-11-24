@@ -4,56 +4,62 @@
 
 'use strict';
 /*
- * A backend session object (src/host/backend.js) that gets a model before its first message: the one it was last
- * used with, else the one src/host/models.js gives a new conversation. The chat page hears of the model through a
- * { type: 'ui.model', model } event, which src/ui/view-model.js reduces. Everything else passes through.
+ * A session object (src/host/backend.js) that asks the user for a model before the first message of a new
+ * conversation when newAgent.model names none: OpenCode gives every new session a default model of its own, which may
+ * not be one the user wants. The chat page hears of the choice through a { type: 'ui.model', model } event, which
+ * src/ui/view-model.js reduces. Everything else passes through.
  */
 
 /*
  * deps:
- *   modelById(name)    Promise of the connected model of that name, or null
- *   modelForNew()      Promise of the configured, default or picked model, or null when the user dismissed the picker
+ *   needsChoice        whether the first message waits for the user to pick a model
+ *   choose()           Promise of the picked ModelInfo, or null when the user dismissed the picker
  *   tell(text)         says why a message was not sent
- *   log(line)          optional
  */
 function withModelChoice(inner, deps) {
   const listeners = new Set();
   const emit = (ev) => { for (const fn of [...listeners]) { try { fn(ev); } catch (_) { /* the others still run */ } } };
   const raw = inner.on((ev) => emit(ev));
   const unsubscribe = typeof raw === 'function' ? raw : () => { if (raw && typeof raw.dispose === 'function') raw.dispose(); };
-  let current = inner.model || null;
+  let chosen = null;
+  let pending = deps.needsChoice === true;
   let choosing = null;
-  const savedId = () => {
-    const v = (inner.loaded && inner.loaded.modelId) || inner.modelId || '';
-    return typeof v === 'string' ? v : '';
-  };
 
   function setModel(model) {
-    current = model;
-    inner.setModel(model);
+    pending = false;
+    chosen = model;
+    const r = inner.setModel(model);
     emit({ type: 'ui.model', model });
+    return r;
   }
 
-  function ensureModel() {
-    if (current) return Promise.resolve(current);
+  async function ensureModel() {
+    if (!pending) return true;
     if (!choosing) {
-      choosing = (async () => {
-        let m = null;
-        if (savedId()) { try { m = await deps.modelById(savedId()); } catch (_) { m = null; } }
-        if (!m) m = await deps.modelForNew();
-        if (m && !current) setModel(m);
-        return current;
-      })().finally(() => { choosing = null; });
+      choosing = Promise.resolve().then(() => deps.choose()).then(async (m) => {
+        if (m && pending) await setModel(m);
+        return !pending;
+      }).finally(() => { choosing = null; });
     }
     return choosing;
   }
 
+  const pass = (name) => (...a) => (typeof inner[name] === 'function' ? inner[name](...a) : undefined);
   const facade = {
-    get model() { return current; },
-    get loaded() { return inner.loaded || null; },
-    get sessionId() { return inner.sessionId; },
-    /* The id of the model the page should show before one is chosen. */
-    get shownModelId() { return current ? current.id : savedId(); },
+    get id() { return inner.id; },
+    get cwd() { return inner.cwd; },
+    get title() { return inner.title; },
+    get status() { return inner.status; },
+    get waitingTool() { return inner.waitingTool; },
+    get lastUserAt() { return inner.lastUserAt; },
+    get lastReplyAt() { return inner.lastReplyAt; },
+    get model() { return chosen; },
+    /* The name of the model the session uses, as <provider>/<model>; '' when not known. */
+    get modelName() {
+      if (chosen) return chosen.id;
+      try { return typeof inner.getModel === 'function' ? String(inner.getModel() || '') : ''; } catch (_) { return ''; }
+    },
+    get needsChoice() { return pending; },
     on(fn) {
       listeners.add(fn);
       const off = () => { listeners.delete(fn); };
@@ -61,22 +67,23 @@ function withModelChoice(inner, deps) {
       return off;
     },
     async send(text, images) {
-      let m;
-      try { m = await ensureModel(); } catch (e) {
+      let ok;
+      try { ok = await ensureModel(); } catch (e) {
         deps.tell(`The message was not sent: the models could not be listed (${(e && e.message) || e}).`);
         return undefined;
       }
-      if (!m) { deps.tell('The message was not sent: choose a model first.'); return undefined; }
+      if (!ok) { deps.tell('The message was not sent: choose a model first.'); return undefined; }
       return inner.send(text, images);
     },
-    abort: () => inner.abort(),
+    abort: pass('abort'),
     setModel,
+    getModel: () => facade.modelName,
     respond(requestId, decision) {
       if (typeof inner.respondPermission === 'function') return inner.respondPermission(requestId, decision);
       return typeof inner.respond === 'function' ? inner.respond(requestId, decision) : false;
     },
+    respondPermission(requestId, decision) { return facade.respond(requestId, decision); },
     history: () => (typeof inner.history === 'function' ? inner.history() : []),
-    setTitle: (title) => (typeof inner.setTitle === 'function' ? inner.setTitle(title) : undefined),
     dispose() {
       unsubscribe();
       listeners.clear();

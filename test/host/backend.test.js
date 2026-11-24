@@ -20,12 +20,15 @@ test('the module is loaded on first use, not before', async () => {
   const calls = [];
   const fake = {
     listSessions: async () => [{ id: 'ses_a', cwd: '/w', status: 'working' }, null, { nope: 1 }],
-    createSession: async (cwd) => { calls.push(['create', cwd]); return 'ses_new'; },
+    createSession: async (cwd, opts) => { calls.push(['create', cwd, opts]); return { id: 'ses_new', cwd }; },
     renameSession: async (...a) => calls.push(['rename', ...a]),
     deleteSession: async (...a) => calls.push(['delete', ...a]),
-    session: async (id) => ({ id }),
+    openSession: async (id, opts) => ({ id, opts }),
     listModels: async () => [{ id: 'm' }],
-    defaultModel: async () => 'p/m',
+    defaultModel: () => 'p/m',
+    bedrockStatus: () => ({ state: 'listed', models: 3 }),
+    detect: () => ({ path: '/x/opencode' }),
+    restart: async (o) => calls.push(['restart', o]),
     onDidChangeSessions: (fn) => { fake.fire = fn; return { dispose: () => { fake.fire = null; } }; },
     dispose: () => calls.push(['dispose']),
   };
@@ -40,16 +43,30 @@ test('the module is loaded on first use, not before', async () => {
   b.listen();
   fake.fire();
   assert.strictEqual(heard, 1);
-  assert.deepStrictEqual(await b.createSession('/w'), { id: 'ses_new', title: '', cwd: '/w', createdAt: 0, lastActiveAt: 0, status: 'idle', lastUserAt: 0, lastReplyAt: 0 });
+  assert.deepStrictEqual(await b.createSession('/w', { model: 'p/m' }), { id: 'ses_new', cwd: '/w' }, "OpenCode's session object as it is");
   await b.renameSession('ses_a', 'New');
   await b.deleteSession('ses_a');
-  assert.deepStrictEqual(await b.session('ses_a'), { id: 'ses_a' });
-  assert.deepStrictEqual(await b.listModels(), [{ id: 'm' }]);
+  assert.deepStrictEqual(await b.session('ses_a', { cwd: '/w' }), { id: 'ses_a', opts: { cwd: '/w' } });
+  assert.deepStrictEqual(await b.listModels(), [{ id: 'm' }], 'a list given at once is taken too');
   assert.strictEqual(await b.defaultModel(), 'p/m');
-  b.dispose();
+  assert.deepStrictEqual(await b.bedrockStatus(), { state: 'listed', models: 3 });
+  assert.deepStrictEqual(await b.detect(), { path: '/x/opencode' });
+  await b.restart({ env: { AWS_PROFILE: 'self' } });
+  await b.dispose();
   assert.strictEqual(fake.fire, null);
-  assert.deepStrictEqual(calls, [['create', '/w'], ['rename', 'ses_a', 'New'], ['delete', 'ses_a'], ['dispose']]);
+  assert.deepStrictEqual(calls, [['create', '/w', { model: 'p/m' }], ['rename', 'ses_a', 'New'], ['delete', 'ses_a'], ['restart', { env: { AWS_PROFILE: 'self' } }], ['dispose']]);
   assert.strictEqual(loads, 1);
+});
+
+test('options may be a function, read when the module loads; restart before that does nothing', async () => {
+  let seen = null;
+  let reads = 0;
+  const b = createBackend({ options: () => { reads++; return { env: { A: '1' } }; }, load: () => ({ createOpenCode: (o) => { seen = o; return { listSessions: async () => [] }; } }) });
+  await b.restart({ env: {} });
+  assert.strictEqual(reads, 0);
+  await b.listSessions();
+  assert.deepStrictEqual(seen, { env: { A: '1' } });
+  assert.strictEqual(await b.bedrockStatus(), null, 'a module without it answers null');
 });
 
 test('a missing member or factory is an error the caller sees, not a crash', async () => {

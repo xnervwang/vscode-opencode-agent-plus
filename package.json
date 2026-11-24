@@ -66,11 +66,6 @@
         "category": "New Agent"
       },
       {
-        "command": "newAgent.testConnection",
-        "title": "Test Model Connection",
-        "category": "New Agent"
-      },
-      {
         "command": "newAgent.renameConversation",
         "title": "Rename Conversation",
         "category": "New Agent",
@@ -86,6 +81,21 @@
         "command": "newAgent.chooseModel",
         "title": "Choose Model for New Conversations",
         "category": "New Agent"
+      },
+      {
+        "command": "newAgent.testConnection",
+        "title": "Test OpenCode Connection",
+        "category": "New Agent"
+      },
+      {
+        "command": "newAgent.setBedrockApiKey",
+        "title": "Set Amazon Bedrock API Key",
+        "category": "New Agent"
+      },
+      {
+        "command": "newAgent.clearBedrockApiKey",
+        "title": "Clear Amazon Bedrock API Key",
+        "category": "New Agent"
       }
     ],
     "menus": {
@@ -98,14 +108,9 @@
       ],
       "view/item/context": [
         {
-          "command": "newAgent.renameConversation",
-          "when": "view == newAgent.sessions && viewItem =~ /^newAgent\\.session/",
-          "group": "1_edit@1"
-        },
-        {
           "command": "newAgent.deleteConversation",
           "when": "view == newAgent.sessions && viewItem == newAgent.session",
-          "group": "1_edit@2"
+          "group": "9_delete@1"
         }
       ],
       "commandPalette": [
@@ -126,33 +131,30 @@
     "configuration": {
       "title": "New Agent",
       "properties": {
-        "newAgent.bedrock.region": {
+        "newAgent.model": {
           "type": "string",
-          "default": "us-east-1",
-          "description": "AWS Region for Amazon Bedrock."
+          "default": "",
+          "description": "Model for new conversations, as provider/model, such as amazon-bedrock/us.xai.grok-4.7. Empty asks before the first message."
         },
-        "newAgent.bedrock.auth": {
+        "newAgent.opencode.path": {
           "type": "string",
-          "enum": [
-            "credentials",
-            "apiKey"
-          ],
-          "default": "credentials",
-          "enumDescriptions": [
-            "AWS credentials from the standard chain: an AWS profile, environment variables or the machine's role.",
-            "An Amazon Bedrock API key, set with the Set Amazon Bedrock API Key command."
-          ],
-          "description": "How to sign in to Amazon Bedrock."
+          "default": "",
+          "description": "Path to the opencode executable. Empty looks for it on PATH and where its installers put it."
+        },
+        "newAgent.opencode.askPermissions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask before OpenCode edits files, runs commands, fetches web pages or reads outside the project. This replaces the edit, bash, webfetch and external_directory rules of your own OpenCode configuration; turn it off to keep those."
         },
         "newAgent.bedrock.profile": {
           "type": "string",
           "default": "",
-          "description": "AWS profile to use with credentials sign-in. Empty uses the default chain."
+          "description": "AWS profile for Amazon Bedrock, given to OpenCode as AWS_PROFILE. Empty leaves it to OpenCode and your AWS configuration."
         },
-        "newAgent.model": {
+        "newAgent.bedrock.region": {
           "type": "string",
           "default": "",
-          "description": "Model id for new conversations, such as xai.grok-4.7. Empty asks on first use."
+          "description": "AWS Region for Amazon Bedrock, given to OpenCode as AWS_REGION. Empty leaves it to OpenCode and your AWS configuration."
         }
       }
     },

@@ -8,8 +8,8 @@ const assert = require('node:assert');
 const fake = require('./fake-vscode');
 const { createModels, fullId } = require('../../src/host/models');
 
-const GROK = { id: 'us.xai.grok-4.7', providerId: 'amazon-bedrock', name: 'Grok 4.7', contextWindow: 256000 };
-const KIMI = { id: 'moonshotai.kimi-k2.5', providerId: 'amazon-bedrock', name: 'Kimi K2.5' };
+const GROK = { id: 'amazon-bedrock/us.xai.grok-4.7', invokeId: 'us.xai.grok-4.7', providerId: 'amazon-bedrock', name: 'Grok 4.7', contextWindow: 256000 };
+const KIMI = { id: 'amazon-bedrock/moonshotai.kimi-k2.5', invokeId: 'moonshotai.kimi-k2.5', providerId: 'amazon-bedrock', name: 'Kimi K2.5' };
 
 function setup({ models = [GROK, KIMI], def } = {}) {
   const { vscode, control } = fake.create();
@@ -24,9 +24,10 @@ test('the setting names the model, by provider/id or by bare id', async () => {
   assert.strictEqual(await s.m.forNew(), GROK);
   s.control.state.config['newAgent.model'] = 'moonshotai.kimi-k2.5';
   assert.strictEqual(await s.m.forNew(), KIMI);
-  assert.strictEqual(s.calls(), 1, 'the list is fetched once');
   assert.strictEqual(s.m.cached('amazon-bedrock/moonshotai.kimi-k2.5'), KIMI);
   assert.strictEqual(fullId({ id: 'x' }), 'x');
+  assert.strictEqual(fullId({ id: 'm', providerId: 'p' }), 'p/m');
+  assert.strictEqual(fullId(GROK), 'amazon-bedrock/us.xai.grok-4.7', 'an id that already names its provider is kept');
 });
 
 test("without the setting: the backend's default, then the user's pick, which is saved", async () => {
@@ -54,9 +55,10 @@ test('a named model that is not connected asks for another; no provider says how
   const none = setup({ models: [] });
   assert.strictEqual(await none.m.pick(), null);
   assert.match(none.control.state.said.at(-1).message, /opencode auth login/);
+  assert.strictEqual(await none.m.cached('x'), null);
 });
 
-test('a failed list is fetched again on the next call', async () => {
+test('the list is asked for each time, since OpenCode learns context windows as models are used', async () => {
   const s = setup({ models: new Error('server down') });
   await assert.rejects(s.m.list(), /server down/);
   await assert.rejects(s.m.list(), /server down/);

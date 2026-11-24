@@ -299,3 +299,65 @@ test('unknown events and actions leave the state as it was', () => {
   assert.equal(vm.reduce(s, null, T0), s);
   assert.equal(vm.reduce(s, { type: 'permissionSettled', requestId: 'nope', decision: 'deny' }, T0), s);
 });
+
+test('turnStart.modelId names the model of the turn; a later ui.model for it brings the context window', () => {
+  let s = vm.initialState();
+  s = vm.reduce(s, { type: 'ui.model', model: { id: 'amazon-bedrock/us.xai.grok-4.7', name: 'Grok 4.7', contextWindow: 500000 } }, 1000);
+  s = vm.reduce(s, { type: 'turnStart', turnId: 't1', at: 1000, modelId: 'amazon-bedrock/us.anthropic.claude-haiku-4-5' }, 1000);
+  assert.equal(s.model.id, 'amazon-bedrock/us.anthropic.claude-haiku-4-5');
+  assert.equal(s.turn.modelId, 'amazon-bedrock/us.anthropic.claude-haiku-4-5');
+  assert.equal(s.turn.contextWindow, 0);
+  s = vm.reduce(s, { type: 'ui.model', model: { id: 'amazon-bedrock/us.anthropic.claude-haiku-4-5', name: 'Haiku', contextWindow: 200000 } }, 1100);
+  assert.equal(s.turn.contextWindow, 200000);
+  s = vm.reduce(s, { type: 'usage', input: 1000, output: 100, contextUsed: 20000 }, 1200);
+  s = vm.reduce(s, { type: 'turnEnd', turnId: 't1', reason: 'endTurn', at: 2000 }, 2000);
+  const fig = s.items.find((i) => i.kind === 'figures');
+  assert.equal(fig.contextPct, 10);
+  const same = vm.reduce(s, { type: 'turnStart', turnId: 't2', at: 3000, modelId: 'amazon-bedrock/us.anthropic.claude-haiku-4-5' }, 3000);
+  assert.equal(same.model.name, 'Haiku', 'the same model keeps what was known of it');
+});
+
+test('a synthetic user message is not drawn', () => {
+  let s = vm.initialState();
+  s = vm.reduce(s, { type: 'turnStart', turnId: 't1', at: 1000 }, 1000);
+  s = vm.reduce(s, { type: 'userMessage', text: 'Work plan: row 3 is open', synthetic: true, at: 1000 }, 1000);
+  assert.equal(s.items.filter((i) => i.kind === 'user').length, 0);
+  s = vm.reduce(s, { type: 'userMessage', text: 'hello', at: 1001 }, 1001);
+  assert.equal(s.items.filter((i) => i.kind === 'user').length, 1);
+});
+
+test('stopping a turn drops the queued messages from the view', () => {
+  let s = vm.initialState();
+  s = vm.reduce(s, { type: 'turnStart', turnId: 't1', at: 1000 }, 1000);
+  s = vm.reduce(s, { type: 'ui.queued', text: 'next one' }, 1100);
+  assert.equal(s.queued.length, 1);
+  s = vm.reduce(s, { type: 'turnEnd', turnId: 't1', reason: 'aborted', at: 1200 }, 1200);
+  assert.deepEqual(s.queued, []);
+  s = vm.reduce(s, { type: 'ui.queued', text: 'kept' }, 1300);
+  s = vm.reduce(s, { type: 'turnEnd', reason: 'endTurn', at: 1400 }, 1400);
+  assert.equal(s.queued.length, 1, 'a turn that ended by itself leaves the queue to its next turn');
+});
+
+test('a replayed turn with no time and no usage shows neither 0s nor ctx 0%', () => {
+  let s = vm.initialState();
+  s = vm.reduce(s, { type: 'ui.model', model: { id: 'p/m', name: 'M', contextWindow: 1000 } }, 5000);
+  s = vm.reduce(s, { type: 'turnStart', turnId: 't1', at: 5000 }, 5000);
+  s = vm.reduce(s, { type: 'userMessage', text: 'q', at: 5000 }, 5000);
+  s = vm.reduce(s, { type: 'text', delta: 'a', at: 5000 }, 5000);
+  s = vm.reduce(s, { type: 'turnEnd', turnId: 't1', reason: 'endTurn', at: 5000 }, 5000);
+  const fig = s.items.find((i) => i.kind === 'figures');
+  assert.equal(fig.text, 'm');
+});
+
+test('short model names for OpenCode and Bedrock ids', () => {
+  const short = (id) => {
+    let s = vm.reduce(vm.initialState(), { type: 'turnStart', turnId: 't', at: 1, modelId: id }, 1);
+    s = vm.reduce(s, { type: 'turnEnd', turnId: 't', reason: 'endTurn', at: 2 }, 2);
+    return s.items.find((i) => i.kind === 'figures').model;
+  };
+  assert.equal(short('amazon-bedrock/us.xai.grok-4.7'), 'grok-4.7');
+  assert.equal(short('openai/gpt-5.1'), 'gpt-5.1');
+  assert.equal(short('anthropic/claude-sonnet-4-5'), 'claude-sonnet-4-5');
+  assert.equal(short('amazon-bedrock/deepseek.v3.2'), 'v3.2');
+  assert.equal(short('us.anthropic.claude-haiku-4-5-20251001-v1:0'), 'claude-haiku-4-5-20251001');
+});

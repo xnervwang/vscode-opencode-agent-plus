@@ -65,11 +65,12 @@ function fmtTokens(n) {
 }
 
 /* `us.xai.grok-4.7` -> `grok-4.7`, `qwen.qwen3-coder-30b-a3b-v1:0` -> `qwen3-coder-30b-a3b`. */
+/* `amazon-bedrock/us.xai.grok-4.7` -> `grok-4.7`: OpenCode's provider part, a Bedrock region and a vendor prefix go;
+   a vendor prefix is letters only, so the dot in `gpt-5.1` stays. */
 function shortModel(id) {
   if (!id) return '';
-  let s = String(id).replace(REGION_PREFIX, '');
-  const dot = s.indexOf('.');
-  if (dot > 0) s = s.slice(dot + 1);
+  let s = String(id);
+  s = s.slice(s.lastIndexOf('/') + 1).replace(REGION_PREFIX, '').replace(/^[a-z][a-z-]*\./, '');
   return s.replace(/-v\d+(:\d+)?$/, '').replace(/-\d+:\d+$/, '').replace(/:\d+$/, '');
 }
 
@@ -77,10 +78,12 @@ function contextPct(used, window) {
   return window > 0 && typeof used === 'number' ? Math.round((used / window) * 100) : null;
 }
 
+/* A turn replayed from history may carry no time and no usage (OpenCode's replay has neither): a duration under a
+   second and a context share with no usage are left out rather than shown as 0s and ctx 0%. */
 function figuresText(f) {
-  const parts = [fmtDuration(f.durationMs)];
-  if (f.contextPct != null) parts.push(`ctx ${f.contextPct}%`);
-  else if (f.contextUsed) parts.push(`ctx ${fmtTokens(f.contextUsed)}`);
+  const parts = [f.durationMs >= 1000 ? fmtDuration(f.durationMs) : ''];
+  if (f.contextUsed > 0 && f.contextPct != null) parts.push(`ctx ${f.contextPct}%`);
+  else if (f.contextUsed > 0) parts.push(`ctx ${fmtTokens(f.contextUsed)}`);
   if (f.costUsd != null) parts.push(fmtCost(f.costUsd));
   if (f.model) parts.push(f.model);
   return parts.filter(Boolean).join(' · ');
@@ -266,9 +269,15 @@ function reduce(s, ev, now) {
   switch (ev.type) {
     case 'turnStart':
       if (s.turn) s = endTurn(s, { reason: 'endTurn' }, at);
+      /* The model the turn runs on, as <provider>/<model>; its context window comes with a later ui.model. */
+      if (typeof ev.modelId === 'string' && ev.modelId && (!s.model || s.model.id !== ev.modelId)) {
+        s = { ...s, model: { id: ev.modelId, name: ev.modelId, vendor: '', contextWindow: 0 } };
+      }
       return startTurn(s, ev.turnId, at);
 
     case 'userMessage': {
+      /* Text a plugin added for the model to read, not something the user wrote. */
+      if (ev.synthetic === true) return s;
       const text = String(ev.text || '');
       let queued = s.queued;
       const qi = queued.findIndex((q) => q.text.trim() === text.trim());
@@ -362,6 +371,8 @@ function reduce(s, ev, now) {
       };
 
     case 'turnEnd':
+      /* Stopping drops the messages that waited for the turn. */
+      if (ev.reason === 'aborted' && s.queued.length) s = { ...s, queued: [] };
       if (!s.turn) {
         if (ev.reason !== 'error') return s;
         return append(s, { kind: 'notice', turn: null, at, level: 'error', text: errorText(ev.error) }).s;
@@ -374,7 +385,11 @@ function reduce(s, ev, now) {
     case 'ui.model': {
       const m = ev.model;
       if (!m || !m.id) return s;
-      return { ...s, model: { id: m.id, name: m.name || '', vendor: m.vendor || '', contextWindow: m.contextWindow || 0 } };
+      const model = { id: m.id, name: m.name || '', vendor: m.vendor || '', contextWindow: m.contextWindow || 0 };
+      /* A running turn on this model takes the window, which OpenCode learns from the model's first call. */
+      const turn = s.turn && (s.turn.modelId === m.id || !s.turn.modelId)
+        ? { ...s.turn, modelId: m.id, contextWindow: model.contextWindow || s.turn.contextWindow } : s.turn;
+      return { ...s, model, turn };
     }
 
     case 'ui.queued': {
@@ -482,7 +497,7 @@ function head(s) {
     model: s.model ? { id: s.model.id, name: s.model.name, short: shortModel(s.model.id) } : null,
     contextUsed: s.contextUsed,
     contextWindow: window,
-    contextPct: contextPct(s.contextUsed, window),
+    contextPct: s.contextUsed > 0 ? contextPct(s.contextUsed, window) : null,
     contextText: s.contextUsed ? `${fmtTokens(s.contextUsed)}${window ? ` of ${fmtTokens(window)}` : ''} tokens` : '',
     costUsd: s.costKnown ? s.costUsd : null,
     costText: s.costKnown ? fmtCost(s.costUsd) : '',

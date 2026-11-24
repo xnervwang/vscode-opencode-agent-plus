@@ -15,7 +15,7 @@
 (function () {
   const api = acquireVsCodeApi();
   const md = typeof window.markdownit === 'function'
-    ? window.markdownit({ html: false, linkify: true, breaks: false })
+    ? window.markdownit({ html: false, linkify: true, breaks: true })
     : null;
 
   const $ = (id) => document.getElementById(id);
@@ -43,7 +43,7 @@
 
   const DECISION_WORDS = {
     allowOnce: 'Allowed once',
-    allowSession: 'Allowed for this conversation',
+    allowSession: 'Allowed in this project',
     deny: 'Denied',
     cancelled: 'No answer needed: the turn ended',
   };
@@ -176,7 +176,7 @@
         };
         entry.decide = [
           button('allowOnce', 'Allow once', 'primary'),
-          button('allowSession', 'Allow for this conversation', 'secondary'),
+          button('allowSession', 'Allow in this project', 'secondary'),
           button('deny', 'Deny', 'secondary'),
         ];
         entry.diffBtn = el('button', 'secondary diff', 'View diff');

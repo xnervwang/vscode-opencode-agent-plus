@@ -5,13 +5,14 @@
 'use strict';
 /*
  * node test/vscode/run.js --local --vscode <executable> --out <dir> [--agent-plus <.vsix>] [--backend fake|opencode]
- *   [--opencode <executable>] [--model <provider/model>] [--deps <folder with node_modules>]
+ *   [--opencode <executable>] [--model <provider/model>] [--deps <folder with node_modules>] [--fonts <fonts.conf>]
  *
  * Packs this extension (build/pack-vsix.js), installs it and Agent Plus into a profile of its own, starts that VS Code
  * under xvfb-run and goes through the steps below, saving a screenshot of each to <out>/shots with a look.json that
  * test/vscode/LOOK.md explains. `fake` (the default) puts test/vscode/fake-backend.js behind the chat; `opencode` uses
  * the real backend with the OpenCode at --opencode and the user's AWS profile `self`, for a run against a real model.
- * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH).
+ * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
+ * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
  *
  * Under `node --test` this file does nothing: the default test patterns pick up every .js under test/.
  */
@@ -36,6 +37,7 @@ const BACKEND = flag('--backend', 'fake');
 const OPENCODE = flag('--opencode');
 const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-bedrock/us.xai.grok-4.7');
 const DEPS = flag('--deps');
+const FONTS = flag('--fonts');
 const ID = 'xnervwang.new-agent';
 
 const need = (name) => require(DEPS ? path.join(DEPS, 'node_modules', name) : name);
@@ -69,6 +71,24 @@ function writeSettings(user, extra) {
   }, null, 2));
 }
 
+/* OpenCode processes still running with this run's state folder in their environment (2.x's acp starts a background
+   service that outlives it); they are stopped. Linux only, where /proc shows another process's environment. */
+function stopLeftovers(stateDir) {
+  if (process.platform !== 'linux' || !stateDir) return 'no leftover check on this platform';
+  const left = [];
+  for (const pid of fs.readdirSync('/proc').filter((n) => /^\d+$/.test(n))) {
+    let environ = '';
+    try { environ = fs.readFileSync(`/proc/${pid}/environ`, 'utf8'); } catch (_) { continue; }
+    if (!environ.split('\0').includes(`XDG_STATE_HOME=${stateDir}`)) continue;
+    let cmd = '';
+    try { cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').join(' ').trim(); } catch (_) { /* gone */ }
+    if (!/opencode/.test(cmd)) continue;
+    left.push(`${pid} ${cmd.slice(0, 80)}`);
+    try { process.kill(Number(pid), 'SIGTERM'); } catch (_) { /* gone */ }
+  }
+  return left.length ? `stopped OpenCode processes left by this run: ${left.join('; ')}` : 'no OpenCode process of this run was left running';
+}
+
 async function main() {
   if (!LOCAL && process.env.CI !== 'true') throw new Error('runs only where CI=true, or with --local: it starts VS Code and installs extensions');
   if (!EXE || !fs.existsSync(EXE)) throw new Error('--vscode <executable> is needed');
@@ -92,19 +112,28 @@ async function main() {
   if (pack.status !== 0) throw new Error(`packing failed: ${pack.stderr}`);
   console.log(pack.stdout.trim());
 
-  /* The real backend reads the user's AWS profile, so that run keeps the real home; the fake one gets a home of its own. */
+  /*
+   * The real backend signs in with the AWS profile `self` given through the extension's own settings, so that run keeps
+   * the real home (the profile's credential_process reads it); OpenCode's data, config, state and cache folders all go
+   * under <out>/xdg, away from the user's own OpenCode. The fake one gets a home of its own.
+   */
   const real = BACKEND !== 'fake';
+  const xdg = path.join(OUT, 'xdg');
+  const xdgEnv = real ? { XDG_CONFIG_HOME: path.join(xdg, 'config'), XDG_DATA_HOME: path.join(xdg, 'data'), XDG_STATE_HOME: path.join(xdg, 'state'), XDG_CACHE_HOME: path.join(xdg, 'cache') } : {};
+  for (const d of Object.values(xdgEnv)) fs.mkdirSync(d, { recursive: true });
   const env = cleanEnv(real ? '' : p.home, {
-    NEW_AGENT_HOME: p.agentHome, NEW_AGENT_TEST_CONTROL: '1',
-    ...(real ? { AWS_PROFILE: 'self', AWS_REGION: 'us-east-1' } : { NEW_AGENT_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
+    NEW_AGENT_HOME: p.agentHome, NEW_AGENT_TEST_CONTROL: '1', ...xdgEnv, ...(FONTS ? { FONTCONFIG_FILE: path.resolve(FONTS) } : {}),
+    ...(real ? {} : { NEW_AGENT_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
   });
+  if (real) for (const k of Object.keys(env)) if (/^AWS_/.test(k)) delete env[k];
   const code = cliOf(EXE);
   for (const ext of [AGENT_PLUS, vsix]) {
     const r = code(['--install-extension', ext, `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`, '--force'], env);
     if (r.status !== 0) throw new Error(`installing ${ext} failed: ${r.out}`);
   }
   console.log(code(['--list-extensions', '--show-versions', `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`], env).out);
-  writeSettings(p.user, { 'newAgent.model': MODEL, ...(OPENCODE ? { 'newAgent.opencode.path': OPENCODE } : {}) });
+  writeSettings(p.user, { 'newAgent.model': MODEL, ...(OPENCODE ? { 'newAgent.opencode.path': OPENCODE } : {}),
+    ...(real ? { 'newAgent.bedrock.profile': 'self', 'newAgent.bedrock.region': 'us-east-1' } : {}) });
 
   const steps = [];
   let failed = 0, passed = 0;
@@ -186,33 +215,45 @@ async function main() {
 
     } else {
       // 3 (real model). A request that needs a tool: the tool call, the approval, the answer.
-      const turnOver = () => chat.evaluate(() => document.body.dataset.status === 'idle');
-      const approve = async (name) => {
-        const asked = await until(async () => (await chat.$('button[data-decision="allowOnce"]:not([disabled])')) || ((await turnOver()) && 'none'), 240000, 500);
-        if (asked && asked !== 'none') {
-          await shot(`${name}-permission`, { features: ['tool call', 'permission request'],
-            expect: 'The user message, then a tool card for the call the model made, and a permission card with Allow once, Allow for this conversation and Deny buttons.',
-            part: '#workbench\\.parts\\.editor' });
-          await asked.click();
-          return true;
+      const figures = () => chat.evaluate(() => document.querySelectorAll('#log .figures').length);
+      const status = () => chat.evaluate(() => document.body.dataset.status);
+      /* Sends `text` and waits for its turn to end, answering Allow once to every permission request on the way. */
+      const turn = async (text, name) => {
+        const before = await figures();
+        await chat.fill('#input', text);
+        await chat.press('#input', 'Enter');
+        await until(async () => (await status()) !== 'idle' || (await figures()) > before, 60000, 200);
+        let approved = 0;
+        const end = Date.now() + 300000;
+        while (Date.now() < end) {
+          /* An answered card keeps its buttons, hidden. */
+          let button = null;
+          for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) { button = b; break; }
+          if (button) {
+            if (!approved) {
+              await shot(`${name}-permission`, { features: ['tool call', 'permission request'],
+                expect: 'The user message, a tool card for the call the model made, and a permission card with Allow once, Allow in this project and Deny buttons.',
+                part: '#workbench\\.parts\\.editor' });
+            }
+            await button.click();
+            approved++;
+            await sleep(800);
+            continue;
+          }
+          if ((await status()) === 'idle' && (await figures()) > before) break;
+          await sleep(500);
         }
-        return false;
+        return approved;
       };
       if (chat) {
-        await chat.fill('#input', '列出工作目录下的文件');
-        await chat.press('#input', 'Enter');
-        let approved = await approve('03');
-        await until(turnOver, 240000, 500);
-        const tools = await chat.evaluate(() => [...document.querySelectorAll('#log .tool')].map((e) => e.textContent.slice(0, 80)));
+        let approved = await turn('列出工作目录下的文件', '03');
+        const tools = await chat.evaluate(() => [...document.querySelectorAll('#log .tool')].map((e) => e.textContent.replace(/\s+/g, ' ').slice(0, 80)));
         check(tools.length > 0, 'the model called a tool for the request', tools);
         if (!approved) {
-          console.log('  note  no approval was asked for the first request (the model used a tool that needs none); asking for bash');
-          await chat.fill('#input', 'Now run `ls -la` with the bash tool and tell me what it shows.');
-          await chat.press('#input', 'Enter');
-          approved = await approve('03b');
-          await until(turnOver, 240000, 500);
+          console.log('  note  the first request asked for no approval (the model used a tool that needs none); asking for bash');
+          approved = await turn('Now run `ls -la` with the bash tool and tell me what it shows.', '03b');
         }
-        check(approved, 'a permission request was shown and approved with Allow once');
+        check(approved > 0, 'a permission request was shown and approved with Allow once');
         const answer = await chat.evaluate(() => document.getElementById('log').textContent);
         check(/README\.md|notes\.txt|sum\.js/.test(answer), 'the answer names files of the working folder');
         await shot('04-answer', { features: ['answer', 'reply figures'],
@@ -263,6 +304,7 @@ async function main() {
     try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }
   } finally {
     await w.close();
+    if (real) console.log(`  note  ${stopLeftovers(xdgEnv.XDG_STATE_HOME)}`);
   }
   console.log(`\nVS Code window: ${passed} passed, ${failed} failed; screenshots in ${shots}`);
   process.exitCode = failed ? 1 : 0;

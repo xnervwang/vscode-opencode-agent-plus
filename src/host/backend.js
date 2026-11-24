@@ -9,16 +9,19 @@
  *
  *   listSessions()               Promise<SessionInfo[]>
  *   onDidChangeSessions(fn)      { dispose }
- *   createSession(cwd)           Promise<SessionInfo>
- *   renameSession(id, title)     Promise
+ *   createSession(cwd, opts)     Promise of the new session object
+ *   renameSession(id, title)     Promise; OpenCode over ACP refuses it
  *   deleteSession(id)            Promise
- *   session(id)                  Promise of the session object: on(listener) of AgentEvents, send(text, images?),
- *                                abort(), setModel(model), respondPermission(requestId, decision), history()
+ *   session(id, { cwd })         Promise of the session object: id, cwd, title, status, waitingTool, lastUserAt,
+ *                                lastReplyAt, on(listener) of AgentEvents, send(text, images?), abort(), setModel(model),
+ *                                getModel(), respondPermission(requestId, decision), history(), dispose()
  *   listModels(), defaultModel() Promise<ModelInfo[]>, Promise<ModelInfo | string | null>
- *   dispose()
+ *   bedrockStatus(), restart(settings), detect()   passed through
+ *   dispose()                    Promise
  *
- * SessionInfo: { id, title, cwd, createdAt, lastActiveAt, status: 'working' | 'waiting' | 'idle', waitingFor?: { tool },
- * lastUserAt, lastReplyAt }, times in epoch milliseconds. The module is required on first use, not at activation.
+ * SessionInfo (normInfo): { id, title, cwd, createdAt, lastActiveAt, status: 'working' | 'waiting' | 'idle',
+ * waitingFor?: { tool }, lastUserAt, lastReplyAt }, times in epoch milliseconds. The module is required on first use,
+ * not at activation; `options` go to its factory (createOpenCode) as they are.
  */
 const num = (v) => {
   const n = typeof v === 'string' && !/^\d+$/.test(v) ? Date.parse(v) : Number(v);
@@ -40,19 +43,21 @@ function normInfo(s) {
     lastReplyAt: num(s.lastReplyAt),
   };
   const tool = (s.waitingFor && s.waitingFor.tool) || s.waitingTool || '';
+  if (s.open === true) out.open = true;
   if (out.status === 'waiting') out.waitingFor = { tool: String(tool) };
   return out;
 }
 
-/* `options` go to the module's factory as they are; `load` replaces require for the tests. */
+/* `options` (an object, or a function returning one when the module is loaded) go to the module's factory; `load`
+   replaces require for the tests. */
 function createBackend({ options = {}, load } = {}) {
   let made = null;
   const get = () => {
     if (made) return made;
     const mod = load ? load() : require(process.env.NEW_AGENT_TEST_BACKEND || '../opencode');
-    const factory = mod.createBackend || mod.createOpenCode || mod.create;
+    const factory = mod.createOpenCode || mod.createBackend || mod.create;
     if (typeof factory !== 'function') throw new Error('the agent backend exports no factory');
-    made = factory(options);
+    made = factory(typeof options === 'function' ? options() : options);
     return made;
   };
   const call = (name, ...args) => Promise.resolve().then(() => {
@@ -80,16 +85,20 @@ function createBackend({ options = {}, load } = {}) {
     },
     /* Starts listening once something has started the module, so activation does not start it. */
     listen() { try { hook(); } catch (_) { /* not available */ } },
-    createSession: (cwd) => call('createSession', cwd).then((s) => normInfo(typeof s === 'string' ? { id: s, cwd } : s)),
+    createSession: (cwd, opts) => call('createSession', cwd, opts || {}),
     renameSession: (id, title) => call('renameSession', id, title),
     deleteSession: (id) => call('deleteSession', id),
-    session: (id) => call(typeof get().session === 'function' ? 'session' : 'openSession', id),
-    listModels: () => call('listModels'),
+    session: (id, opts) => call(typeof get().session === 'function' ? 'session' : 'openSession', id, opts || {}),
+    listModels: () => call('listModels').then((l) => (Array.isArray(l) ? l : [])),
     defaultModel: () => (made && typeof made.defaultModel !== 'function' ? Promise.resolve(null) : call('defaultModel')),
+    bedrockStatus: () => (made && typeof made.bedrockStatus !== 'function' ? Promise.resolve(null) : call('bedrockStatus')),
+    detect: () => call('detect'),
+    /* New settings; nothing to do while the module has not been loaded, since it reads them when it is. */
+    restart: (next) => (made && typeof made.restart === 'function' ? Promise.resolve().then(() => made.restart(next)) : Promise.resolve()),
     dispose() {
       listeners.clear();
       try { if (hooked && typeof hooked.dispose === 'function') hooked.dispose(); } catch (_) { /* gone */ }
-      try { if (made && typeof made.dispose === 'function') made.dispose(); } catch (_) { /* gone */ }
+      return Promise.resolve().then(() => (made && typeof made.dispose === 'function' ? made.dispose() : undefined)).catch(() => {});
     },
   };
 }

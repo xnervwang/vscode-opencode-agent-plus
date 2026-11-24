@@ -7,9 +7,10 @@
  * The conversations open in this window: session id -> its session object from the backend (src/host/backend.js,
  * the OpenCode server behind it), the panels showing it, and what Agent Plus and the session list draw from it:
  * working / waiting (with the tool asked about) / stopped, a reply not seen yet, and when the user last wrote and the
- * agent last replied. The backend's session info gives the state a conversation is opened in; from then on its own
+ * agent last replied. The session object's own fields give the state a conversation is opened in; from then on its
  * AgentEvents do, and later session lists only bring titles and times. A lock (src/host/locks.js), when given, keeps
- * a conversation to one window.
+ * a conversation to one window: each window runs its own OpenCode process, and two of them driving one session would
+ * talk over each other.
  */
 const { EventEmitter } = require('events');
 
@@ -68,10 +69,9 @@ const toolOfInfo = (info) => {
 
 /*
  * deps:
- *   info(id)                      Promise of the backend's info on the session ({ id, title, cwd, createdAt,
- *                                 lastActiveAt, status, waitingFor, lastUserAt, lastReplyAt }), or null when there is
- *                                 no such session
- *   makeConversation({ id, info })   its session object, or a Promise of it
+ *   makeConversation({ id })      its session object, or a Promise of it; throws when there is no such session
+ *   info(id, conversation)        optional: the session's { title, cwd, createdAt, lastActiveAt, status, waitingFor,
+ *                                 lastUserAt, lastReplyAt }, or null for none; the conversation's own fields otherwise
  *   isLooking(id)                 whether the user sees its panel in a focused window now
  *   locks                         optional, src/host/locks.js
  *   now(), log(line)              optional
@@ -109,6 +109,7 @@ function createSessionManager(deps) {
       case 'turnStart':
         e.state = 'working'; e.lastActiveAt = at; break;
       case 'userMessage':
+        if (ev.synthetic === true) return;
         e.lastUserAt = at; e.lastActiveAt = at;
         if (!e.title && typeof ev.text === 'string' && ev.text.trim()) e.title = ev.text.trim().split('\n')[0].slice(0, 80);
         break;
@@ -138,10 +139,11 @@ function createSessionManager(deps) {
       const lock = locks.acquire(id);
       if (!lock.ok) return { ok: false, pid: lock.pid || 0, error: lock.error || '' };
     }
+    let conversation = null;
     try {
-      const info = await deps.info(id);
+      conversation = await deps.makeConversation({ id });
+      const info = deps.info ? await deps.info(id, conversation) : conversation;
       if (!info) throw new Error('there is no such conversation');
-      const conversation = await deps.makeConversation({ id, info });
       const e = {
         id, conversation, cwd: String(info.cwd || ''), panels: new Set(), asking: new Map(),
         state: stateOfInfo(info), waitingTool: toolOfInfo(info), unseen: false,
@@ -155,6 +157,7 @@ function createSessionManager(deps) {
       fire(id);
       return { ok: true, entry: e };
     } catch (err) {
+      try { if (conversation && typeof conversation.dispose === 'function') conversation.dispose(); } catch (_) { /* gone */ }
       if (locks) locks.release(id);
       log(`opening ${id} failed: ${(err && err.stack) || err}`);
       return { ok: false, pid: 0, error: String((err && err.message) || err) };

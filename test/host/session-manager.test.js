@@ -34,8 +34,8 @@ function setup({ infos = {}, looking = false, alive = () => true, pid = 1000, wi
   const made = [];
   const manager = createSessionManager({
     locks: withLocks ? locks : undefined,
-    info: async (id) => (id in infos ? infos[id] : { id, cwd: '/work/folder', status: 'idle' }),
-    makeConversation: async ({ id, info }) => { const c = fakeConversation(); c.id = id; c.info = info; made.push(c); return c; },
+    info: async (id, conv) => { conv.askedFor = id; return id in infos ? infos[id] : { id, cwd: '/work/folder', status: 'idle' }; },
+    makeConversation: async ({ id }) => { const c = fakeConversation(); c.id = id; made.push(c); return c; },
     isLooking: () => looking,
     now: () => 5000,
   });
@@ -49,7 +49,8 @@ test("opens a conversation with the backend's folder and state", async () => {
   const r = await manager.open(A);
   assert.strictEqual(r.ok, true);
   assert.strictEqual(made.length, 1);
-  assert.strictEqual(made[0].info.cwd, '/work/folder');
+  assert.strictEqual(manager.snapshot(A).cwd, '/work/folder');
+  assert.strictEqual(made[0].askedFor, A, 'the info is read with the conversation at hand');
   assert.deepStrictEqual(manager.list(), [{ sessionId: A, title: 'New conversation', cwd: '/work/folder', activity: 'stopped', unseen: false,
     lastActiveAt: 5000, running: true, lastUserAt: 0, lastReplyAt: 0 }]);
   assert.deepStrictEqual(changes, [A]);
@@ -73,11 +74,21 @@ test('a saved conversation keeps its folder, title, times and state', async () =
 });
 
 test('a session the backend does not know is not opened', async () => {
-  const { manager, locks } = setup({ infos: { [A]: null } });
+  const { manager, locks, made } = setup({ infos: { [A]: null } });
   const r = await manager.open(A);
   assert.strictEqual(r.ok, false);
   assert.match(r.error, /no such conversation/);
   assert.deepStrictEqual(locks.held(), []);
+  assert.strictEqual(made[0].disposed, 1, 'the half-opened conversation is let go');
+});
+
+test("without an info function the conversation's own fields are read", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'na-sm-'));
+  const manager = createSessionManager({ locks: createLocks({ dir, pid: 1000 }),
+    makeConversation: async ({ id }) => Object.assign(fakeConversation(), { id, cwd: '/proj', title: 'From OpenCode', status: 'waiting', waitingTool: 'bash', lastUserAt: 7, lastReplyAt: 8 }) });
+  await manager.open(A);
+  const s = manager.snapshot(A);
+  assert.deepStrictEqual([s.cwd, s.title, s.activity, s.waitingFor.tool, s.lastUserAt, s.lastReplyAt], ['/proj', 'From OpenCode', 'waiting', 'bash', 7, 8]);
 });
 
 test('update() brings titles and newer times from a backend list, for open conversations only', async () => {
@@ -128,6 +139,14 @@ test('activity follows the turn, waiting carries the tool, a reply nobody looked
   assert.strictEqual(manager.snapshot(A).unseen, false);
 });
 
+test('a synthetic user message (text a plugin added) is not the user writing', async () => {
+  const { manager, made } = setup();
+  await manager.open(A);
+  made[0].fire({ type: 'userMessage', text: 'Work plan reminder', synthetic: true, at: 77 });
+  assert.strictEqual(manager.snapshot(A).lastUserAt, 0);
+  assert.strictEqual(manager.snapshot(A).title, 'New conversation');
+});
+
 test('two permission requests: waiting until both are settled', async () => {
   const { manager, made } = setup();
   await manager.open(A);
@@ -158,7 +177,7 @@ test('a conversation another live window runs is not opened here', async () => {
   const { dir } = setup();
   const elsewhere = createLocks({ dir, pid: 4242, alive: () => true });
   elsewhere.acquire(A);
-  const manager = createSessionManager({ locks: createLocks({ dir, pid: 1000, alive: () => true }), info: async (id) => ({ id }),
+  const manager = createSessionManager({ locks: createLocks({ dir, pid: 1000, alive: () => true }),
     makeConversation: () => { throw new Error('must not be made'); } });
   assert.deepStrictEqual(await manager.open(A), { ok: false, pid: 4242, error: '' });
   assert.strictEqual(manager.has(A), false);
@@ -219,7 +238,7 @@ test('a conversation that fails to start gives its lock back', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'na-sm-'));
   const locks = createLocks({ dir, pid: 1000 });
   const lines = [];
-  const manager = createSessionManager({ locks, info: async (id) => ({ id }), makeConversation: async () => { throw new Error('no provider'); },
+  const manager = createSessionManager({ locks, makeConversation: async () => { throw new Error('no provider'); },
     log: (l) => lines.push(l) });
   const r = await manager.open(A);
   assert.strictEqual(r.ok, false);

@@ -4,14 +4,15 @@
 
 'use strict';
 /*
- * The models of the providers the backend has connected, and which one a new conversation gets: newAgent.model, else
- * the backend's default, else the one the user picks from the list (saved to newAgent.model). A model is named
- * <providerId>/<id> in the setting, as OpenCode names it; a bare id also matches.
+ * The models of the providers OpenCode has connected, and the picker for them. A model is named <provider>/<model> in
+ * newAgent.model, as OpenCode names it (OpenCode's ModelInfo.id already has that form); the model part alone also
+ * matches. The list comes from the backend each time: OpenCode keeps it, and learns a model's context window once the
+ * model has been used.
  */
 const brand = require('../brand');
 
 const SECTION = brand.prefix;
-const fullId = (m) => (m.providerId ? `${m.providerId}/${m.id}` : m.id);
+const fullId = (m) => (String(m.id).includes('/') || !m.providerId ? m.id : `${m.providerId}/${m.id}`);
 const matches = (m, name) => !!name && (fullId(m) === name || m.id === name || m.invokeId === name);
 
 /*
@@ -21,17 +22,11 @@ const matches = (m, name) => !!name && (fullId(m) === name || m.id === name || m
  *   defaultModel()    optional: Promise of a ModelInfo or a model name, or null
  */
 function createModels({ vscode, listModels, defaultModel }) {
-  let pending = null;
   let last = [];
 
   function list() {
-    if (pending) return pending;
     const p = Promise.resolve().then(() => listModels());
-    pending = p;
     p.then((l) => { if (Array.isArray(l)) last = l; }, () => {});
-    /* Fetched again on the next call after a failure, and after a minute in any case: providers get connected. */
-    const forget = () => { setTimeout(() => { if (pending === p) pending = null; }, 60000).unref?.(); };
-    p.then(forget, () => { if (pending === p) pending = null; });
     return p;
   }
 
@@ -40,7 +35,7 @@ function createModels({ vscode, listModels, defaultModel }) {
   async function pick(placeHolder) {
     const l = await list();
     if (!l.length) {
-      vscode.window.showWarningMessage('No model provider is connected. Connect one in OpenCode (opencode auth login), then try again.');
+      vscode.window.showWarningMessage('OpenCode has not listed any models yet. Open a conversation once, or connect a provider in OpenCode (opencode auth login), then try again.');
       return null;
     }
     const items = l.map((m) => ({
