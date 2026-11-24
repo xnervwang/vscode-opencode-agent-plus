@@ -182,12 +182,6 @@
     "url": "https://github.com/xnervwang/vscode-new-agent"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock": "3.1176.0",
-    "@aws-sdk/client-bedrock-runtime": "3.1176.0",
-    "@aws-sdk/credential-providers": "3.1176.0",
     "markdown-it": "15.0.3"
-  },
-  "devDependencies": {
-    "@aws/bedrock-token-generator": "1.1.0"
   }
 }
