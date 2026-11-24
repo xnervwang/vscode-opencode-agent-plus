@@ -4,6 +4,7 @@
   "description": "A coding agent for models on Amazon Bedrock, with work plans and conversation overviews.",
   "version": "0.0.1",
   "publisher": "xnervwang",
+  "icon": "images/icon.png",
   "license": "BSD-3-Clause",
   "private": true,
   "engines": {
@@ -17,8 +18,16 @@
     "workspace"
   ],
   "main": "./extension.js",
+  "extensionDependencies": [
+    "xnervwang.agent-plus"
+  ],
+  "agentPlus": {
+    "protocol": 1
+  },
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCustomEditor:newAgent.chat",
+    "onView:newAgent.sessions"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -57,18 +66,25 @@
         "category": "New Agent"
       },
       {
-        "command": "newAgent.setBedrockApiKey",
-        "title": "Set Amazon Bedrock API Key",
-        "category": "New Agent"
-      },
-      {
-        "command": "newAgent.clearBedrockApiKey",
-        "title": "Clear Amazon Bedrock API Key",
-        "category": "New Agent"
-      },
-      {
         "command": "newAgent.testConnection",
         "title": "Test Model Connection",
+        "category": "New Agent"
+      },
+      {
+        "command": "newAgent.renameConversation",
+        "title": "Rename Conversation",
+        "category": "New Agent",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "newAgent.deleteConversation",
+        "title": "Delete Conversation",
+        "category": "New Agent",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "newAgent.chooseModel",
+        "title": "Choose Model for New Conversations",
         "category": "New Agent"
       }
     ],
@@ -78,6 +94,32 @@
           "command": "newAgent.newConversation",
           "when": "view == newAgent.sessions",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "newAgent.renameConversation",
+          "when": "view == newAgent.sessions && viewItem =~ /^newAgent\\.session/",
+          "group": "1_edit@1"
+        },
+        {
+          "command": "newAgent.deleteConversation",
+          "when": "view == newAgent.sessions && viewItem == newAgent.session",
+          "group": "1_edit@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "newAgent.openConversation",
+          "when": "false"
+        },
+        {
+          "command": "newAgent.renameConversation",
+          "when": "false"
+        },
+        {
+          "command": "newAgent.deleteConversation",
+          "when": "false"
         }
       ]
     },
@@ -113,7 +155,25 @@
           "description": "Model id for new conversations, such as xai.grok-4.7. Empty asks on first use."
         }
       }
-    }
+    },
+    "customEditors": [
+      {
+        "viewType": "newAgent.chat",
+        "displayName": "New Agent Conversation",
+        "selector": [
+          {
+            "filenamePattern": "*.newagent-chat"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "newAgent.sessions",
+        "contents": "No conversations yet.\n[New Conversation](command:newAgent.newConversation)"
+      }
+    ]
   },
   "repository": {
     "type": "git",
@@ -122,6 +182,10 @@
   "dependencies": {
     "@aws-sdk/client-bedrock": "3.1176.0",
     "@aws-sdk/client-bedrock-runtime": "3.1176.0",
-    "@aws-sdk/credential-providers": "3.1176.0"
+    "@aws-sdk/credential-providers": "3.1176.0",
+    "markdown-it": "15.0.3"
+  },
+  "devDependencies": {
+    "@aws/bedrock-token-generator": "1.1.0"
   }
 }
