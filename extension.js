@@ -13,6 +13,7 @@
  *   src/host/provider-config.js   the settings OpenCode starts with, the Bedrock API key
  *   src/host/models.js            the models OpenCode offers, and the picker
  *   src/host/agentplus-source.js  the conversations as a source of Agent Plus
+ *   src/host/work-plan.js         the work plan plugin OpenCode loads, its Python, and the token mode's switches for it
  *
  * NEW_AGENT_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; NEW_AGENT_TEST_CONTROL makes activate() return a few internals for them.
@@ -33,6 +34,8 @@ const { historyFor } = require('./src/host/history');
 const { ChatEditorProvider } = require('./src/host/chat-editor');
 const { logoFiles } = require('./src/host/logo');
 const ap = require('./src/host/agentplus-source');
+const { createWorkPlan } = require('./src/host/work-plan');
+const workplan = require('./src/workplan');
 
 const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
 let running = null;
@@ -47,7 +50,13 @@ function activate(context) {
     const f = vscode.workspace.workspaceFolders;
     return f && f.length && f[0].uri.scheme === 'file' ? f[0].uri.fsPath : os.homedir();
   };
-  const tell = (text) => { Promise.resolve(vscode.window.showInformationMessage(text)).catch(() => {}); };
+  /* What this window told the user, for the window tests. */
+  const told = [];
+  const tell = (text) => {
+    told.push(String(text));
+    if (told.length > 50) told.shift();
+    Promise.resolve(vscode.window.showInformationMessage(text)).catch(() => {});
+  };
   /* OpenCode's own errors (not installed, not found where the settings say) already say what to do. */
   const fail = (what, e) => {
     const own = e && (e.name === 'OpenCodeError' || e.code === 'notFound' || e.code === 'configuredNotFound');
@@ -57,10 +66,22 @@ function activate(context) {
   };
   const named = () => String(vscode.workspace.getConfiguration(brand.prefix).get('model') || '').trim();
 
+  /* The plugin and its scripts are copied before OpenCode can first start, which is on first use. */
+  const plan = createWorkPlan({ vscode, extensionPath: context.extensionPath, storage: context.globalStorageUri.fsPath, memo: context.workspaceState, tell, log });
+  subs.push(plan);
+  plan.start().catch((e) => log(`work plan: ${(e && e.message) || e}`));
+
   let backend = null;
-  const settings = createProviderConfig({ vscode, secrets: context.secrets, restart: (o) => backend.restart(o), log });
+  const settings = createProviderConfig({ vscode, secrets: context.secrets, restart: (o) => backend.restart(plan.launch(o)), log });
   subs.push(settings);
-  backend = createBackend({ options: () => ({ ...settings.options(), root: paths.root(), log }) });
+  backend = createBackend({ options: () => ({ ...plan.launch(settings.options()), root: paths.root(), log }) });
+  /* Once OpenCode has started here its version is known; OpenCode 1 keeps no work plan, which is said once. */
+  let versionKnown = false;
+  const noteVersion = () => {
+    if (versionKnown) return;
+    versionKnown = true;
+    Promise.resolve().then(() => backend.detect()).then((found) => plan.checkVersion(found.version), () => { versionKnown = false; });
+  };
   const models = createModels({ vscode, listModels: () => backend.listModels(), defaultModel: () => backend.defaultModel() });
   const locks = createLocks({ dir: path.join(paths.root(), 'locks') });
   /* Sessions this window just made, handed to the chat tab that opens them; folders of listed ones, for openSession. */
@@ -84,6 +105,7 @@ function activate(context) {
     makeConversation: async ({ id }) => {
       const inner = made.get(id) || await backend.session(id, folders.has(id) ? { cwd: folders.get(id) } : {});
       made.delete(id);
+      noteVersion();
       let events = [];
       try { events = await inner.history(); } catch (e) { log(`history of ${id}: ${(e && e.message) || e}`); }
       /* The model list too: a restored reply's context share needs the model's window when it is drawn. */
@@ -151,6 +173,7 @@ function activate(context) {
     const model = named();
     try { s = await backend.createSession(folder(), model ? { model } : {}); } catch (e) { fail('A new conversation could not be started', e); return false; }
     if (!s || !s.id) { fail('A new conversation could not be started', 'OpenCode gave no session'); return false; }
+    noteVersion();
     made.set(s.id, s);
     return openSession(s.id);
   }
@@ -180,6 +203,11 @@ function activate(context) {
       listSessions: () => backend.listSessions().then((rows) => {
         for (const r of rows) if (r.cwd) folders.set(r.id, r.cwd);
         return rows.filter((r) => inScope(r.cwd));
+      }),
+      /* Its plan goes with it: Agent Plus only reads the plans folder. */
+      deleteSession: (id) => backend.deleteSession(id).then(() => {
+        const gone = workplan.removePlan(id);
+        if (gone.length) log(`deleted the plan files of ${id}: ${gone.join(', ')}`);
       }),
     },
     manager,
@@ -213,6 +241,7 @@ function activate(context) {
     vscode.commands.registerCommand(`${brand.prefix}.testConnection`, async () => {
       let found = null;
       try { found = await backend.detect(); } catch (e) { return settings.show(settings.describe({ error: e })); }
+      plan.checkVersion(found.version);
       try {
         const [list, status] = await Promise.all([models.list(), backend.bedrockStatus()]);
         return settings.show(settings.describe({ status, models: list, found }));
@@ -224,7 +253,10 @@ function activate(context) {
   let logo;
   link = ap.createAgentPlusSource({
     manager,
-    planDir: () => paths.plansDir(),
+    planDir: () => workplan.planDir(),
+    planPath: (id) => workplan.planPath(id),
+    brief: () => plan.brief(),
+    planNotice: () => plan.planNotice(),
     logo: () => {
       if (logo === undefined) {
         const files = logoFiles(context.extensionPath, context.globalStorageUri.fsPath);
@@ -237,7 +269,9 @@ function activate(context) {
     trusted: () => vscode.workspace.isTrusted,
     log,
   });
-  subs.push(link, manager.onDidChange(() => link.changed()));
+  subs.push(link, manager.onDidChange(() => link.changed()), plan.onDidChangeNotice(() => link.noticeChanged()));
+  /* The token mode decides whether the conversations keep a brief, which Agent Plus reads with their list. */
+  subs.push(vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration('agentPlus.tokenMode')) link.changed(); }));
   const activeTab = () => { const g = vscode.window.tabGroups.activeTabGroup; return g ? g.activeTab : undefined; };
   subs.push(vscode.window.tabGroups.onDidChangeTabs(() => link.tabsChanged(activeTab())));
   const agentPlus = { accepted: false, code: 'pending', reason: '' };
@@ -253,7 +287,8 @@ function activate(context) {
   running = { manager, backend, registration: null };
   log(`activated ${context.extension ? context.extension.packageJSON.version : ''}`.trim());
   if (process.env.NEW_AGENT_TEST_CONTROL) {
-    return { test: { agentPlus, registered, conversations: () => manager.list(), source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready } };
+    return { test: { agentPlus, registered, conversations: () => manager.list(), source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready,
+      told: () => told.slice(), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }) } };
   }
   return undefined;
 }

@@ -20,6 +20,10 @@ const PLUGIN_ID = 'agent-work-plan';
 /* An OpenCode session id, on 1.x and 2.x alike; the plugin and the shared scripts name plans by it. */
 const SESSION_ID = /^ses_[0-9A-Za-z]{8,64}$/;
 const NEEDS_V2 = 'The work plan needs OpenCode 2.';
+/* What the shared hooks keep for one conversation in the plans folder, <session id><suffix>: the plan and the *_SUFFIX
+   files of plan_common.py. */
+const SIDE_SUFFIXES = Object.freeze(['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz', '.images-told',
+  '.compacted', '.briefed', '.injected']);
 
 /* The plugin as it ships in this extension. */
 function sourceFile() {
@@ -142,6 +146,31 @@ function planPath(sessionId) {
   return typeof sessionId === 'string' && SESSION_ID.test(sessionId) ? path.join(planDir(), `${sessionId}.json`) : null;
 }
 
+/*
+ * When the user deletes a conversation: its plan, the files the hooks keep beside it and its rows moved to closed/.
+ * Agent Plus only reads the plans folder, so nothing else clears them. Only names built from a session id of OpenCode's
+ * shape are touched. Returns the names removed, relative to `dir`.
+ */
+function removePlan(sessionId, dir = planDir()) {
+  if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [];
+  const names = SIDE_SUFFIXES.map((s) => `${sessionId}${s}`).concat(path.join('closed', `${sessionId}.json`));
+  const removed = [];
+  for (const name of names) {
+    try { fs.unlinkSync(path.join(dir, name)); removed.push(name); } catch (_) { /* not there */ }
+  }
+  return removed;
+}
+
+/*
+ * Tells the plugin which Python to start, in launcher.json beside the scripts: `python` is what
+ * src/shared/python-runtime.js findPython gave. Its full path is written, since OpenCode starts it without a shell.
+ * Returns whether the file changed.
+ */
+function writeLauncher(python, dir = scriptsDir()) {
+  if (!python || !python.executable) return false;
+  return writeIfDifferent(path.join(dir, 'launcher.json'), Buffer.from(`${JSON.stringify({ row: [python.executable] })}\n`));
+}
+
 module.exports = {
   PLUGIN_ID,
   SESSION_ID,
@@ -155,4 +184,7 @@ module.exports = {
   support,
   planDir,
   planPath,
+  writeLauncher,
+  removePlan,
+  SIDE_SUFFIXES,
 };

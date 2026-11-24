@@ -45,6 +45,18 @@ test('activate registers, and starts nothing', async () => {
   assert.strictEqual(control.state.context['newAgent.agentPlus'], false);
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   for (const c of pkg.contributes.commands) assert.ok(control.state.registered.includes(c.command), `${c.command} in package.json is registered`);
+  /* The work plan plugin and its scripts are in place before OpenCode first starts, with the switches it reads. */
+  const home = process.env.NEW_AGENT_HOME;
+  assert.ok(fs.existsSync(path.join(home, 'opencode-plugin', 'agent-work-plan', 'index.js')));
+  assert.ok(fs.existsSync(path.join(home, 'opencode-plugin', 'agent-work-plan', 'hooks', 'plan_agent.py')));
+  const cfg = JSON.parse(fs.readFileSync(path.join(home, 'plans', 'config.json'), 'utf8'));
+  assert.deepStrictEqual({ enabled: cfg.enabled, brief: cfg.brief }, { enabled: true, brief: true });
+  assert.strictEqual(api.test.plan().launch.NEW_AGENT_HOOKS_DIR, path.join(home, 'opencode-plugin', 'agent-work-plan', 'hooks'));
+  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere', 'brief']);
+  control.setConfig('agentPlus.tokenMode', 'interface');
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(home, 'plans', 'config.json'), 'utf8')).enabled, false);
+  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere']);
+  control.setConfig('agentPlus.tokenMode', 'all');
 });
 
 test('a new conversation is made by the backend and opened in a chat tab; closing the window stops its turn', async () => {
@@ -67,5 +79,14 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   const rows = await tree.getChildren();
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(tree.getTreeItem(rows[0]).command.command, 'newAgent.openConversation');
+
+  /* Deleting it takes its plan and the files beside it, and leaves another conversation's. */
+  const id = opened[0][0].slice('newagent-session:/'.length);
+  const plans = path.join(process.env.NEW_AGENT_HOME, 'plans');
+  const other = 'ses_0000000000000000other';
+  for (const n of [`${id}.json`, `${id}.injected`, `${id}.turn`, `${other}.json`]) fs.writeFileSync(path.join(plans, n), '{}');
+  control.state.answers.push(['Delete "', 'Delete']);
+  assert.strictEqual(await control.state.handlers['newAgent.deleteConversation'](rows[0]), true);
+  assert.deepStrictEqual(fs.readdirSync(plans).sort(), ['config.json', `${other}.json`]);
   extension.deactivate();
 });

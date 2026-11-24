@@ -11,6 +11,7 @@
  *   conversations   the ones open in this window (src/host/session-manager.js); one not open here is not running
  *   focus           reported by the chat editor when its panel comes to the front (focus())
  *   answers         sent as a user message; a turn in progress queues it, so it counts as submitted
+ *   plans           the plugin's files (src/workplan); 'brief' is listed while the token mode lets the plugin keep one
  */
 const path = require('path');
 const vscode = require('vscode');
@@ -80,7 +81,10 @@ function emitter() {
 /*
  * deps:
  *   manager            src/host/session-manager.js
- *   planDir()          paths.plansDir()
+ *   planDir()          the plans folder (src/workplan planDir)
+ *   planPath(id)       optional: a conversation's plan file, or null (src/workplan planPath)
+ *   brief()            optional: whether the conversations keep a brief in their plans now
+ *   planNotice()       optional: null or the row Agent Plus shows above the plan (a missing Python, say)
  *   logo()             { light, dark } Uris, or null
  *   reveal(sessionId)  Promise<boolean>: bring its tab in this window to the front
  *   openHere(sessionId)  Promise<boolean>: open it in this window
@@ -88,7 +92,7 @@ function emitter() {
  *   log(line)          optional
  */
 function createAgentPlusSource(deps) {
-  const focused = emitter(), changed = emitter();
+  const focused = emitter(), changed = emitter(), noticed = emitter();
   const log = (line) => { try { if (deps.log) deps.log(line); } catch (_) { /* not logged */ } };
   /* The session of the latest focus report; cleared once a tab that is not ours comes to the front. */
   let front = '';
@@ -110,15 +114,22 @@ function createAgentPlusSource(deps) {
     }
   }
 
+  const briefOn = () => { try { return deps.brief ? deps.brief() === true : false; } catch (_) { return false; } };
+
   const source = {
     protocol: PROTOCOL,
-    features: ['shows', 'openHere'],
+    get features() { return briefOn() ? ['shows', 'openHere', 'brief'] : ['shows', 'openHere']; },
     id: ID,
     label: brand.displayName,
     extensionId: EXTENSION_ID,
     get logo() { try { return deps.logo ? deps.logo() : null; } catch (_) { return null; } },
     planDir: () => deps.planDir(),
-    planPath: (sessionId) => (typeof sessionId === 'string' && sessionOfUri(uriOf(sessionId)) ? path.join(deps.planDir(), `${sessionId}.json`) : null),
+    planPath: (sessionId) => {
+      if (deps.planPath) return deps.planPath(sessionId);
+      return typeof sessionId === 'string' && sessionOfUri(uriOf(sessionId)) ? path.join(deps.planDir(), `${sessionId}.json`) : null;
+    },
+    planNotice: () => { try { return deps.planNotice ? deps.planNotice() || null : null; } catch (_) { return null; } },
+    onDidChangePlanNotice: noticed.event,
     onDidFocus: focused.event,
     onDidChangeConversations: changed.event,
 
@@ -185,8 +196,9 @@ function createAgentPlusSource(deps) {
       if (id) focused.fire({ sessionId: id });
     },
     changed() { changed.fire(); },
+    noticeChanged() { noticed.fire(); },
     log,
-    dispose() { focused.dispose(); changed.dispose(); deliveries.clear(); },
+    dispose() { focused.dispose(); changed.dispose(); noticed.dispose(); deliveries.clear(); },
   };
 }
 

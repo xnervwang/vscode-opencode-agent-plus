@@ -361,3 +361,27 @@ test('short model names for OpenCode and Bedrock ids', () => {
   assert.equal(short('amazon-bedrock/deepseek.v3.2'), 'v3.2');
   assert.equal(short('us.anthropic.claude-haiku-4-5-20251001-v1:0'), 'claude-haiku-4-5-20251001');
 });
+
+test('a usage event that carries the context window gives the share from the first turn', () => {
+  const s = run([
+    { type: 'turnStart', turnId: 't1', at: T0, modelId: 'amazon-bedrock/us.xai.grok-4.7' },
+    { type: 'usage', input: 0, output: 0, contextUsed: 25000, contextWindow: 500000 },
+    { type: 'usage', input: 24000, output: 1000, contextUsed: 25000, contextWindow: 500000 },
+    { type: 'turnEnd', turnId: 't1', reason: 'endTurn', at: T0 + 4000 },
+  ], { model: { id: 'amazon-bedrock/us.xai.grok-4.7', name: 'Grok 4.7', contextWindow: 0 } });
+  const f = s.items[s.items.length - 1];
+  assert.equal(f.contextPct, 5);
+  assert.match(f.text, /ctx 5%/);
+  assert.equal(vm.head(s).contextPct, 5);
+  assert.equal(vm.head(s).contextWindow, 500000);
+});
+
+test('a reported window does not replace the one the model list gave', () => {
+  const s = run([
+    { type: 'turnStart', turnId: 't1', at: T0 },
+    { type: 'usage', input: 0, output: 0, contextUsed: 20000, contextWindow: 100000 },
+    { type: 'turnEnd', turnId: 't1', reason: 'endTurn', at: T0 + 2000 },
+  ]);
+  assert.equal(vm.head(s).contextWindow, 200000);
+  assert.equal(s.items[s.items.length - 1].contextPct, 20, 'the turn uses what the agent reported for it');
+});

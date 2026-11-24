@@ -10,7 +10,9 @@
  * replaying session/load, a user message (chunks sharing a messageId) starts the next turn instead.
  *
  * Text a plugin adds for the model only (a work-plan line, a turn-end note) arrives as a user chunk annotated with
- * `audience: ["assistant"]`; it becomes a userMessage with `synthetic: true` and never starts a turn.
+ * `audience: ["assistant"]` (1.x); it becomes a userMessage with `synthetic: true` and never starts a turn. The work plan
+ * plugin on 2.x wraps its turn-end reminder in a <system-update> block; 2.4.1 neither streams nor replays it over ACP,
+ * and a user chunk that starts with one is taken the same way should a later OpenCode send it.
  *
  * usage_update carries the session's running cost; AgentEvent usage carries the cost of one call, so the difference
  * from the last one seen is sent.
@@ -74,6 +76,8 @@ function forModelOnly(content) {
   const a = content && content.annotations && content.annotations.audience;
   return Array.isArray(a) && a.length > 0 && !a.includes('user');
 }
+
+const PLUGIN_NOTE = /^\s*<system-update>/;
 
 const KIND_TOOL = Object.freeze({ execute: 'bash', edit: 'edit', delete: 'delete', move: 'move', read: 'read', search: 'search', fetch: 'webfetch', think: 'think' });
 
@@ -164,6 +168,7 @@ function createMapper({ now = Date.now } = {}) {
   let replayCount = 0;
   let pendingUser = '';
   let lastUserMessage = null;
+  let noteMessage = null;
   let lastCost = null;
   let lastUsed = 0;
   let contextWindow = 0;
@@ -237,7 +242,9 @@ function createMapper({ now = Date.now } = {}) {
     switch (u.sessionUpdate) {
       case 'user_message_chunk': {
         const text = u.content && u.content.type === 'text' ? String(u.content.text || '') : '';
-        if (forModelOnly(u.content)) {
+        const mid0 = typeof u.messageId === 'string' ? u.messageId : null;
+        if (PLUGIN_NOTE.test(text) && mid0) noteMessage = mid0;
+        if (forModelOnly(u.content) || PLUGIN_NOTE.test(text) || (mid0 && mid0 === noteMessage)) {
           if (text) out.push(...flushUser(), { type: 'userMessage', text, synthetic: true, at: now() });
           return out;
         }
@@ -275,6 +282,7 @@ function createMapper({ now = Date.now } = {}) {
           lastCost = amount;
         }
         const ev = { type: 'usage', input: 0, output: 0, contextUsed: lastUsed };
+        if (contextWindow) ev.contextWindow = contextWindow;
         if (cost !== undefined) ev.costUsd = cost;
         out.push(ev);
         return out;
@@ -316,14 +324,16 @@ function createMapper({ now = Date.now } = {}) {
     const at = now();
     if (result && result.usage && typeof result.usage === 'object') {
       const us = result.usage;
-      out.push({
+      const ev = {
         type: 'usage',
         input: num(us.inputTokens),
         output: num(us.outputTokens),
         cacheRead: num(us.cachedReadTokens),
         cacheWrite: num(us.cachedWriteTokens),
         contextUsed: lastUsed,
-      });
+      };
+      if (contextWindow) ev.contextWindow = contextWindow;
+      out.push(ev);
     }
     const ev = { type: 'turnEnd', turnId: turn.id, at };
     if (error) {
@@ -344,7 +354,7 @@ function createMapper({ now = Date.now } = {}) {
     permission,
     settled,
     end,
-    replayStart() { replaying = true; replayCount = 0; turn = null; pendingUser = ''; lastUserMessage = null; },
+    replayStart() { replaying = true; replayCount = 0; turn = null; pendingUser = ''; lastUserMessage = null; noteMessage = null; },
     replayEnd() { const out = endReplayTurn(); replaying = false; return out; },
     get inTurn() { return !!turn; },
     get turnId() { return turn ? turn.id : null; },

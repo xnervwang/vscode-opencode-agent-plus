@@ -1,0 +1,90 @@
+{
+  "core": "9c4c56fa0e3832778d0d24e54e8ec5d569ffb6ec",
+  "files": [
+    {
+      "path": "build/sync-shared.js",
+      "from": "shared/build/sync-shared.js",
+      "sha256": "ded36df83c770ecfcea6dafa8cdb07dcfe32d5318453da2b4dca2846b0db93c7"
+    },
+    {
+      "path": "test/vscode/LOOK.md",
+      "from": "shared/test/vscode/LOOK.md",
+      "sha256": "266561d992fca465a05e4d152d45b711dd3ea4d991099f4cd0c2f425817a1970"
+    },
+    {
+      "path": "src/shared/files.js",
+      "from": "src/files.js",
+      "sha256": "f1063a61d41b9a9f37384edf43ee9e098820232071ae28151092cbc726bb0fa3"
+    },
+    {
+      "path": "src/shared/hook-settings.js",
+      "from": "shared/host/hook-settings.js",
+      "sha256": "71aaf6dbcacb7fcdd6b5872251784d519a799ef54ade343c366da8ddc759d77b"
+    },
+    {
+      "path": "src/shared/python-runtime.js",
+      "from": "shared/host/python-runtime.js",
+      "sha256": "63d443e330f002aeefde6daad66a7fe63ff9abc8ad280bd99fa1ce2006ba3753"
+    },
+    {
+      "path": "src/shared/python-offer.js",
+      "from": "shared/host/python-offer.js",
+      "sha256": "b1fcc195202ee74242541f8b7db8729100d0ca3a59661e03e64d59587b426c36"
+    },
+    {
+      "path": "src/shared/token-mode.js",
+      "from": "src/token-mode.js",
+      "sha256": "e330e82078bdada9056d3e194637769ad9708d3b46732b22bd81037792f45410"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/plan_path.py",
+      "from": "shared/plugin/hooks/plan_path.py",
+      "sha256": "e82881afcc3c2e5d7335b600f53975bc1be290cc92c11a56bcf3ff6cf110bb98"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/plan_common.py",
+      "from": "shared/plugin/hooks/plan_common.py",
+      "sha256": "a27d50570cbbf116389707dfc596b5d6ffd2f4ad0bae24a4a427b8f06e879e33"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/plan-row.py",
+      "from": "shared/plugin/hooks/plan-row.py",
+      "sha256": "fc0f3fc02c4764fcf1254040ac5c0cf238ba5159e1ae51eb2d22aaa861764806"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/changes.py",
+      "from": "shared/plugin/hooks/changes.py",
+      "sha256": "ff66529f410b09c8b505b7ae0f937579f211aee1b3245e3197fb75d29b154c1e"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/inject-work-plan.py",
+      "from": "shared/plugin/hooks/inject-work-plan.py",
+      "sha256": "12c797aee950e412295ee6d0990a4c00b4fa712c892667343f539307f3051fc6"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/resume-work-plan.py",
+      "from": "shared/plugin/hooks/resume-work-plan.py",
+      "sha256": "c9cc41d558dae6c779766054fc39fe78b575bfe88878c580514b00802c54f18c"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/tell-time-zone.py",
+      "from": "shared/plugin/hooks/tell-time-zone.py",
+      "sha256": "5742f560cd7585ba3b747115a216ef4db51a60a3beabe0d2e8f4ccc598ac1cb6"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/tell-reply-images.py",
+      "from": "shared/plugin/hooks/tell-reply-images.py",
+      "sha256": "627411cf038a108671440a0dd1e53ed73e88c6291e6fe9becbaaacc329842fd9"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/nudge-work-plan.py",
+      "from": "shared/plugin/hooks/nudge-work-plan.py",
+      "sha256": "8ba8895c44e6d66c3e03aa3939a5014aaf1243c530b0c43823fc60b70ddc65d5"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/remind-work-plan.py",
+      "from": "shared/plugin/hooks/remind-work-plan.py",
+      "sha256": "3aeb151a47428caec2d9dfce14975e3af3dbeec3c0640c0c3ce1a83122eef350"
+    }
+  ]
+}

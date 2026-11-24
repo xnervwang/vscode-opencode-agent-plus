@@ -244,3 +244,45 @@ test('detect() reports the version line, and config can depend on it', async (t)
   assert.deepEqual(agents[0].launch.config, { plugins: ['/plugin'] });
   assert.equal(oc.info().line, 2);
 });
+
+test('session/new that gets no answer fails as unavailable, and the next try starts OpenCode again', async (t) => {
+  const { fakeAgent, loadScript } = require('./fake-agent');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'new-agent-oc-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const recorded = loadScript('v2-run.jsonl');
+  const init = recorded.find((e) => e.on === 'initialize');
+  const made = recorded.find((e) => e.on === 'session/new');
+  const agents = [];
+  const oc = createOpenCode({
+    root,
+    findOpenCode: () => ({ path: '/fake/bin/opencode', version: V2 }),
+    startAcp: () => {
+      const a = fakeAgent(agents.length ? [init, made] : [init, { on: 'session/new', send: [{ waitFor: 'never/sent' }] }]);
+      agents.push(a);
+      return { child: a.child, stderrTail: () => '', args: ['acp'] };
+    },
+    idleStopMs: 0,
+    newSessionTimeoutMs: 150,
+  });
+  t.after(() => oc.dispose());
+  await assert.rejects(oc.createSession(CWD), (e) => e.name === 'Error' && e.code === 'unavailable' && e.kind === 'unavailable'
+    && /did not start the conversation within 0 seconds|within \d+ seconds/.test(e.message));
+  await new Promise((r) => setImmediate(r));
+  assert.notEqual(agents[0].child.exitCode === null && agents[0].child.signalCode === null, true, 'the process that did not answer is stopped');
+  const s = await oc.createSession(CWD);
+  assert.equal(agents.length, 2);
+  assert.equal(s.id, made.reply.sessionId);
+});
+
+test('2.x: a conversation whose plugin left a turn-end reminder replays without it (recorded on 2.4.1)', async (t) => {
+  const { oc } = setup(t, 'v2-plan-load.jsonl', V2);
+  const s = await oc.openSession('ses_df36f00bdffeGuBy2khAO50yCY', { cwd: CWD });
+  const evs = await s.history();
+  assert.deepEqual(evs.filter((e) => e.type === 'userMessage').map((e) => [e.text, !!e.synthetic]), [
+    ["Call the add_row tool once, with state doing and title 'list the files'. Do nothing else, then reply with only ok.", false],
+    ['Reply with only the word two.', false],
+  ]);
+  assert.equal(evs.filter((e) => e.type === 'turnStart').length, 2);
+  assert.deepEqual(evs.filter((e) => e.type === 'toolCall').map((e) => e.name), ['add_row', 'set_row', 'set_summary', 'set_status']);
+  assert.equal(JSON.stringify(evs).includes('<system-update>'), false);
+});

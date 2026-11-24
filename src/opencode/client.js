@@ -20,6 +20,8 @@ class RpcError extends Error {
 }
 
 const METHOD_NOT_FOUND = -32601;
+/* Our own code for a request that got no answer in time. */
+const TIMED_OUT = -32001;
 
 /*
  * opts.onRequest(method, params) -> result or Promise of it; throw { code, message } to answer with an error.
@@ -100,7 +102,7 @@ function createConnection(child, opts = {}) {
         if (timeoutMs > 0) {
           entry.timer = setTimeout(() => {
             pending.delete(id);
-            reject(new RpcError({ code: -32001, message: `${method} timed out after ${Math.round(timeoutMs / 1000)}s` }, method));
+            reject(new RpcError({ code: TIMED_OUT, message: `${method} timed out after ${Math.round(timeoutMs / 1000)}s` }, method));
           }, timeoutMs);
         }
         pending.set(id, entry);
@@ -116,4 +118,4 @@ function createConnection(child, opts = {}) {
   };
 }
 
-module.exports = { createConnection, RpcError, METHOD_NOT_FOUND };
+module.exports = { createConnection, RpcError, METHOD_NOT_FOUND, TIMED_OUT };

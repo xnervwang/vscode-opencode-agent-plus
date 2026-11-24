@@ -17,10 +17,11 @@ const childProcess = require('child_process');
 const paths = require('../paths');
 const brand = require('../brand');
 const server = require('./server');
-const { createConnection, METHOD_NOT_FOUND } = require('./client');
+const { createConnection, METHOD_NOT_FOUND, TIMED_OUT } = require('./client');
 const mapper = require('./mapper');
 
 const PROTOCOL_VERSION = 1;
+const NEW_SESSION_TIMEOUT_MS = 60000;
 const BEDROCK = 'amazon-bedrock';
 
 function clientVersion() {
@@ -68,6 +69,7 @@ function bedrockHelp(major) {
  *   config         more inline OpenCode configuration, merged over ours: an object, or line => object where line is
  *                  the version line found (1 or 2), whose config keys differ ("plugin" vs "plugins")
  *   root, idleStopMs, now, log
+ *   newSessionTimeoutMs  how long session/new may take (60 s)
  *   findOpenCode, startAcp, execFile   test seams
  */
 function createOpenCode(opts = {}) {
@@ -76,6 +78,7 @@ function createOpenCode(opts = {}) {
   const root = opts.root || paths.root();
   const cacheFile = path.join(root, 'opencode-models.json');
   const idleStopMs = typeof opts.idleStopMs === 'number' ? opts.idleStopMs : 10 * 60 * 1000;
+  const newSessionTimeoutMs = opts.newSessionTimeoutMs > 0 ? opts.newSessionTimeoutMs : NEW_SESSION_TIMEOUT_MS;
   const find = opts.findOpenCode || server.findOpenCode;
   const start = opts.startAcp || server.startAcp;
   const execFile = opts.execFile || childProcess.execFile;
@@ -532,7 +535,20 @@ function createOpenCode(opts = {}) {
 
     async createSession(cwd, { model } = {}) {
       const p = await ensure();
-      const r = await p.conn.request('session/new', { cwd, mcpServers: [] });
+      let r;
+      try {
+        r = await p.conn.request('session/new', { cwd, mcpServers: [] }, { timeoutMs: newSessionTimeoutMs });
+      } catch (e) {
+        if (!e || e.code !== TIMED_OUT) throw e;
+        /* Seen once on 2.4.1, with initialize answered and nothing after, and gone once OpenCode started again: the
+           process is stopped unless a turn runs on it, so the next try starts a new one. */
+        const busy = [...handles.values()].some((x) => x.running);
+        log(`session/new got no answer in ${newSessionTimeoutMs / 1000}s${busy ? '' : '; stopping OpenCode'}`);
+        if (proc === p && !busy) stopProcess();
+        const err = new server.OpenCodeError('unavailable', `OpenCode did not start the conversation within ${Math.round(newSessionTimeoutMs / 1000)} seconds. Try again.`);
+        err.kind = 'unavailable';
+        throw err;
+      }
       const current = noteModels(r && r.configOptions, true);
       const h = makeHandle(r.sessionId, cwd, '');
       h.loadedGen = p.gen;

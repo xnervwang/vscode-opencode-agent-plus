@@ -117,7 +117,7 @@
 
 /**
  * @typedef {{
- *   kind: 'edit' | 'write' | 'command' | 'read-outside',
+ *   kind: 'edit' | 'write' | 'command' | 'read-outside' | 'other',
  *   tool: string,
  *   summary: string,
  *   detail?: string,
@@ -125,6 +125,8 @@
  *   command?: string,
  *   diff?: { path: string, before: string, after: string }
  * }} PermissionRequest
+ * `other` is any permission outside the four, such as fetching a web page or starting a subagent: `summary` names it and
+ * `detail` carries its input.
  */
 
 /** @typedef {'allowOnce' | 'allowSession' | 'deny'} PermissionDecision */
@@ -132,8 +134,10 @@
 /**
  * Events the agent core emits for one conversation; the UI draws from these and nothing else. A userMessage with
  * `synthetic: true` is text a plugin added for the model (a work-plan line, a turn-end note), not something the user typed.
+ * `turnStart.modelId` is the model the turn runs on (provider/model). `usage.contextWindow` is that model's context
+ * window when the agent reports it, so the share in use can be shown before the model list knows the window.
  * @typedef {(
- *   { type: 'turnStart', turnId: string, at: number } |
+ *   { type: 'turnStart', turnId: string, at: number, modelId?: string } |
  *   { type: 'userMessage', text: string, at: number, synthetic?: boolean } |
  *   { type: 'text', delta: string } |
  *   { type: 'reasoning', delta: string } |
@@ -141,7 +145,7 @@
  *   { type: 'toolResult', id: string, content: string, isError: boolean, display?: object, at: number } |
  *   { type: 'permission', requestId: string, request: PermissionRequest } |
  *   { type: 'permissionSettled', requestId: string, decision: PermissionDecision } |
- *   { type: 'usage', input: number, output: number, cacheRead?: number, cacheWrite?: number, contextUsed: number, costUsd?: number } |
+ *   { type: 'usage', input: number, output: number, cacheRead?: number, cacheWrite?: number, contextUsed: number, contextWindow?: number, costUsd?: number } |
  *   { type: 'turnEnd', turnId: string, reason: StopReason | 'aborted' | 'error', at: number, error?: ProviderError } |
  *   { type: 'title', title: string }
  * )} AgentEvent

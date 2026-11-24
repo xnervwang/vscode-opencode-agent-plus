@@ -96,6 +96,16 @@
         "command": "newAgent.clearBedrockApiKey",
         "title": "Clear Amazon Bedrock API Key",
         "category": "New Agent"
+      },
+      {
+        "command": "newAgent.downloadPython",
+        "title": "Download Python for Work Plans",
+        "category": "New Agent"
+      },
+      {
+        "command": "newAgent.findPython",
+        "title": "Look for Python Again for Work Plans",
+        "category": "New Agent"
       }
     ],
     "menus": {
@@ -155,6 +165,18 @@
           "type": "string",
           "default": "",
           "description": "AWS Region for Amazon Bedrock, given to OpenCode as AWS_REGION. Empty leaves it to OpenCode and your AWS configuration."
+        },
+        "newAgent.workPlan": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "markdownDescription": "Keep a work plan in each conversation on OpenCode 2: the plan goes with every message, and the model gets tools to change it. Used only while `#agentPlus.tokenMode#` is Custom."
+        },
+        "newAgent.conversationBrief": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "markdownDescription": "Have the model keep a short summary and status of each conversation in its plan, shown by Agent Plus when the conversation is clicked. Used only while `#agentPlus.tokenMode#` is Custom."
         }
       }
     },

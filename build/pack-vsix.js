@@ -19,7 +19,7 @@ const os = require('os');
 const path = require('path');
 const manifest = require('./make-manifest');
 
-const OWN = ['package.json', 'extension.js', 'README.md', 'src', 'media', 'images'];
+const OWN = ['package.json', 'extension.js', 'README.md', 'src', 'media', 'images', 'opencode-plugin'];
 const SKIP_DIRS = new Set(['dist-es', 'dist-types', '.github', 'test', 'tests', '__tests__']);
 const SKIP_FILE = /(\.d\.ts|\.map|\.tsbuildinfo)$|^(CHANGELOG|HISTORY)(\.md)?$/i;
 /* media/chat.js loads markdown-it's self-contained browser build (src/ui/chat-panel.js); nothing requires it. */
@@ -66,7 +66,8 @@ function stage(root, dir) {
     if (st.isSymbolicLink()) return;
     const base = path.basename(rel);
     if (st.isDirectory()) {
-      if (inModules ? SKIP_DIRS.has(base) : base === 'node_modules') return;
+      /* __pycache__ is what running the plugin's hooks here leaves beside them. */
+      if (inModules ? SKIP_DIRS.has(base) : base === 'node_modules' || base === '__pycache__') return;
       for (const name of fs.readdirSync(from).sort()) {
         if (inModules && name === 'node_modules') continue;
         copy(`${rel}/${name}`, inModules);

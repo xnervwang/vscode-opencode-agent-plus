@@ -193,3 +193,29 @@ test('register: no Agent Plus, accepted, refused, throwing', async () => {
   assert.strictEqual((await ap.register(src, { log })).code, 'no-core');
   assert.ok(lines.some((l) => /core-too-old/.test(l)));
 });
+
+test('plan members: planPath and planNotice from deps, and brief listed only while it is kept', () => {
+  let brief = false;
+  let notice = null;
+  const made = make(fakeManager(), {
+    planPath: (id) => (/^ses_/.test(id) ? `/p/${id}.json` : null),
+    brief: () => brief,
+    planNotice: () => notice,
+  });
+  const { source } = made;
+  assert.strictEqual(source.planPath('ses_abcdefgh12'), '/p/ses_abcdefgh12.json');
+  assert.strictEqual(source.planPath(A), null);
+  assert.deepStrictEqual(source.features, ['shows', 'openHere']);
+  brief = true;
+  assert.deepStrictEqual(source.features, ['shows', 'openHere', 'brief']);
+  assert.strictEqual(source.planNotice(), null);
+  let fired = 0;
+  source.onDidChangePlanNotice(() => { fired++; });
+  notice = { title: 'Work plans need Python 3', description: 'click to try again', detail: 'd', command: 'newAgent.findPython', arguments: [] };
+  made.noticeChanged();
+  assert.strictEqual(fired, 1);
+  assert.strictEqual(source.planNotice().title, 'Work plans need Python 3');
+  const broken = make(fakeManager(), { brief: () => { throw new Error('x'); }, planNotice: () => { throw new Error('y'); } }).source;
+  assert.deepStrictEqual(broken.features, ['shows', 'openHere']);
+  assert.strictEqual(broken.planNotice(), null);
+});

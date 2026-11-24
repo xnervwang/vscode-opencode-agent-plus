@@ -180,3 +180,36 @@ test('replayed user chunks with one messageId are one message, a new id is a new
   ];
   assert.deepEqual(evs.map((e) => e.type), ['turnStart', 'userMessage', 'turnEnd', 'turnStart', 'userMessage', 'turnEnd']);
 });
+
+test('usage carries the context window usage_update reported, on its own event and on the one at the turn\'s end', () => {
+  const m = createMapper({ now: clock() });
+  m.begin('t1', 'hi', 500, 'amazon-bedrock/us.xai.grok-4.7');
+  const first = m.update({ sessionUpdate: 'usage_update', used: 24000, size: 500000 })[0];
+  assert.equal(first.contextWindow, 500000);
+  const end = m.end({ stopReason: 'end_turn', usage: { inputTokens: 23000, outputTokens: 1000 } });
+  assert.equal(end.find((e) => e.type === 'usage').contextWindow, 500000);
+  const bare = createMapper({ now: clock() });
+  bare.begin('t2', 'hi', 500);
+  assert.equal('contextWindow' in bare.update({ sessionUpdate: 'usage_update', used: 10 })[0], false);
+});
+
+test('a user chunk that is the work plan plugin\'s <system-update> note is synthetic and starts no turn', () => {
+  const m = createMapper({ now: clock() });
+  m.replayStart();
+  const evs = [
+    ...m.update({ sessionUpdate: 'user_message_chunk', messageId: 'u1', content: { type: 'text', text: 'first' } }),
+    ...m.update({ sessionUpdate: 'agent_message_chunk', messageId: 'a1', content: { type: 'text', text: 'ok' } }),
+    ...m.update({ sessionUpdate: 'user_message_chunk', messageId: 'n1', content: { type: 'text', text: '<system-update>\nThis turn is ending with 1 row still `doing`' } }),
+    ...m.update({ sessionUpdate: 'user_message_chunk', messageId: 'n1', content: { type: 'text', text: ' ... </system-update>' } }),
+    ...m.update({ sessionUpdate: 'user_message_chunk', messageId: 'u2', content: { type: 'text', text: 'second' } }),
+    ...m.update({ sessionUpdate: 'agent_message_chunk', messageId: 'a2', content: { type: 'text', text: 'two' } }),
+    ...m.replayEnd(),
+  ];
+  assert.deepEqual(evs.filter((e) => e.type === 'userMessage').map((e) => [e.text.slice(0, 15), !!e.synthetic]),
+    [['first', false], ['<system-update>', true], [' ... </system-u', true], ['second', false]]);
+  assert.equal(evs.filter((e) => e.type === 'turnStart').length, 2);
+  const live = createMapper({ now: clock() });
+  live.begin('t1', 'hi', 500);
+  const note = live.update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: '<system-update> x </system-update>' } });
+  assert.deepEqual(note.map((e) => [e.type, e.synthetic]), [['userMessage', true]]);
+});

@@ -17,7 +17,7 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const TYPES = {
   '.css': 'text/css', '.html': 'text/html', '.js': 'application/javascript', '.cjs': 'application/javascript',
   '.mjs': 'application/javascript', '.json': 'application/json', '.md': 'text/markdown', '.png': 'image/png',
-  '.svg': 'image/svg+xml', '.txt': 'text/plain', '.yml': 'text/yaml', '.yaml': 'text/yaml',
+  '.py': 'text/x-python', '.svg': 'image/svg+xml', '.txt': 'text/plain', '.yml': 'text/yaml', '.yaml': 'text/yaml',
 };
 
 function write(stageDir) {

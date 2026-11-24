@@ -1,0 +1,445 @@
+#!/usr/bin/env python3
+# BSD 3-Clause License
+# Copyright (c) 2026, Xnerv Wang
+# All rights reserved.
+# Source: vscode-agent-plus shared/plugin/hooks/plan-row.py; sync-shared.js copies it, so edit it there.
+
+"""Change one row of a work plan, or add a row: the state, the note, the description, and the times that go with them.
+
+  plan-row.py PLAN set ROW [STATE] [--note TEXT] [--detail TEXT] [--waiting-on WHO] [--question TEXT]
+  plan-row.py PLAN add STATE TITLE [--under ROW] [--note TEXT] [--waiting-on WHO] [--question TEXT]
+  plan-row.py PLAN summary TEXT
+  plan-row.py PLAN status --doing TEXT --progress TEXT --next TEXT
+
+ROW is the number shown in front of a row, closed rows counted: 3 is the third row at the top, 2.1 the first one under
+the second. `summary` and `status` write the conversation's brief (plan_common.BRIEF_WIDTH). Not a hook: the model runs
+it, and the injected block gives its full path every turn. In Codex, plan-mcp.py also calls run() for the model's
+set_row, add_row, set_summary and set_status tools.
+
+It exists because a change of state is one simple action and was being paid for as a large one. Done by hand it means
+reading the whole file, changing one field and writing all of it back - of 884 writes to plans measured on the machine
+this was written on, 643 went through the shell, mostly as a script composed for the occasion - and reading the clock
+first, which is the step that gets skipped or invented. A cost like that is a reason to save every change for one write
+at the end of the turn, and `doing` is the one state that cannot wait that long.
+
+The caller picks the row and the state. The file is read just before the write and plan_lock is held from that read
+through the write, so neither a manual edit made a moment earlier nor a concurrent change by another run or the
+extension is lost.
+
+Every write also moves closed rows out of the plan (plan_common.closed_file says where and why): a subtree whose rows are
+all closed and were closed more than ARCHIVE_AFTER ago goes to the archive, with a placeholder left in its place. Before
+a command changes a row, or adds one under it, that row is put back if it or a row above it was moved; at the end of
+the command it goes back to the archive if it is still closed and old enough.
+
+The two files are written in the order that keeps every row in at least one of them for a reader of the plan such as
+the Agent Plus views: the archive with the rows newly moved into it first, then the plan, then the archive without the
+rows put back.
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+# Set before the import below: see inject-work-plan.py.
+sys.dont_write_bytecode = True
+# The script's folder on the import path: see inject-work-plan.py.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from plan_path import (ARCHIVE_AFTER, ARCHIVED_TITLE_CHARS, BRIEF_WIDTH, CLOSED_STATES, HELD_STATES, MAX_DETAIL_CHARS,
+                       MAX_DETAIL_LINES, MAX_QUESTION_CHARS, PLAN_NAME, SESSION_HINT, SETTING_PREFIX, STATES, STATUS_PARTS,
+                       WAITING_ON, archived, children, closed_file, detail_over, epoch, now_stamp, plan_lock, questions_in,
+                       settings, width, write_atomic)
+
+
+class Refused(Exception):
+    pass
+
+
+def find(nodes, number):
+    """The row a number names, counted the way the injected block and the tree count it, or None."""
+    node, level = None, nodes
+    for part in str(number).split("."):
+        if not part.isdigit() or int(part) < 1:
+            return None
+        i = int(part) - 1
+        if not isinstance(level, list) or i >= len(level) or not isinstance(level[i], dict):
+            return None
+        node = level[i]
+        level = node.get("children")
+    return node
+
+
+def enter(node, state, now):
+    """Put a row in a state, with the times that belong to it.
+
+    `since` says when the row entered the state it is in, which is how long a `doing` or a `waiting` row has been one.
+    `closed` belongs to the two closed states only: a row reopened keeps nothing claiming it had ended.
+    """
+    node["state"] = state
+    node["since"] = now
+    if state in CLOSED_STATES:
+        node["closed"] = now
+    else:
+        node.pop("closed", None)
+
+
+def note(node, text):
+    if text is None:
+        return
+    if text.strip():
+        node["note"] = text.strip()
+    else:
+        node.pop("note", None)
+
+
+def detail(node, text):
+    """Replace the row's description; an empty one removes it. Past the limit the whole command is refused.
+
+    The limit is the one the view cuts at and the guard enforces on a Write or Edit, so a description set here is never
+    one the view would show cut short.
+    """
+    if text is None:
+        return
+    how = detail_over(text)
+    if how:
+        raise Refused("That description is %s; the limit is %d lines and %d characters, which is where the view cuts it. "
+                      "Say what picking the task up needs, not how it got here." % (how, MAX_DETAIL_LINES, MAX_DETAIL_CHARS))
+    if text.strip():
+        node["detail"] = text.strip()
+    else:
+        node.pop("detail", None)
+
+
+def hold(node, changed, who, question, now):
+    """Say who a held-up row waits on and, when that is the user, the question they have to answer.
+
+    These are fields rather than words in the note because the list of what waits on the user, across conversations, is
+    built from them. So they are checked here, when the row is written.
+
+    A change of state drops both unless the same command gives them again: a row moved on from `waiting` that still said
+    it waited on the user would go on asking a question nobody needs answered. Raises Refused before anything is
+    written.
+
+    `asked` dates the question and `since` the waiting: a row can wait for days and then be given a new question.
+    """
+    if changed:
+        node.pop("waitingOn", None)
+        node.pop("question", None)
+        node.pop("asked", None)
+    if who is not None:
+        who = who.strip()
+        if who and who not in WAITING_ON:
+            raise Refused("--waiting-on is one of %s, not %r." % (", ".join(WAITING_ON), who))
+        if who:
+            node["waitingOn"] = who
+        else:
+            node.pop("waitingOn", None)
+            node.pop("question", None)
+            node.pop("asked", None)
+    if question is not None:
+        asked = " ".join(question.split())
+        if len(asked) > MAX_QUESTION_CHARS:
+            raise Refused("That question is %d characters; keep it to one sentence of at most %d that the user can answer "
+                          "as it stands. Anything longer belongs in --detail." % (len(asked), MAX_QUESTION_CHARS))
+        if questions_in(asked) > 1:
+            raise Refused("That has %d question marks; a row carries one question. Keep one here and add a row under "
+                          "this one for each of the others: add waiting TITLE --under ROW --waiting-on user --question "
+                          "TEXT." % questions_in(asked))
+        if asked and asked != node.get("question"):
+            node["question"] = asked
+            node["asked"] = now
+        elif not asked:
+            node.pop("question", None)
+            node.pop("asked", None)
+    state = node.get("state", "todo")
+    on = node.get("waitingOn")
+    if on and state not in HELD_STATES:
+        raise Refused("Only a waiting or a discussing row waits on someone, and this one is %s." % state)
+    if on and state == "discussing" and on != "user":
+        raise Refused("A discussing row waits on nobody but the user, whose word it needs before it can be agreed.")
+    if changed and state == "waiting" and not on:
+        raise Refused("Say who this row now waits on, with --waiting-on: user (the person in this conversation), build "
+                      "(CI or a build), someone (a reviewer or anyone else), session (another conversation) or other. "
+                      "When it is the user, add --question.")
+    if node.get("question") and on != "user":
+        raise Refused("A question is what the user has to answer, so it goes with --waiting-on user.")
+    if on == "user" and not node.get("question"):
+        raise Refused("A row waiting on the user carries what they have to answer: give --question, one sentence they "
+                      "can answer as it stands without reading the conversation.")
+
+
+def fitted(name, text, one_line):
+    """`text` with its spaces tidied, or Refused when it is empty or wider than that part's limit."""
+    text = " ".join(str(text or "").split()) if one_line else str(text or "").strip()
+    if not text:
+        raise Refused("The %s is empty. Say what it is; where there is nothing to say, write none (or the word for it in "
+                      "the conversation's language)." % name)
+    wide, limit = width(text), BRIEF_WIDTH[name]
+    if wide > limit:
+        raise Refused("That %s is %d wide; the limit is %d, where a CJK character counts 2 and any other 1. Nothing was "
+                      "written: shorten it to the gist and write it again." % (name, wide, limit))
+    return text
+
+
+def brief(plan, args, now):
+    """Write the summary or the status, stamped with the current time."""
+    kept = plan.get("brief") if isinstance(plan.get("brief"), dict) else {}
+    if args.action == "summary":
+        kept["summary"] = fitted("summary", args.text, False)
+        kept["summaryAt"] = now
+        said = "summary written (%d of %d wide)" % (width(kept["summary"]), BRIEF_WIDTH["summary"])
+    else:
+        kept["status"] = {part: fitted(part, getattr(args, part), True) for part in STATUS_PARTS}
+        kept["statusAt"] = now
+        said = "status written"
+    plan["brief"] = kept
+    return said
+
+
+def load(path, may_create):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            body = fh.read()
+    except FileNotFoundError:
+        if may_create:
+            return {"nodes": []}
+        raise Refused("There is no plan at %s yet. Adding a row starts one." % path)
+    try:
+        plan = json.loads(body)
+    except ValueError as e:
+        raise Refused("The plan at %s does not parse (%s). Fix it by hand rather than through this." % (path, e))
+    if not isinstance(plan, dict) or not isinstance(plan.get("nodes"), list):
+        raise Refused("%s has no list of rows in it, so it is not a work plan." % path)
+    return plan
+
+
+def save(path, plan):
+    """Write the whole file and rename it into place, so the tree never reads half of one."""
+    write_atomic(path, json.dumps(plan, ensure_ascii=False, indent=2) + "\n")
+
+
+def load_archive(path):
+    """The rows moved out of the plan at `path`, by their row numbers."""
+    file = closed_file(path)
+    try:
+        with open(file, encoding="utf-8") as fh:
+            kept = json.loads(fh.read())
+    except FileNotFoundError:
+        return {}
+    except ValueError as e:
+        raise Refused("The closed rows of this plan at %s do not parse (%s). Fix that file by hand rather than through "
+                      "this." % (file, e))
+    nodes = kept.get("nodes") if isinstance(kept, dict) else None
+    if not isinstance(nodes, list):
+        raise Refused("%s has no list of rows in it." % file)
+    return {n["row"]: n for n in nodes if isinstance(n, dict) and isinstance(n.get("row"), str)}
+
+
+def save_archive(path, rows):
+    file = closed_file(path)
+    if not rows:
+        try:
+            os.remove(file)
+        except FileNotFoundError:
+            pass
+        return
+    os.makedirs(os.path.dirname(file), exist_ok=True)
+    nodes = [rows[k] for k in sorted(rows, key=lambda k: [int(x) for x in k.split(".")])]
+    write_atomic(file, json.dumps({"format": 1, "nodes": nodes}, ensure_ascii=False, indent=2) + "\n")
+
+
+def bring_back(nodes, number, kept, back):
+    """Put back every archived row on the way down to row `number`, from `kept`, recording the numbers in `back`."""
+    level, prefix = nodes, ""
+    for part in str(number).split("."):
+        if not part.isdigit() or int(part) < 1 or not isinstance(level, list) or int(part) > len(level):
+            return
+        num = prefix + part
+        i = int(part) - 1
+        if archived(level[i]):
+            whole = dict(kept[num]) if num in kept else dict(level[i], archived=None)
+            whole.pop("row", None)
+            whole.pop("archived", None)
+            level[i] = whole
+            back.add(num)
+        level, prefix = level[i].get("children") if isinstance(level[i], dict) else None, num + "."
+
+
+def closed_since(node):
+    """The newest time a row in `node`'s subtree was closed, in epoch seconds, or None when some row in it is open or
+    has no time. Placeholders below it were closed long enough ago to have been moved already."""
+    if not isinstance(node, dict) or node.get("state") not in CLOSED_STATES:
+        return None
+    newest = epoch(node.get("closed")) or epoch(node.get("since"))
+    if newest is None:
+        return None
+    for child in children(node):
+        if archived(child) or not isinstance(child, dict):
+            continue
+        at = closed_since(child)
+        if at is None:
+            return None
+        newest = max(newest, at)
+    return newest
+
+
+def move_out(nodes, prefix, before, moved):
+    """Replace with placeholders the subtrees closed before `before`, recording them in `moved` by row number."""
+    for i, node in enumerate(nodes if isinstance(nodes, list) else []):
+        if not isinstance(node, dict) or archived(node):
+            continue
+        num = prefix + str(i + 1)
+        at = closed_since(node)
+        if at is not None and at < before:
+            moved[num] = dict(node, row=num)
+            title = " ".join(str(node.get("title", "")).split())
+            if len(title) > ARCHIVED_TITLE_CHARS:
+                title = title[:ARCHIVED_TITLE_CHARS - 1] + u"\u2026"
+            nodes[i] = {"title": title, "state": node.get("state"), "archived": True}
+        else:
+            move_out(node.get("children"), num + ".", before, moved)
+
+
+def run(args):
+    path = os.path.abspath(args.plan)
+    if not PLAN_NAME.match(os.path.basename(path)):
+        raise Refused("%s is not a work plan: a plan is named by its conversation's session id." % path)
+    if not settings(os.path.dirname(path))["enabled"]:
+        raise Refused("Work plans are switched off for this editor (by the agentPlus.tokenMode token mode, or by "
+                      "%s.workPlan when that mode is Custom), so nothing reads this file. Track what is left in "
+                      "your reply instead." % SETTING_PREFIX)
+    if args.action in CREATES:
+        # The first row of a conversation can come before anything has made the plugin's data directory.
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+        except OSError as e:
+            raise Refused("Could not create %s for the plan (%s)." % (os.path.dirname(path), e.strerror or e))
+    missed = []
+    with plan_lock(path, missed.append) as held:
+        if not held and missed:
+            raise Refused("Nothing was written, because the plan's lock could not be taken: %s. Run the same command "
+                          "again." % missed[0])
+        return change(path, args)
+
+
+# The actions that may start a plan file that is not there yet.
+CREATES = ("add", "summary", "status")
+
+
+def change(path, args):
+    plan = load(path, args.action in CREATES)
+    kept = load_archive(path)
+    back = set()
+    for number in (getattr(args, "row", None), getattr(args, "under", None)):
+        if number:
+            bring_back(plan["nodes"], number, kept, back)
+    said = edit(plan, args)
+    moved = {}
+    move_out(plan["nodes"], "", time.time() - ARCHIVE_AFTER, moved)
+    if moved:
+        save_archive(path, dict(kept, **moved))
+    save(path, plan)
+    if back - set(moved) or moved:
+        save_archive(path, dict({k: v for k, v in kept.items() if k not in back}, **moved))
+    if (getattr(args, "waiting_on", None) or "").strip() == "session":
+        said += ". " + SESSION_HINT
+    return said
+
+
+def edit(plan, args):
+    now = now_stamp()
+    if args.action in ("summary", "status"):
+        said = brief(plan, args, now)
+    elif args.action == "set":
+        if args.state is None and args.note is None and args.detail is None and args.waiting_on is None \
+                and args.question is None:
+            raise Refused("Nothing to change: give a state, --note, --detail, --waiting-on or --question.")
+        node = find(plan["nodes"], args.row)
+        if node is None:
+            raise Refused("There is no row %s in this plan." % args.row)
+        was = node.get("state", "todo")
+        detail(node, args.detail)
+        # The state a row is already in is not entered again: `since` says how long it has been in it, and a command
+        # that only rewrites the description must not restart that clock.
+        changed = args.state is not None and args.state != was
+        if changed:
+            enter(node, args.state, now)
+            said = "row %s: %s -> %s" % (args.row, was, args.state)
+        else:
+            said = "row %s: still %s" % (args.row, was)
+        hold(node, changed, args.waiting_on, args.question, now)
+        if node.get("waitingOn"):
+            said += ", on %s" % node["waitingOn"]
+        note(node, args.note)
+        if args.detail is not None:
+            said += ", description %s" % ("set" if args.detail.strip() else "removed")
+    else:
+        title = args.title.strip()
+        if not title:
+            raise Refused("A row needs a title.")
+        if args.under:
+            parent = find(plan["nodes"], args.under)
+            if parent is None:
+                raise Refused("There is no row %s to add this under." % args.under)
+            if not isinstance(parent.get("children"), list):
+                parent["children"] = []
+            siblings, prefix = parent["children"], args.under + "."
+        else:
+            siblings, prefix = plan["nodes"], ""
+        node = {"title": title, "state": args.state}
+        note(node, args.note)
+        node["opened"] = now
+        enter(node, args.state, now)
+        hold(node, True, args.waiting_on, args.question, now)
+        node["children"] = []
+        siblings.append(node)
+        said = "row %s%d added: %s" % (prefix, len(siblings), args.state)
+        if node.get("waitingOn"):
+            said += ", on %s" % node["waitingOn"]
+    return said
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="plan-row.py", description="Change the state of one row of a work plan, "
+                                     "or add a row. The times are read from the clock.")
+    parser.add_argument("plan", help="the plan file, as given at the top of the injected block")
+    actions = parser.add_subparsers(dest="action")
+    actions.required = True
+    change = actions.add_parser("set", help="put a row in a state, or change its note or description")
+    change.add_argument("row", help="the number shown in front of the row, such as 3 or 2.1")
+    change.add_argument("state", nargs="?", choices=STATES, help="leave it out to keep the state the row is in")
+    change.add_argument("--note", help="replace the row's note; an empty one removes it")
+    change.add_argument("--detail", help="replace the row's description; an empty one removes it")
+    change.add_argument("--waiting-on", metavar="WHO", help="who a waiting row waits on: %s; an empty one removes it"
+                        % ", ".join(WAITING_ON))
+    change.add_argument("--question", help="with --waiting-on user: the one question the user has to answer")
+    add = actions.add_parser("add", help="add a row, at the end of the plan or under another row")
+    add.add_argument("state", choices=STATES)
+    add.add_argument("title")
+    add.add_argument("--under", metavar="ROW", help="the row to add it under")
+    add.add_argument("--note")
+    add.add_argument("--waiting-on", metavar="WHO", help="who a waiting row waits on: %s" % ", ".join(WAITING_ON))
+    add.add_argument("--question", help="with --waiting-on user: the one question the user has to answer")
+    summary = actions.add_parser("summary", help="write the conversation's summary: what it is for, the stage it has "
+                                 "reached, and the decisions later work must not forget (at most %d wide)"
+                                 % BRIEF_WIDTH["summary"])
+    summary.add_argument("text")
+    status = actions.add_parser("status", help="write where the conversation stands now, in three parts")
+    for part, says in zip(STATUS_PARTS, ("what you are doing", "the latest progress", "who it waits on, or the next step")):
+        status.add_argument("--" + part, required=True, help="%s (at most %d wide)" % (says, BRIEF_WIDTH[part]))
+    args = parser.parse_args(argv)
+    # Python on Windows encodes a pipe in the console's code page; titles need UTF-8.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+    try:
+        print(run(args))
+    except Refused as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -66,7 +66,8 @@ function createOpenCode() {
   };
 
   return {
-    detect: () => ({ path: '/fake/opencode', version: { major: 1, minor: 0, patch: 0, text: '1.0.0-fake' }, line: 1 }),
+    /* Stands in for the OpenCode the extension is built for, so it does not say the work plan needs a newer one. */
+    detect: () => ({ path: '/fake/opencode', version: { major: 2, minor: 0, patch: 0, text: '2.0.0-fake' }, line: 2 }),
     listSessions: async () => Object.values(read().sessions).map(row).sort((a, b) => b.lastActiveAt - a.lastActiveAt),
     onDidChangeSessions(fn) { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },
     async createSession(cwd, { model } = {}) {

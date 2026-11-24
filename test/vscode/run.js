@@ -11,6 +11,9 @@
  * under xvfb-run and goes through the steps below, saving a screenshot of each to <out>/shots with a look.json that
  * test/vscode/LOOK.md explains. `fake` (the default) puts test/vscode/fake-backend.js behind the chat; `opencode` uses
  * the real backend with the OpenCode at --opencode and the user's AWS profile `self`, for a run against a real model.
+ * With OpenCode 2 the model also adds a row to the work plan with the plugin's tool, Agent Plus's Work plan view shows it,
+ * and with the token mode switched to Interface the next message gets no plan; with OpenCode 1 the notice that the work
+ * plan needs OpenCode 2 is shown once. The plugin writes what it does to <out>/plugin.jsonl (NEW_AGENT_PLAN_LOG).
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
  *
@@ -121,8 +124,18 @@ async function main() {
   const xdg = path.join(OUT, 'xdg');
   const xdgEnv = real ? { XDG_CONFIG_HOME: path.join(xdg, 'config'), XDG_DATA_HOME: path.join(xdg, 'data'), XDG_STATE_HOME: path.join(xdg, 'state'), XDG_CACHE_HOME: path.join(xdg, 'cache') } : {};
   for (const d of Object.values(xdgEnv)) fs.mkdirSync(d, { recursive: true });
+  /* OpenCode's version line, read with this run's own folders. */
+  let line = 0;
+  if (real) {
+    const v = cp.spawnSync(OPENCODE || 'opencode', ['--version'], { env: { ...process.env, ...xdgEnv }, encoding: 'utf8' });
+    const m = /(\d+)\.(\d+)\.(\d+)/.exec(`${v.stdout || ''}`);
+    line = m ? Number(m[1]) : 0;
+    console.log(`OpenCode ${m ? m[0] : 'of unknown version'}`);
+  }
+  const planLog = path.join(OUT, 'plugin.jsonl');
   const env = cleanEnv(real ? '' : p.home, {
     NEW_AGENT_HOME: p.agentHome, NEW_AGENT_TEST_CONTROL: '1', ...xdgEnv, ...(FONTS ? { FONTCONFIG_FILE: path.resolve(FONTS) } : {}),
+    ...(real ? { NEW_AGENT_PLAN_LOG: planLog } : {}),
     ...(real ? {} : { NEW_AGENT_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
   });
   if (real) for (const k of Object.keys(env)) if (/^AWS_/.test(k)) delete env[k];
@@ -176,6 +189,11 @@ async function main() {
     if (icon) await icon.click();
     const viewOk = await until(() => page.evaluate(() => [...document.querySelectorAll('.pane-header')].some((h) => /Conversations/i.test(h.textContent))), 20000);
     check(viewOk, 'the Conversations view shows in the side bar');
+    const pluginHome = path.join(p.agentHome, 'opencode-plugin', 'agent-work-plan');
+    const plansDir = path.join(p.agentHome, 'plans');
+    const inPlace = await until(() => ['index.js', 'hooks/plan_common.py', 'hooks/plan_agent.py', 'hooks/inject-work-plan.py'].every((f) => fs.existsSync(path.join(pluginHome, f)))
+      && fs.existsSync(path.join(plansDir, 'config.json')), 20000);
+    check(inPlace, "the work plan plugin, its scripts and config.json are in place in the extension's folder");
     await shot('01-activity-bar', { features: ['activity bar icon', 'Conversations view'],
       expect: 'The activity bar on the far left has the New Agent icon (a speech bubble with three dots) selected; the side bar shows the NEW AGENT container with a Conversations view, empty or with a hint.',
       part: '#workbench\\.parts\\.sidebar' });
@@ -193,6 +211,15 @@ async function main() {
       part: '#workbench\\.parts\\.editor' });
 
     let sessionId = tab ? tab.uri.replace(/^newagent-session:\//, '') : '';
+    const NEEDS_V2 = /The work plan needs OpenCode 2/;
+    const toldV2 = async () => ((await ext('return api.test.told();')) || []).filter((t) => NEEDS_V2.test(t)).length;
+    if (real && line === 1) {
+      const n = await until(toldV2, 20000);
+      const toast = await until(() => page.evaluate(() => [...document.querySelectorAll('.notification-toast, .notifications-toasts')].some((e) => /The work plan needs OpenCode 2/.test(e.textContent))), 10000);
+      check(n === 1 && !!toast, 'on OpenCode 1 the notice "The work plan needs OpenCode 2" is shown once', { told: n, toast });
+      await shot('02b-needs-opencode-2', { features: ['work plan notice on OpenCode 1'],
+        expect: 'A notification at the bottom right says "The work plan needs OpenCode 2. This is OpenCode 1.19.6. Update OpenCode to keep a work plan in these conversations."' });
+    }
     if (!real) {
       // 3. A message gets a reply; the permission request is answered from the page.
       if (chat) {
@@ -203,7 +230,7 @@ async function main() {
         const waiting = await until(() => ext('return api.test.conversations().find((c) => c.activity === "waiting");'), 10000);
         check(!!waiting, 'the conversation is waiting for the user while the request is open', waiting);
         await shot('03-permission', { features: ['streamed reply', 'tool cards', 'permission request'],
-          expect: 'The user message "Hello there, please fix the failing test", a reasoning block, a reply that starts "I\'ll look at the test first.", a read_file tool card with its result, and an edit_file card asking for permission with Allow once, Allow for this conversation, Deny and View diff buttons.',
+          expect: 'The user message "Hello there, please fix the failing test", a reasoning block, a reply that starts "I\'ll look at the test first.", a read_file tool card with its result, and an edit_file card asking for permission with Allow once, Allow in this project, Deny and View diff buttons.',
           part: '#workbench\\.parts\\.editor' });
         if (asked) await asked.click();
         const done = await until(() => chat.evaluate(() => document.body.dataset.status === 'idle' && /subtracted instead of adding/.test(document.getElementById('log').textContent)), 30000);
@@ -259,6 +286,63 @@ async function main() {
         await shot('04-answer', { features: ['answer', 'reply figures'],
           expect: 'The tool card shows its result and the permission card says allowed; the model answer lists the files of the folder (README.md, notes.txt, src); under it a figures line with a duration, ctx, maybe a cost, and the model name grok.',
           part: '#workbench\\.parts\\.editor' });
+
+        if (line >= 2) {
+          // 3c. The work plan: a row added with the plugin's tool, shown by Agent Plus's Work plan view.
+          const planFile = path.join(plansDir, `${sessionId}.json`);
+          const rows = () => {
+            let plan = null;
+            try { plan = JSON.parse(fs.readFileSync(planFile, 'utf8')); } catch (_) { return []; }
+            const out = [];
+            const walk = (ns) => { for (const n of ns || []) { out.push(n); walk(n.children); } };
+            walk(plan && plan.nodes);
+            return out;
+          };
+          await turn("Call the add_row tool once, with state doing and title 'list the files'. Do nothing else, then reply with only ok.", '04b');
+          const row = await until(() => rows().find((n) => n.title === 'list the files'), 20000);
+          const tools = await chat.evaluate(() => [...document.querySelectorAll('#log .tool')].map((e) => e.textContent.replace(/\s+/g, ' ').slice(0, 60)));
+          check(!!row, "the model added a row to the conversation's work plan with the add_row tool", { rows: rows(), tools: tools.slice(-3) });
+          await shot('04b-plan-row', { features: ['plan tool call'],
+            expect: 'The chat shows the request to call add_row, an add_row tool card (its one-line result, "row 1 added: doing", may be folded), and the reply "ok".',
+            part: '#workbench\\.parts\\.editor' });
+          await call('await vscode.commands.executeCommand("agentPlus.workPlan.focus"); return true;').catch(() => {});
+          const inView = await until(() => page.evaluate(() => {
+            const side = document.getElementById('workbench.parts.sidebar');
+            return !!side && /Work plan/i.test(side.textContent) && side.textContent.includes('list the files');
+          }), 30000);
+          check(inView, "Agent Plus's Work plan view shows that row for this conversation");
+          await shot('04c-work-plan-view', { features: ['Agent Plus work plan'],
+            expect: 'The side bar shows Agent Plus\'s Work plan view for this conversation, with the row "list the files" (doing, or done if the model has already closed it), while the chat tab stays in the editor.',
+            part: '#workbench\\.parts\\.sidebar' });
+
+          // 3d. Token mode Interface: the plugin stops adding the plan from the next message.
+          const plugin = () => {
+            try { return fs.readFileSync(planLog, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch (_) { return {}; } }); } catch (_) { return []; }
+          };
+          const injected = path.join(plansDir, `${sessionId}.injected`);
+          const mtime = (f) => { try { return fs.statSync(f).mtimeMs; } catch (_) { return 0; } };
+          /* First a message the plan is injected into, which also leaves .injected beside the plan. */
+          await turn('Reply with only the word two.', '07b');
+          const shown = plugin().filter((l) => l.kind === 'prompt' && l.sessionID === sessionId).pop();
+          check(!!shown && shown.chars > 0 && mtime(injected) > 0, 'with the plan open, the next message gets the plan injected', { last: shown, injected: mtime(injected) });
+          await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", "interface", vscode.ConfigurationTarget.Global); return true;');
+          const off = await until(() => { try { return JSON.parse(fs.readFileSync(path.join(plansDir, 'config.json'), 'utf8')).enabled === false; } catch (_) { return false; } }, 10000);
+          check(off, 'switching the token mode to Interface writes enabled: false for the plugin at once');
+          const promptsBefore = plugin().filter((l) => l.kind === 'prompt' && l.sessionID === sessionId);
+          const injectedBefore = mtime(injected);
+          await turn('Reply with only the word three.', '08');
+          await sleep(1500);
+          const promptsAfter = plugin().filter((l) => l.kind === 'prompt' && l.sessionID === sessionId);
+          const withdrawn = plugin().some((l) => l.kind === 'tools' && l.registered === false);
+          const reply = await chat.evaluate(() => document.getElementById('log').textContent);
+          check(promptsBefore.length > 0 && promptsAfter.length === promptsBefore.length && injectedBefore > 0 && mtime(injected) === injectedBefore && withdrawn && /three/i.test(reply),
+            'in Interface the next message gets no work plan: no injection in the plugin log, .injected unchanged, the plan tools withdrawn, and the reply still comes',
+            { promptsBefore: promptsBefore.length, promptsAfter: promptsAfter.length, injectedBefore, injectedAfter: mtime(injected), withdrawn });
+          await shot('08-interface-mode', { features: ['token mode Interface'],
+            expect: 'The chat shows "Reply with only the word three." and the reply "three", with no plan tool card in that turn.',
+            part: '#workbench\\.parts\\.editor' });
+          await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", undefined, vscode.ConfigurationTarget.Global); return true;').catch(() => {});
+        }
       }
 
     }
@@ -296,6 +380,11 @@ async function main() {
     const again = await frameWith(page, '#input', 30000);
     const history = again && await until(() => again.evaluate((re) => new RegExp(re).test(document.getElementById('log').textContent), real ? '列出工作目录下的文件' : 'subtracted instead of adding'), 30000);
     check(!!history, 'the restored tab shows the conversation so far');
+    if (real && line === 1) {
+      await sleep(3000);
+      const again2 = await toldV2();
+      check(again2 === 0, 'after the reload the notice is not shown again', { told: again2 });
+    }
     await shot('07-after-reload', { features: ['reload', 'restored history'],
       expect: 'After the reload the chat tab is open again and shows the same conversation: the user message, the tool cards and the final reply.',
       part: '#workbench\\.parts\\.editor' });

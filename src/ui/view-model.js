@@ -343,13 +343,17 @@ function reduce(s, ev, now) {
     case 'usage': {
       const cost = typeof ev.costUsd === 'number' && isFinite(ev.costUsd) ? ev.costUsd : null;
       const used = typeof ev.contextUsed === 'number' ? ev.contextUsed : s.contextUsed;
+      /* The window the agent reports for the model this turn runs on, before the model list has learned it. */
+      const win = typeof ev.contextWindow === 'number' && isFinite(ev.contextWindow) && ev.contextWindow > 0 ? ev.contextWindow : 0;
       s = { ...s, contextUsed: used, retry: null };
+      if (win && s.model && !s.model.contextWindow && (!s.turn || !s.turn.modelId || s.turn.modelId === s.model.id)) s = { ...s, model: { ...s.model, contextWindow: win } };
       if (cost != null) s = { ...s, costUsd: s.costUsd + cost, costKnown: true };
       if (s.turn) {
         s = {
           ...s,
           turn: {
             ...s.turn,
+            contextWindow: win || s.turn.contextWindow,
             contextUsed: used,
             costUsd: s.turn.costUsd + (cost || 0),
             costKnown: s.turn.costKnown || cost != null,
