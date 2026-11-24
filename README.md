@@ -1,3 +1,3 @@
-# New Agent
+# OpenCode Plus
 
 Work in progress.

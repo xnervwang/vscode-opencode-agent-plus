@@ -1,6 +1,6 @@
 {
-  "name": "new-agent",
-  "displayName": "New Agent",
+  "name": "opencode-plus",
+  "displayName": "OpenCode Plus",
   "description": "A coding agent for models on Amazon Bedrock, with work plans and conversation overviews.",
   "version": "0.0.1",
   "publisher": "xnervwang",
@@ -26,8 +26,8 @@
   },
   "activationEvents": [
     "onStartupFinished",
-    "onCustomEditor:newAgent.chat",
-    "onView:newAgent.sessions"
+    "onCustomEditor:opencodePlus.chat",
+    "onView:opencodePlus.sessions"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -39,140 +39,140 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "newAgent",
-          "title": "New Agent",
+          "id": "opencodePlus",
+          "title": "OpenCode Plus",
           "icon": "images/sidebar.svg"
         }
       ]
     },
     "views": {
-      "newAgent": [
+      "opencodePlus": [
         {
-          "id": "newAgent.sessions",
+          "id": "opencodePlus.sessions",
           "name": "Conversations"
         }
       ]
     },
     "commands": [
       {
-        "command": "newAgent.newConversation",
+        "command": "opencodePlus.newConversation",
         "title": "New Conversation",
-        "category": "New Agent",
+        "category": "OpenCode Plus",
         "icon": "$(add)"
       },
       {
-        "command": "newAgent.openConversation",
+        "command": "opencodePlus.openConversation",
         "title": "Open Conversation",
-        "category": "New Agent"
+        "category": "OpenCode Plus"
       },
       {
-        "command": "newAgent.renameConversation",
+        "command": "opencodePlus.renameConversation",
         "title": "Rename Conversation",
-        "category": "New Agent",
+        "category": "OpenCode Plus",
         "icon": "$(edit)"
       },
       {
-        "command": "newAgent.deleteConversation",
+        "command": "opencodePlus.deleteConversation",
         "title": "Delete Conversation",
-        "category": "New Agent",
+        "category": "OpenCode Plus",
         "icon": "$(trash)"
       },
       {
-        "command": "newAgent.chooseModel",
+        "command": "opencodePlus.chooseModel",
         "title": "Choose Model for New Conversations",
-        "category": "New Agent"
+        "category": "OpenCode Plus"
       },
       {
-        "command": "newAgent.testConnection",
+        "command": "opencodePlus.testConnection",
         "title": "Test OpenCode Connection",
-        "category": "New Agent"
+        "category": "OpenCode Plus"
       },
       {
-        "command": "newAgent.setBedrockApiKey",
+        "command": "opencodePlus.setBedrockApiKey",
         "title": "Set Amazon Bedrock API Key",
-        "category": "New Agent"
+        "category": "OpenCode Plus"
       },
       {
-        "command": "newAgent.clearBedrockApiKey",
+        "command": "opencodePlus.clearBedrockApiKey",
         "title": "Clear Amazon Bedrock API Key",
-        "category": "New Agent"
+        "category": "OpenCode Plus"
       },
       {
-        "command": "newAgent.downloadPython",
+        "command": "opencodePlus.downloadPython",
         "title": "Download Python for Work Plans",
-        "category": "New Agent"
+        "category": "OpenCode Plus"
       },
       {
-        "command": "newAgent.findPython",
+        "command": "opencodePlus.findPython",
         "title": "Look for Python Again for Work Plans",
-        "category": "New Agent"
+        "category": "OpenCode Plus"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "newAgent.newConversation",
-          "when": "view == newAgent.sessions",
+          "command": "opencodePlus.newConversation",
+          "when": "view == opencodePlus.sessions",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
-          "command": "newAgent.deleteConversation",
-          "when": "view == newAgent.sessions && viewItem == newAgent.session",
+          "command": "opencodePlus.deleteConversation",
+          "when": "view == opencodePlus.sessions && viewItem == opencodePlus.session",
           "group": "9_delete@1"
         }
       ],
       "commandPalette": [
         {
-          "command": "newAgent.openConversation",
+          "command": "opencodePlus.openConversation",
           "when": "false"
         },
         {
-          "command": "newAgent.renameConversation",
+          "command": "opencodePlus.renameConversation",
           "when": "false"
         },
         {
-          "command": "newAgent.deleteConversation",
+          "command": "opencodePlus.deleteConversation",
           "when": "false"
         }
       ]
     },
     "configuration": {
-      "title": "New Agent",
+      "title": "OpenCode Plus",
       "properties": {
-        "newAgent.model": {
+        "opencodePlus.model": {
           "type": "string",
           "default": "",
           "description": "Model for new conversations, as provider/model, such as amazon-bedrock/us.xai.grok-4.7. Empty asks before the first message."
         },
-        "newAgent.opencode.path": {
+        "opencodePlus.opencode.path": {
           "type": "string",
           "default": "",
           "description": "Path to the opencode executable. Empty looks for it on PATH and where its installers put it."
         },
-        "newAgent.opencode.askPermissions": {
+        "opencodePlus.opencode.askPermissions": {
           "type": "boolean",
           "default": true,
           "description": "Ask before OpenCode edits files, runs commands, fetches web pages or reads outside the project. This replaces the edit, bash, webfetch and external_directory rules of your own OpenCode configuration; turn it off to keep those."
         },
-        "newAgent.bedrock.profile": {
+        "opencodePlus.bedrock.profile": {
           "type": "string",
           "default": "",
           "description": "AWS profile for Amazon Bedrock, given to OpenCode as AWS_PROFILE. Empty leaves it to OpenCode and your AWS configuration."
         },
-        "newAgent.bedrock.region": {
+        "opencodePlus.bedrock.region": {
           "type": "string",
           "default": "",
           "description": "AWS Region for Amazon Bedrock, given to OpenCode as AWS_REGION. Empty leaves it to OpenCode and your AWS configuration."
         },
-        "newAgent.workPlan": {
+        "opencodePlus.workPlan": {
           "type": "boolean",
           "default": true,
           "scope": "application",
           "markdownDescription": "Keep a work plan in each conversation on OpenCode 2: the plan goes with every message, and the model gets tools to change it. Used only while `#agentPlus.tokenMode#` is Custom."
         },
-        "newAgent.conversationBrief": {
+        "opencodePlus.conversationBrief": {
           "type": "boolean",
           "default": true,
           "scope": "application",
@@ -182,11 +182,11 @@
     },
     "customEditors": [
       {
-        "viewType": "newAgent.chat",
-        "displayName": "New Agent Conversation",
+        "viewType": "opencodePlus.chat",
+        "displayName": "OpenCode Plus Conversation",
         "selector": [
           {
-            "filenamePattern": "*.newagent-chat"
+            "filenamePattern": "*.opencodeplus-chat"
           }
         ],
         "priority": "option"
@@ -194,14 +194,14 @@
     ],
     "viewsWelcome": [
       {
-        "view": "newAgent.sessions",
-        "contents": "No conversations yet.\n[New Conversation](command:newAgent.newConversation)"
+        "view": "opencodePlus.sessions",
+        "contents": "No conversations yet.\n[New Conversation](command:opencodePlus.newConversation)"
       }
     ]
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/xnervwang/vscode-new-agent"
+    "url": "https://github.com/xnervwang/vscode-opencode-plus"
   },
   "dependencies": {
     "markdown-it": "15.0.3"

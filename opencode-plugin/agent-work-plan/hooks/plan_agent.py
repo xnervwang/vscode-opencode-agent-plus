@@ -3,12 +3,12 @@
 # All rights reserved.
 # Source: vscode-agent-plus shared/plugin/opencode/plan_agent.py; sync-shared.js copies it, so edit it there.
 
-"""OpenCode's side of the work plan hooks, as the New Agent extension's OpenCode plugin runs them: where the plans are,
+"""OpenCode's side of the work plan hooks, as the OpenCode Plus extension's OpenCode plugin runs them: where the plans are,
 how the plugin's turn record is read, and what the model is told to change rows with. plan_common.py imports this
 module, which imports nothing from the plugin.
 
-OpenCode has no hook commands and no transcript file. Its plugin (opencode-plugin/agent-work-plan/index.js in the New
-Agent repository) runs these scripts itself, with the plans folder as the first argument and the event on standard
+OpenCode has no hook commands and no transcript file. Its plugin (opencode-plugin/agent-work-plan/index.js in the OpenCode
+Plus repository) runs these scripts itself, with the plans folder as the first argument and the event on standard
 input, the same as a hook. Where a script reads a transcript, the plugin writes a short one for the occasion: the turn
 it is about, one JSON object per line, in the shape fixture_* below write.
 
@@ -18,31 +18,31 @@ it is about, one JSON object per line, in the shape fixture_* below write.
   {"type": "usage", "timestamp": TIME, "tokens": N, "window": N}
 
 The model changes rows with the plugin's set_row, add_row, set_summary and set_status tools on OpenCode 2, and with the
-row command from a shell where the plugin cannot add tools. The plugin says which in NEW_AGENT_PLAN_TOOLS ("tools" or
+row command from a shell where the plugin cannot add tools. The plugin says which in OPENCODE_PLUS_PLAN_TOOLS ("tools" or
 "shell").
 """
 import json
 import os
 
 AGENT = "OpenCode"
-SETTING_PREFIX = "newAgent"
+SETTING_PREFIX = "opencodePlus"
 
-# The plans folder is the extension's own (paths.plansDir() there): <NEW_AGENT_HOME, else ~/.new-agent>/plans. The
+# The plans folder is the extension's own (paths.plansDir() there): <OPENCODE_PLUS_HOME, else ~/.opencode-plus>/plans. The
 # plugin passes it as the first argument; this is the same folder for a caller started without one.
 DATA_ENV = ()
-FALLBACK = os.path.join(os.environ.get("NEW_AGENT_HOME") or os.path.join(os.path.expanduser("~"), ".new-agent"), "plans")
+FALLBACK = os.path.join(os.environ.get("OPENCODE_PLUS_HOME") or os.path.join(os.path.expanduser("~"), ".opencode-plus"), "plans")
 
 EXTRA_DEFAULTS = {}
 
-# An OpenCode session id: "ses_" and 26 letters and digits, on OpenCode 1 and 2 alike. Nothing else the hooks keep in
-# the plans folder starts with "ses_".
+# An OpenCode session id: "ses_" and letters and digits, 26 of them on OpenCode 1 and 2 alike; the range leaves room for
+# another length. Nothing else the hooks keep in the plans folder starts with "ses_".
 SESSION_ID = r"ses_[0-9A-Za-z]{8,64}"
 
 # The field of a hook's input that names the turn: the id of the user message that began it.
 TURN_FIELD = "turn_id"
 NO_GROUPING = "OpenCode keeps its sessions in a database, so there is no transcript path to group by"
 
-TOOLS = os.environ.get("NEW_AGENT_PLAN_TOOLS", "tools") != "shell"
+TOOLS = os.environ.get("OPENCODE_PLUS_PLAN_TOOLS", "tools") != "shell"
 PLAN_TOOLS = ("set_row", "add_row", "set_summary", "set_status")
 
 

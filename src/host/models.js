@@ -5,7 +5,7 @@
 'use strict';
 /*
  * The models of the providers OpenCode has connected, and the picker for them. A model is named <provider>/<model> in
- * newAgent.model, as OpenCode names it (OpenCode's ModelInfo.id already has that form); the model part alone also
+ * opencodePlus.model, as OpenCode names it (OpenCode's ModelInfo.id already has that form); the model part alone also
  * matches. The list comes from the backend each time: OpenCode keeps it, and learns a model's context window once the
  * model has been used.
  */

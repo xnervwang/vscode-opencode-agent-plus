@@ -28,7 +28,7 @@ process.stdin.on('end', () => {
   let payload = null;
   try { payload = JSON.parse(input); } catch (_) {}
   const name = require('path').basename(__filename);
-  const entry = { name, args: process.argv.slice(2), payload, tools: process.env.NEW_AGENT_PLAN_TOOLS };
+  const entry = { name, args: process.argv.slice(2), payload, tools: process.env.OPENCODE_PLUS_PLAN_TOOLS };
   if (payload && payload.transcript_path) entry.record = fs.readFileSync(payload.transcript_path, 'utf8');
   fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify(entry) + '\\n');
   main(payload, process.argv.slice(2));
@@ -58,10 +58,10 @@ function makeEnv({ python = process.execPath } = {}) {
   for (const [name, text] of Object.entries(SCRIPTS)) fs.writeFileSync(path.join(hooks, name), text);
   fs.writeFileSync(path.join(hooks, 'launcher.json'), JSON.stringify({ row: [python] }));
   const log = path.join(root, 'scripts.jsonl');
-  process.env.NEW_AGENT_HOOKS_DIR = hooks;
-  process.env.NEW_AGENT_HOME = home;
+  process.env.OPENCODE_PLUS_HOOKS_DIR = hooks;
+  process.env.OPENCODE_PLUS_HOME = home;
   process.env.FAKE_LOG = log;
-  delete process.env.NEW_AGENT_PLAN_NUDGE;
+  delete process.env.OPENCODE_PLUS_PLAN_NUDGE;
   delete process.env.FAKE_QUIET;
   return {
     root, hooks, home, plans: path.join(home, 'plans'),
@@ -281,7 +281,7 @@ test('without Python, or without the scripts folder, nothing is injected and the
   await f.hooks.prompt(ev);
   assert.deepEqual(ev.metadata, { source: 'x' });
   assert.match((await f.tool('add_row').execute({ state: 'todo', title: 't' }, { sessionID: SID })).content, /needs Python 3/);
-  process.env.NEW_AGENT_HOOKS_DIR = '';
+  process.env.OPENCODE_PLUS_HOOKS_DIR = '';
   const ev2 = prompt(SID, 'msg_2', 'x');
   await f.hooks.prompt(ev2);
   assert.deepEqual(ev2.metadata, { source: 'x' });
@@ -408,7 +408,7 @@ test('at the end of a turn nudge-work-plan.py reads a turn record, and what it s
   await stop();
 });
 
-test('nothing said at the end of a turn means no message; NEW_AGENT_PLAN_NUDGE picks resume or off', async () => {
+test('nothing said at the end of a turn means no message; OPENCODE_PLUS_PLAN_NUDGE picks resume or off', async () => {
   const env = makeEnv();
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
@@ -419,17 +419,17 @@ test('nothing said at the end of a turn means no message; NEW_AGENT_PLAN_NUDGE p
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(f.synthetics.length, 0);
   delete process.env.FAKE_QUIET;
-  process.env.NEW_AGENT_PLAN_NUDGE = 'resume';
+  process.env.OPENCODE_PLUS_PLAN_NUDGE = 'resume';
   await f.hooks.prompt(prompt(SID, 'msg_2', 'x'));
   f.events.push({ type: 'session.execution.succeeded', data: { sessionID: SID } });
   await until(() => f.synthetics.length === 1);
   assert.equal(f.synthetics[0].resume, true);
-  process.env.NEW_AGENT_PLAN_NUDGE = 'off';
+  process.env.OPENCODE_PLUS_PLAN_NUDGE = 'off';
   await f.hooks.prompt(prompt(SID, 'msg_3', 'x'));
   f.events.push({ type: 'session.execution.succeeded', data: { sessionID: SID } });
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(env.runs().filter((r) => r.name === 'nudge-work-plan.py').length, 2);
-  delete process.env.NEW_AGENT_PLAN_NUDGE;
+  delete process.env.OPENCODE_PLUS_PLAN_NUDGE;
   await stop();
 });
 

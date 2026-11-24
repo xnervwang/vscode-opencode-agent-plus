@@ -3,10 +3,10 @@
 // All rights reserved.
 
 'use strict';
-// The product name is a placeholder; everything that shows or derives from it reads it from here and package.json.
+// Everything that shows or derives from the product name reads it from here and package.json.
 module.exports = Object.freeze({
-  displayName: 'New Agent',
-  packageName: 'new-agent',
-  prefix: 'newAgent',
+  displayName: 'OpenCode Plus',
+  packageName: 'opencode-plus',
+  prefix: 'opencodePlus',
   publisher: 'xnervwang',
 });

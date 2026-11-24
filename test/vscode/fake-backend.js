@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * NEW_AGENT_TEST_BACKEND for the window tests: createOpenCode's shape (src/opencode/index.js) with task three's scripted
+ * OPENCODE_PLUS_TEST_BACKEND for the window tests: createOpenCode's shape (src/opencode/index.js) with task three's scripted
  * conversation (test/ui/fake-conversation.js) as each session, so no OpenCode and no model are needed. A session's
  * first turn draws every kind of item, a permission request included. Sessions and the events each one emitted are
- * kept in <NEW_AGENT_HOME>/fake-backend.json, so a reloaded window finds them again.
+ * kept in <OPENCODE_PLUS_HOME>/fake-backend.json, so a reloaded window finds them again.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -20,7 +20,7 @@ const MODELS = [
 ];
 
 function createOpenCode() {
-  const file = path.join(process.env.NEW_AGENT_HOME || '/tmp', 'fake-backend.json');
+  const file = path.join(process.env.OPENCODE_PLUS_HOME || '/tmp', 'fake-backend.json');
   const read = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return { sessions: {} }; } };
   const write = (db) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(`${file}.tmp`, JSON.stringify(db)); fs.renameSync(`${file}.tmp`, file); };
   const listeners = new Set();

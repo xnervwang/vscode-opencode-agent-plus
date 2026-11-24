@@ -145,7 +145,7 @@ function create() {
       if (groups[0].activeTab) groups[0].activeTab.isActive = true;
       tabsChanged.fire({ opened: [], closed: [], changed: [] });
     },
-    chatTab(sessionId) { return { label: 'chat', input: new TabInputCustom(Uri.from({ scheme: 'newagent-session', path: `/${sessionId}` }), 'newAgent.chat') }; },
+    chatTab(sessionId) { return { label: 'chat', input: new TabInputCustom(Uri.from({ scheme: 'opencodeplus-session', path: `/${sessionId}` }), 'opencodePlus.chat') }; },
     fileTab(p) { return { label: path.basename(p), input: new TabInputText(Uri.file(p)) }; },
     setConfig(full, v) {
       state.config[full] = v;

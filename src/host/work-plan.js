@@ -9,8 +9,8 @@
  * folder, and what the user is told when one of these is missing.
  *
  *   config.json   { enabled, brief } from Agent Plus's token mode (src/shared/token-mode.js): Interface turns both off,
- *                 Essential keeps the plan without the brief, All keeps both, and in Custom newAgent.workPlan and
- *                 newAgent.conversationBrief decide. Written at activation and on every change of those settings; the
+ *                 Essential keeps the plan without the brief, All keeps both, and in Custom opencodePlus.workPlan and
+ *                 opencodePlus.conversationBrief decide. Written at activation and on every change of those settings; the
  *                 plugin reads it at each user message, so a change applies from the next one.
  *   launcher.json the Python found (src/shared/python-runtime.js). With none, the plugin adds nothing, and a row above
  *                 the plan says so; on Windows python.org's build is offered once per machine (src/shared/python-offer.js).

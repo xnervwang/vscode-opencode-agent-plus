@@ -1,6 +1,6 @@
 {
-  "name": "new-agent-ui-helper",
-  "publisher": "new-agent-tests",
+  "name": "opencode-plus-ui-helper",
+  "publisher": "opencode-plus-tests",
   "version": "0.0.0",
   "private": true,
   "engines": { "vscode": "^1.96.0" },

@@ -8,15 +8,15 @@
  * agent (OpenCode, through src/host/backend.js and src/opencode/) starts when the first conversation or the
  * Conversations view needs it, and a conversation's history is read when its tab opens.
  *
- *   src/host/chat-editor.js       a chat tab is the custom editor newAgent.chat of newagent-session:/<session id>
+ *   src/host/chat-editor.js       a chat tab is the custom editor opencodePlus.chat of opencodeplus-session:/<session id>
  *   src/host/session-manager.js   the conversations open in this window, one window each (src/host/locks.js)
  *   src/host/provider-config.js   the settings OpenCode starts with, the Bedrock API key
  *   src/host/models.js            the models OpenCode offers, and the picker
  *   src/host/agentplus-source.js  the conversations as a source of Agent Plus
  *   src/host/work-plan.js         the work plan plugin OpenCode loads, its Python, and the token mode's switches for it
  *
- * NEW_AGENT_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
- * the window tests; NEW_AGENT_TEST_CONTROL makes activate() return a few internals for them.
+ * OPENCODE_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
+ * the window tests; OPENCODE_PLUS_TEST_CONTROL makes activate() return a few internals for them.
  */
 const vscode = require('vscode');
 const os = require('os');
@@ -286,7 +286,7 @@ function activate(context) {
 
   running = { manager, backend, registration: null };
   log(`activated ${context.extension ? context.extension.packageJSON.version : ''}`.trim());
-  if (process.env.NEW_AGENT_TEST_CONTROL) {
+  if (process.env.OPENCODE_PLUS_TEST_CONTROL) {
     return { test: { agentPlus, registered, conversations: () => manager.list(), source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready,
       told: () => told.slice(), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }) } };
   }

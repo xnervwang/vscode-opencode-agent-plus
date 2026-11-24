@@ -13,7 +13,7 @@
  * the real backend with the OpenCode at --opencode and the user's AWS profile `self`, for a run against a real model.
  * With OpenCode 2 the model also adds a row to the work plan with the plugin's tool, Agent Plus's Work plan view shows it,
  * and with the token mode switched to Interface the next message gets no plan; with OpenCode 1 the notice that the work
- * plan needs OpenCode 2 is shown once. The plugin writes what it does to <out>/plugin.jsonl (NEW_AGENT_PLAN_LOG).
+ * plan needs OpenCode 2 is shown once. The plugin writes what it does to <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
  *
@@ -34,14 +34,14 @@ const has = (name) => { const i = args.indexOf(name); if (i < 0) return false; a
 
 const LOCAL = has('--local');
 const EXE = flag('--vscode');
-const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `new-agent-ui-${Date.now()}`)));
+const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-plus-ui-${Date.now()}`)));
 const AGENT_PLUS = flag('--agent-plus', '');
 const BACKEND = flag('--backend', 'fake');
 const OPENCODE = flag('--opencode');
 const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-bedrock/us.xai.grok-4.7');
 const DEPS = flag('--deps');
 const FONTS = flag('--fonts');
-const ID = 'xnervwang.new-agent';
+const ID = 'xnervwang.opencode-plus';
 
 const need = (name) => require(DEPS ? path.join(DEPS, 'node_modules', name) : name);
 const { open, until, sleep, frameWith } = require('./lib/window');
@@ -98,7 +98,7 @@ async function main() {
   if (!fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix at ${AGENT_PLUS}`);
   const playwright = need('playwright-core');
 
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'new-agent-ui-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-ui-')));
   const shots = path.join(OUT, 'shots');
   fs.mkdirSync(shots, { recursive: true });
   const p = { exts: path.join(root, 'exts'), user: path.join(root, 'user'), folder: path.join(root, 'ws'), control: path.join(root, 'ctl'),
@@ -110,7 +110,7 @@ async function main() {
   fs.writeFileSync(path.join(p.folder, 'src', 'sum.js'), 'module.exports = (a, b) => a + b;\n');
   console.log(`temporary root ${root}; results in ${OUT}`);
 
-  const vsix = path.join(root, 'new-agent.vsix');
+  const vsix = path.join(root, 'opencode-plus.vsix');
   const pack = cp.spawnSync(process.execPath, [path.join(ROOT, 'build', 'pack-vsix.js'), ROOT, '--out', vsix], { encoding: 'utf8' });
   if (pack.status !== 0) throw new Error(`packing failed: ${pack.stderr}`);
   console.log(pack.stdout.trim());
@@ -134,9 +134,9 @@ async function main() {
   }
   const planLog = path.join(OUT, 'plugin.jsonl');
   const env = cleanEnv(real ? '' : p.home, {
-    NEW_AGENT_HOME: p.agentHome, NEW_AGENT_TEST_CONTROL: '1', ...xdgEnv, ...(FONTS ? { FONTCONFIG_FILE: path.resolve(FONTS) } : {}),
-    ...(real ? { NEW_AGENT_PLAN_LOG: planLog } : {}),
-    ...(real ? {} : { NEW_AGENT_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
+    OPENCODE_PLUS_HOME: p.agentHome, OPENCODE_PLUS_TEST_CONTROL: '1', ...xdgEnv, ...(FONTS ? { FONTCONFIG_FILE: path.resolve(FONTS) } : {}),
+    ...(real ? { OPENCODE_PLUS_PLAN_LOG: planLog } : {}),
+    ...(real ? {} : { OPENCODE_PLUS_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
   });
   if (real) for (const k of Object.keys(env)) if (/^AWS_/.test(k)) delete env[k];
   const code = cliOf(EXE);
@@ -145,8 +145,8 @@ async function main() {
     if (r.status !== 0) throw new Error(`installing ${ext} failed: ${r.out}`);
   }
   console.log(code(['--list-extensions', '--show-versions', `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`], env).out);
-  writeSettings(p.user, { 'newAgent.model': MODEL, ...(OPENCODE ? { 'newAgent.opencode.path': OPENCODE } : {}),
-    ...(real ? { 'newAgent.bedrock.profile': 'self', 'newAgent.bedrock.region': 'us-east-1' } : {}) });
+  writeSettings(p.user, { 'opencodePlus.model': MODEL, ...(OPENCODE ? { 'opencodePlus.opencode.path': OPENCODE } : {}),
+    ...(real ? { 'opencodePlus.bedrock.profile': 'self', 'opencodePlus.bedrock.region': 'us-east-1' } : {}) });
 
   const steps = [];
   let failed = 0, passed = 0;
@@ -184,8 +184,8 @@ async function main() {
     await until(() => ext('return !!(api && api.test);'), 60000);
 
     // 1. The activity bar icon and the Conversations view.
-    const icon = await page.waitForSelector('.activitybar .action-item a[aria-label^="New Agent"], .activitybar .action-item [aria-label^="New Agent"]', { timeout: 30000 }).catch(() => null);
-    check(!!icon, 'the activity bar has the New Agent icon');
+    const icon = await page.waitForSelector('.activitybar .action-item a[aria-label^="OpenCode Plus"], .activitybar .action-item [aria-label^="OpenCode Plus"]', { timeout: 30000 }).catch(() => null);
+    check(!!icon, 'the activity bar has the OpenCode Plus icon');
     if (icon) await icon.click();
     const viewOk = await until(() => page.evaluate(() => [...document.querySelectorAll('.pane-header')].some((h) => /Conversations/i.test(h.textContent))), 20000);
     check(viewOk, 'the Conversations view shows in the side bar');
@@ -195,22 +195,22 @@ async function main() {
       && fs.existsSync(path.join(plansDir, 'config.json')), 20000);
     check(inPlace, "the work plan plugin, its scripts and config.json are in place in the extension's folder");
     await shot('01-activity-bar', { features: ['activity bar icon', 'Conversations view'],
-      expect: 'The activity bar on the far left has the New Agent icon (a speech bubble with three dots) selected; the side bar shows the NEW AGENT container with a Conversations view, empty or with a hint.',
+      expect: 'The activity bar on the far left has the OpenCode Plus icon (a speech bubble with three dots) selected; the side bar shows the NEW AGENT container with a Conversations view, empty or with a hint.',
       part: '#workbench\\.parts\\.sidebar' });
 
     // 2. A new conversation opens a chat tab.
     const before = Date.now();
-    await page.click('.pane-header [aria-label="New Conversation"], .pane-header .codicon-add').catch(async () => { await call('return vscode.commands.executeCommand("newAgent.newConversation");'); });
+    await page.click('.pane-header [aria-label="New Conversation"], .pane-header .codicon-add').catch(async () => { await call('return vscode.commands.executeCommand("opencodePlus.newConversation");'); });
     const tab = await until(() => call(`const t = vscode.window.tabGroups.activeTabGroup.activeTab;
       return t && t.input instanceof vscode.TabInputCustom ? { viewType: t.input.viewType, uri: t.input.uri.toString(), label: t.label } : null;`), 30000);
-    check(tab && tab.viewType === 'newAgent.chat' && /^newagent-session:\/ses_/.test(tab.uri), 'a new conversation opens a newAgent.chat tab of newagent-session:/<id>', tab);
+    check(tab && tab.viewType === 'opencodePlus.chat' && /^opencodeplus-session:\/ses_/.test(tab.uri), 'a new conversation opens a opencodePlus.chat tab of opencodeplus-session:/<id>', tab);
     const chat = await frameWith(page, '#input', 30000);
     check(!!chat, 'the chat page loaded in the tab');
     await shot('02-new-conversation', { features: ['new conversation', 'chat editor tab'],
       expect: `An editor tab is open with the chat page: a header with a model selector showing ${real ? 'the Grok model' : 'Fake Small'}, an empty message area, and a message box at the bottom with a Send button.`,
       part: '#workbench\\.parts\\.editor' });
 
-    let sessionId = tab ? tab.uri.replace(/^newagent-session:\//, '') : '';
+    let sessionId = tab ? tab.uri.replace(/^opencodeplus-session:\//, '') : '';
     const NEEDS_V2 = /The work plan needs OpenCode 2/;
     const toldV2 = async () => ((await ext('return api.test.told();')) || []).filter((t) => NEEDS_V2.test(t)).length;
     if (real && line === 1) {
@@ -365,7 +365,7 @@ async function main() {
     await call('await vscode.commands.executeCommand("workbench.action.closePanel"); return true;').catch(() => {});
 
     // 5. The Conversations view lists it. (Clicking the icon of the container already shown would hide the side bar.)
-    await call('await vscode.commands.executeCommand("workbench.view.extension.newAgent"); return true;');
+    await call('await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
     const inList = await until(async () => page.evaluate((t) => document.getElementById('workbench.parts.sidebar').textContent.includes(t), await titleNow()), 30000);
     check(inList, 'the Conversations view lists the conversation');
     await shot('06-sessions', { features: ['session list'],
@@ -375,8 +375,8 @@ async function main() {
     // 6. A reload brings the tab back with its history.
     await w.reload();
     await until(() => ext('return !!(api && api.test);'), 60000);
-    const back = await until(() => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "newAgent.chat").map((t) => t.input.uri.toString());`), 30000);
-    check(Array.isArray(back) && back.includes(`newagent-session:/${sessionId}`), 'after a reload the chat tab is back for the same conversation', back);
+    const back = await until(() => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodePlus.chat").map((t) => t.input.uri.toString());`), 30000);
+    check(Array.isArray(back) && back.includes(`opencodeplus-session:/${sessionId}`), 'after a reload the chat tab is back for the same conversation', back);
     const again = await frameWith(page, '#input', 30000);
     const history = again && await until(() => again.evaluate((re) => new RegExp(re).test(document.getElementById('log').textContent), real ? '列出工作目录下的文件' : 'subtracted instead of adding'), 30000);
     check(!!history, 'the restored tab shows the conversation so far');

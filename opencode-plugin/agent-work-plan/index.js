@@ -4,11 +4,11 @@
 
 'use strict';
 /*
- * The work plan on OpenCode 2. The New Agent extension copies this file to <NEW_AGENT_HOME>/opencode-plugin/
+ * The work plan on OpenCode 2. The OpenCode Plus extension copies this file to <OPENCODE_PLUS_HOME>/opencode-plugin/
  * agent-work-plan/ and names that folder in OPENCODE_CONFIG_CONTENT (src/workplan). OpenCode 2 reads `id` and calls
  * setup(ctx); OpenCode 1 calls server(), which only says the plan needs OpenCode 2.
  *
- * What the model is told, and every change to a plan, comes from the shared Python scripts in NEW_AGENT_HOOKS_DIR,
+ * What the model is told, and every change to a plan, comes from the shared Python scripts in OPENCODE_PLUS_HOOKS_DIR,
  * run as Claude Code runs its hooks: the plans folder as the first argument, the event as JSON on standard input.
  * Without Python or those scripts nothing is injected and the tools say why.
  *
@@ -19,9 +19,9 @@
  *   events       session.compaction.ended runs resume-work-plan.py; session.usage.updated is recorded;
  *                session.execution.succeeded runs nudge-work-plan.py and keeps what it says as a synthetic message
  *
- * Environment: NEW_AGENT_HOOKS_DIR (the scripts), NEW_AGENT_HOME (plans are in its plans/, ~/.new-agent by default),
- * NEW_AGENT_PLAN_NUDGE ("note", the default, keeps the reminder for the next turn; "resume" also runs a turn for it;
- * "off"), NEW_AGENT_PLAN_LOG (a file to append a JSON line to for each thing done, for tests).
+ * Environment: OPENCODE_PLUS_HOOKS_DIR (the scripts), OPENCODE_PLUS_HOME (plans are in its plans/, ~/.opencode-plus by default),
+ * OPENCODE_PLUS_PLAN_NUDGE ("note", the default, keeps the reminder for the next turn; "resume" also runs a turn for it;
+ * "off"), OPENCODE_PLUS_PLAN_LOG (a file to append a JSON line to for each thing done, for tests).
  */
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -41,16 +41,16 @@ const INPUT_CHARS = 4000;
 const MAX_SESSIONS = 64;
 const EVENTS = ['session.compaction.ended', 'session.usage.updated', 'session.execution.succeeded'];
 
-const home = () => process.env.NEW_AGENT_HOME || path.join(os.homedir(), '.new-agent');
+const home = () => process.env.OPENCODE_PLUS_HOME || path.join(os.homedir(), '.opencode-plus');
 const plansDir = () => path.join(home(), 'plans');
 const planPath = (sessionID) => path.join(plansDir(), `${sessionID}.json`);
 const hooksDir = () => {
-  const d = process.env.NEW_AGENT_HOOKS_DIR || '';
+  const d = process.env.OPENCODE_PLUS_HOOKS_DIR || '';
   return d && path.isAbsolute(d) ? d : '';
 };
 
 function log(kind, data) {
-  const file = process.env.NEW_AGENT_PLAN_LOG;
+  const file = process.env.OPENCODE_PLUS_PLAN_LOG;
   if (!file) return;
   try { fs.appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), kind, ...data }) + '\n'); } catch (_) { /* never breaks a turn */ }
 }
@@ -84,7 +84,7 @@ function runScript(script, args, input) {
   const file = dir ? path.join(dir, script) : '';
   if (!file || !fs.existsSync(file)) return Promise.resolve({ missing: MISSING_SCRIPTS });
   const words = launcher(dir);
-  const env = { ...process.env, NEW_AGENT_PLAN_TOOLS: 'tools', PYTHONIOENCODING: 'utf-8', PYTHONDONTWRITEBYTECODE: '1' };
+  const env = { ...process.env, OPENCODE_PLUS_PLAN_TOOLS: 'tools', PYTHONIOENCODING: 'utf-8', PYTHONDONTWRITEBYTECODE: '1' };
   return new Promise((resolve) => {
     let child;
     try {
@@ -282,7 +282,7 @@ function turnRecord(messages, sessionID, s) {
 async function withRecord(lines, fn) {
   let dir = '';
   try {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'new-agent-plan-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-plan-'));
     const file = path.join(dir, 'turn.jsonl');
     fs.writeFileSync(file, lines.join('\n') + (lines.length ? '\n' : ''));
     return await fn(file);
@@ -302,7 +302,7 @@ async function setup(ctx) {
   const state = sessions();
   const registrations = [];
   const windows = new Map();
-  const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.NEW_AGENT_PLAN_NUDGE) ? process.env.NEW_AGENT_PLAN_NUDGE : 'note');
+  const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.OPENCODE_PLUS_PLAN_NUDGE) ? process.env.OPENCODE_PLUS_PLAN_NUDGE : 'note');
 
   /* The tools are registered while plans are on and withdrawn while they are off; requests made after either take it. */
   let tools = null;
@@ -353,7 +353,7 @@ async function setup(ctx) {
       if (s) s.model = ev.model;
     }
     const kept = attach(ev && ev.messages);
-    if (process.env.NEW_AGENT_PLAN_LOG) {
+    if (process.env.OPENCODE_PLUS_PLAN_LOG) {
       const tools = (ev && ev.tools) || {};
       const shell = tools.shell && tools.shell.input && tools.shell.input.properties;
       log('context', { sessionID: ev && ev.sessionID, messages: ((ev && ev.messages) || []).length, kept,

@@ -6,7 +6,7 @@
 /*
  * This extension's conversations as a source of Agent Plus (xnervwang.agent-plus, protocol 1; its docs/protocol.md).
  *
- *   tabs            a chat tab is a custom editor of newagent-session:/<session id> (src/host/chat-editor.js), so the
+ *   tabs            a chat tab is a custom editor of opencodeplus-session:/<session id> (src/host/chat-editor.js), so the
  *                   session id is in the tab itself and sessionForTab never has to answer '' for one of ours
  *   conversations   the ones open in this window (src/host/session-manager.js); one not open here is not running
  *   focus           reported by the chat editor when its panel comes to the front (focus())
@@ -18,13 +18,13 @@ const vscode = require('vscode');
 const brand = require('../brand');
 
 const PROTOCOL = 1;
-const ID = 'new-agent';
+const ID = 'opencode-plus';
 const CORE_ID = 'xnervwang.agent-plus';
 const VIEW_TYPE = `${brand.prefix}.chat`;
-const SCHEME = 'newagent-session';
+const SCHEME = 'opencodeplus-session';
 const EXTENSION_ID = `${brand.publisher}.${brand.packageName}`;
 
-/* The session id of a newagent-session:/<id> URI, or ''. */
+/* The session id of a opencodeplus-session:/<id> URI, or ''. */
 function sessionOfUri(uri) {
   if (!uri || uri.scheme !== SCHEME) return '';
   const id = String(uri.path || '').replace(/^\/+/, '').split('/')[0];

@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * The chat page as a read-only custom editor, newAgent.chat, of newagent-session:/<session id>: each conversation has
+ * The chat page as a read-only custom editor, opencodePlus.chat, of opencodeplus-session:/<session id>: each conversation has
  * its own URI, so a tab knows its conversation and VS Code reopens the tabs after a reload. There is no
  * file behind the URI; the provider hands each webview panel to the chat panel of src/ui/chat-panel.js.
  */

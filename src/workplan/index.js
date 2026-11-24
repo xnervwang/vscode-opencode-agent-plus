@@ -35,7 +35,7 @@ function pluginDir(root = paths.root()) {
   return path.join(root, 'opencode-plugin', PLUGIN_ID);
 }
 
-/* The shared scripts' folder beside the plugin: what NEW_AGENT_HOOKS_DIR names. */
+/* The shared scripts' folder beside the plugin: what OPENCODE_PLUS_HOOKS_DIR names. */
 function scriptsDir(root = paths.root()) {
   return path.join(pluginDir(root), 'hooks');
 }
@@ -126,7 +126,7 @@ function configFor(version, { dir = pluginDir(), plans = planDir() } = {}) {
 
 /* What the plugin reads from its environment. */
 function pluginEnv({ hooksDir = scriptsDir(), home = paths.root() } = {}) {
-  return { NEW_AGENT_HOOKS_DIR: hooksDir, NEW_AGENT_HOME: home };
+  return { OPENCODE_PLUS_HOOKS_DIR: hooksDir, OPENCODE_PLUS_HOME: home };
 }
 
 /* Whether conversations on OpenCode `version` keep a work plan; `message` is what to tell the user when they do not. */

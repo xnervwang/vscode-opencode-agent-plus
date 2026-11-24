@@ -85,6 +85,11 @@
       "path": "opencode-plugin/agent-work-plan/hooks/remind-work-plan.py",
       "from": "shared/plugin/hooks/remind-work-plan.py",
       "sha256": "3aeb151a47428caec2d9dfce14975e3af3dbeec3c0640c0c3ce1a83122eef350"
+    },
+    {
+      "path": "opencode-plugin/agent-work-plan/hooks/plan_agent.py",
+      "from": "shared/plugin/opencode/plan_agent.py",
+      "sha256": "6f41e5d90796ec01835bda6cf7a74f899c11ceed0e339110e4aee7539240661a"
     }
   ]
 }

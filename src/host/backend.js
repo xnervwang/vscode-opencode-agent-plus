@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * The agent behind the chat pages: src/opencode/index.js (OpenCode's server), or the module NEW_AGENT_TEST_BACKEND
+ * The agent behind the chat pages: src/opencode/index.js (OpenCode's server), or the module OPENCODE_PLUS_TEST_BACKEND
  * names in the window tests. This file is the one place that knows that module's names; the rest of src/host/ sees:
  *
  *   listSessions()               Promise<SessionInfo[]>
@@ -54,7 +54,7 @@ function createBackend({ options = {}, load } = {}) {
   let made = null;
   const get = () => {
     if (made) return made;
-    const mod = load ? load() : require(process.env.NEW_AGENT_TEST_BACKEND || '../opencode');
+    const mod = load ? load() : require(process.env.OPENCODE_PLUS_TEST_BACKEND || '../opencode');
     const factory = mod.createOpenCode || mod.createBackend || mod.create;
     if (typeof factory !== 'function') throw new Error('the agent backend exports no factory');
     made = factory(typeof options === 'function' ? options() : options);

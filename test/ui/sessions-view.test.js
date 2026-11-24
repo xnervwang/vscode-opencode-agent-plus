@@ -47,14 +47,14 @@ test('lists conversations by last activity with title, age and status icon', asy
   assert.equal(b.description, 'now');
   assert.equal(b.iconPath.id, 'sync~spin');
   assert.equal(b.iconPath.color.id, 'charts.green');
-  assert.equal(b.contextValue, 'newAgent.session.busy');
-  assert.deepEqual(b.command, { command: 'newAgent.openConversation', title: 'Open Conversation', arguments: ['b'] });
+  assert.equal(b.contextValue, 'opencodePlus.session.busy');
+  assert.deepEqual(b.command, { command: 'opencodePlus.openConversation', title: 'Open Conversation', arguments: ['b'] });
   assert.equal(c.label, 'Untitled conversation');
   assert.equal(c.description, '5m');
   assert.equal(c.iconPath.id, 'bell-dot');
   assert.equal(a.description, '2d');
   assert.equal(a.iconPath.id, 'comment-discussion');
-  assert.equal(a.contextValue, 'newAgent.session');
+  assert.equal(a.contextValue, 'opencodePlus.session');
   assert.match(a.tooltip, /Folder: \/w\nModel: deepseek\.v3\.2\nID: a$/);
   assert.deepEqual(await view.getChildren(rows[0]), []);
 });

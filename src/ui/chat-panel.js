@@ -17,7 +17,7 @@ const fs = require('fs');
 const vm = require('./view-model');
 const { PERMISSION_DECISIONS } = require('../contracts');
 
-const DIFF_SCHEME = 'newAgent-diff';
+const DIFF_SCHEME = 'opencodePlus-diff';
 const MARKDOWN_IT = ['node_modules', 'markdown-it', 'dist', 'browser'];
 const FLUSH_MS = 16;
 

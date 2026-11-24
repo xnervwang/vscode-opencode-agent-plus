@@ -17,7 +17,7 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'na-host-wp-'));
 
 function make({ trusted = true, find, config = {} } = {}) {
   const home = tmp();
-  process.env.NEW_AGENT_HOME = home;
+  process.env.OPENCODE_PLUS_HOME = home;
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   Object.assign(control.state.config, config);
@@ -123,7 +123,7 @@ test('OpenCode 1 is told once per workspace and version, and a row above the pla
   const row = plan.planNotice();
   assert.equal(row.title, 'Work plans need OpenCode 2');
   assert.equal(row.description, 'OpenCode 1.19.6 is in use');
-  assert.deepEqual([row.command, row.arguments], ['workbench.action.openSettings', ['newAgent.opencode.path']]);
+  assert.deepEqual([row.command, row.arguments], ['workbench.action.openSettings', ['opencodePlus.opencode.path']]);
   plan.checkVersion({ major: 2, text: '2.4.1' });
   assert.equal(plan.planNotice(), null);
   plan.dispose();
@@ -153,11 +153,11 @@ test('launch adds the plugin environment and configuration to the settings OpenC
   const o = plan.launch({ binaryPath: '/x/opencode', permissions: true, env: { AWS_PROFILE: 'p' } });
   assert.equal(o.binaryPath, '/x/opencode');
   assert.equal(o.permissions, true);
-  assert.deepEqual(o.env, { AWS_PROFILE: 'p', NEW_AGENT_HOOKS_DIR: workplan.scriptsDir(home), NEW_AGENT_HOME: home });
+  assert.deepEqual(o.env, { AWS_PROFILE: 'p', OPENCODE_PLUS_HOOKS_DIR: workplan.scriptsDir(home), OPENCODE_PLUS_HOME: home });
   assert.deepEqual(o.config(2).plugins, [workplan.pluginDir(home)]);
   assert.ok(o.config(2).permissions.some((r) => r.action === 'read' && r.resource === `${path.join(home, 'plans')}/*`));
   assert.match(o.config(1).plugin[0], /^file:\/\/.*\/agent-work-plan\/index\.js$/);
-  assert.deepEqual(plan.launch(undefined).env, { NEW_AGENT_HOOKS_DIR: workplan.scriptsDir(home), NEW_AGENT_HOME: home });
+  assert.deepEqual(plan.launch(undefined).env, { OPENCODE_PLUS_HOOKS_DIR: workplan.scriptsDir(home), OPENCODE_PLUS_HOME: home });
   plan.dispose();
 });
 

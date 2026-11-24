@@ -91,7 +91,7 @@ test('a conversation running in another window is not opened here', async () => 
 test('a URI that names no conversation, and a tab closed while it opened', async () => {
   const s = setup();
   const bad = control.panel();
-  await open(s.provider, vscode.Uri.from({ scheme: 'newagent-session', path: '/../x' }), bad);
+  await open(s.provider, vscode.Uri.from({ scheme: 'opencodeplus-session', path: '/../x' }), bad);
   assert.match(bad.webview.html, /does not name a conversation/);
 
   const panel = control.panel();

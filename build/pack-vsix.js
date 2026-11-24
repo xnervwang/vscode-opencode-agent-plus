@@ -107,7 +107,7 @@ if (require.main === module) {
   const root = fs.realpathSync(path.resolve(args[0] || path.join(__dirname, '..')));
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const out = path.resolve(outArg || path.join(root, 'build', `${pkg.publisher}.${pkg.name}-${pkg.version}.vsix`));
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'new-agent-pack-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-pack-'));
   let status = 1;
   try {
     const files = stage(root, dir);
