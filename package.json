@@ -1,7 +1,7 @@
 {
   "name": "opencode-plus",
   "displayName": "OpenCode Plus",
-  "description": "A coding agent for models on Amazon Bedrock, with work plans and conversation overviews.",
+  "description": "Chat with OpenCode, an open-source coding agent, in VS Code editor tabs using any model provider OpenCode supports.",
   "version": "0.0.1",
   "publisher": "xnervwang",
   "icon": "images/icon.png",
