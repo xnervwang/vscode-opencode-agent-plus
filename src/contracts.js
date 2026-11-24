@@ -130,10 +130,11 @@
 /** @typedef {'allowOnce' | 'allowSession' | 'deny'} PermissionDecision */
 
 /**
- * Events the agent core emits for one conversation; the UI draws from these and nothing else.
+ * Events the agent core emits for one conversation; the UI draws from these and nothing else. A userMessage with
+ * `synthetic: true` is text a plugin added for the model (a work-plan line, a turn-end note), not something the user typed.
  * @typedef {(
  *   { type: 'turnStart', turnId: string, at: number } |
- *   { type: 'userMessage', text: string, at: number } |
+ *   { type: 'userMessage', text: string, at: number, synthetic?: boolean } |
  *   { type: 'text', delta: string } |
  *   { type: 'reasoning', delta: string } |
  *   { type: 'toolCall', id: string, name: string, input: object, at: number } |
