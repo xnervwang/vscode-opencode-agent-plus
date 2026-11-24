@@ -13,10 +13,10 @@
  *               options { options: [{ id, name, value, values: [{ value, name, description? }] }] },
  *               commands { commands: [{ name, description }] }, caps { images, files, selection },
  *               selection { label }, selectionAdded { item }, files { seq, query, items }, questionErrors
- *               { requestId, errors }; each carries the extension host's `now`.
- * Messages out: ready, send { text, images?, files?, selections? }, abort, permission, question { requestId, action,
+ *               { requestId, errors }, planBar { summary }; each carries the extension host's `now`.
+ * Messages out: ready { tz }, send { text, images?, files?, selections? }, abort, permission, question { requestId, action,
  *               values }, viewDiff, setModel, setOption, reloadModels, copy, openLink, findFiles { query, seq },
- *               addSelection.
+ *               addSelection, planBarOpen { part: 'plan' | 'answer' }.
  */
 (function () {
   const api = acquireVsCodeApi();
@@ -985,6 +985,26 @@
   /* The bottom bar grows with a list, attachments or a status line; the log keeps to its end if it was there. */
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (stick) scrollEnd(); }).observe(log);
 
+  /* ---------- the plan bar ---------- */
+
+  /* Agent Plus's fragment (media/plan-bar.js) draws the summary of this conversation's work plan above the input box; a
+     click opens Agent Plus's Work plan view at it, one on the red part its Answer view. A null summary hides it. It goes
+     above the / and @ lists and what goes with the next message, which belong to the box, so they stay next to it. */
+  const PB = window.agentPlusPlanBar;
+  let planBar = null;
+  function applyPlanBar(summary) {
+    if (!PB || typeof PB.create !== 'function') return;
+    if (!planBar) {
+      if (!summary) return;
+      planBar = PB.create(document, {
+        onOpen: () => api.postMessage({ type: 'planBarOpen', part: 'plan' }),
+        onAnswer: () => api.postMessage({ type: 'planBarOpen', part: 'answer' }),
+      });
+      bottom.insertBefore(planBar.el, menuEl);
+    }
+    planBar.update(summary || null);
+  }
+
   /* ---------- messages from the extension ---------- */
 
   window.addEventListener('message', (e) => {
@@ -1005,6 +1025,10 @@
       if (wasAtBottom) scrollEnd();
     } else if (m.type === 'models') {
       applyModels(m);
+    } else if (m.type === 'planBar') {
+      const wasAtBottom = stick;
+      applyPlanBar(m.summary && typeof m.summary === 'object' ? m.summary : null);
+      if (wasAtBottom) scrollEnd();
     } else if (m.type === 'options') {
       applyOptions(m.options);
     } else if (m.type === 'commands') {
@@ -1046,5 +1070,7 @@
     autosize();
   }
   input.focus();
-  api.postMessage({ type: 'ready' });
+  let tz = '';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { tz = ''; }
+  api.postMessage({ type: 'ready', tz });
 })();

@@ -111,19 +111,36 @@ function findOpenCode(opts = {}) {
   throw new OpenCodeError('notFound', `OpenCode was not found. ${INSTALL_HINT}`);
 }
 
-/* Default rules: ask before edits, commands, web fetches and paths outside the project. 2.x asks its question tool's
- * questions as elicitation/create forms, which the chat page answers; 1.x has no way to ask them over ACP, so the tool
- * is off there. Written once per config dialect: 1.x reads `permission`, 2.x reads `permissions`. */
-function permissionConfig(major) {
+/* The first OpenCode its question tool's forms were seen to work with: 2.4.1 asks them as elicitation/create once the
+   client declares elicitation.form. An earlier 2.x was not tried, and if it does not send them, a question would wait
+   for an answer nobody can give. */
+const QUESTIONS_FROM = Object.freeze({ major: 2, minor: 4, patch: 1 });
+
+/* Whether `version` ({ major, minor, patch }) is QUESTIONS_FROM or later; a bare major number is not enough to tell. */
+function asksQuestions(version) {
+  if (!version || typeof version !== 'object') return false;
+  const a = [version.major, version.minor, version.patch].map((n) => Number(n) || 0);
+  const b = [QUESTIONS_FROM.major, QUESTIONS_FROM.minor, QUESTIONS_FROM.patch];
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return true;
+}
+
+/* Default rules: ask before edits, commands, web fetches and paths outside the project. From QUESTIONS_FROM on, the
+ * question tool asks through forms the chat page answers; before it (1.x has no way to ask over ACP at all) the tool
+ * is off. Written once per config dialect: 1.x reads `permission`, 2.x reads `permissions`. `version` is the one
+ * findOpenCode() read, or just its major. */
+function permissionConfig(version) {
+  const major = typeof version === 'number' ? version : (version && version.major) || 1;
+  const questions = asksQuestions(version);
   if (major >= 2) {
-    return {
-      permissions: [
-        { action: 'edit', resource: '*', effect: 'ask' },
-        { action: 'shell', resource: '*', effect: 'ask' },
-        { action: 'webfetch', resource: '*', effect: 'ask' },
-        { action: 'external_directory', resource: '*', effect: 'ask' },
-      ],
-    };
+    const rules = [
+      { action: 'edit', resource: '*', effect: 'ask' },
+      { action: 'shell', resource: '*', effect: 'ask' },
+      { action: 'webfetch', resource: '*', effect: 'ask' },
+      { action: 'external_directory', resource: '*', effect: 'ask' },
+    ];
+    if (!questions) rules.push({ action: 'question', resource: '*', effect: 'deny' });
+    return { permissions: rules };
   }
   return { permission: { edit: 'ask', bash: 'ask', webfetch: 'ask', external_directory: 'ask', question: 'deny' } };
 }
@@ -160,7 +177,7 @@ function acpLaunch({ bin, version, env = {}, permissions = true, config = null, 
   const merged = { ...baseEnv, ...env };
   merged.OPENCODE_SERVER_PASSWORD = password || crypto.randomBytes(24).toString('base64url');
   merged.OPENCODE_DISABLE_AUTOUPDATE = '1';
-  let ours = permissions ? permissionConfig(major) : {};
+  let ours = permissions ? permissionConfig(version || major) : {};
   if (config && typeof config === 'object') ours = deepMerge(ours, config);
   if (Object.keys(ours).length) merged.OPENCODE_CONFIG_CONTENT = mergeConfigContent(merged.OPENCODE_CONFIG_CONTENT, ours);
   const args = major >= 2 ? ['acp'] : ['acp', '--hostname', '127.0.0.1'];
@@ -211,6 +228,8 @@ module.exports = {
   findOpenCode,
   parseVersion,
   permissionConfig,
+  asksQuestions,
+  QUESTIONS_FROM,
   mergeConfigContent,
   deepMerge,
   acpLaunch,

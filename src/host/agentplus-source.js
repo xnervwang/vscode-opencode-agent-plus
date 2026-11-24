@@ -8,10 +8,14 @@
  *
  *   tabs            a chat tab is a custom editor of opencodeplus-session:/<session id> (src/host/chat-editor.js), so the
  *                   session id is in the tab itself and sessionForTab never has to answer '' for one of ours
- *   conversations   the ones open in this window (src/host/session-manager.js); one not open here is not running
+ *   conversations   the ones open in this window (src/host/session-manager.js); one not open here is not running;
+ *                   listAllConversations() adds those of the other windows on this machine (src/host/window-states.js)
  *   focus           reported by the chat editor when its panel comes to the front (focus())
- *   answers         sent as a user message; a turn in progress queues it, so it counts as submitted
+ *   answers         sent as a user message; a turn in progress queues it, so it counts as submitted. One waiting for
+ *                   an approval or for an answer to a form is refused: the message would only go once the user has
+ *                   answered in its window, while the sender takes it as delivered
  *   plans           the plugin's files (src/workplan); 'brief' is listed while the token mode lets the plugin keep one
+ *   time zone       the one the chat pages report, the reader's even when this runs on a remote machine
  */
 const path = require('path');
 const vscode = require('vscode');
@@ -63,6 +67,15 @@ function toConversation(s) {
   return out;
 }
 
+/* Why a conversation cannot take a message now, or '': it waits for the user in its window. */
+function waitReason(s) {
+  if (!s || s.activity !== 'waiting') return '';
+  const w = s.waitingFor || {};
+  if (w.kind === 'question') return 'it is waiting for an answer to a question in its window';
+  const tool = typeof w.tool === 'string' ? w.tool.slice(0, 80) : '';
+  return tool ? `it is waiting for approval of ${tool} in its window` : 'it is waiting for an approval in its window';
+}
+
 function emitter() {
   const listeners = new Set();
   return {
@@ -90,6 +103,8 @@ function emitter() {
  *   openHere(sessionId)  Promise<boolean>: open it in this window
  *   trusted()          whether the workspace is trusted
  *   hidden(sessionId)  optional: true for a session not to list (a subagent's, open in a tab restored from before)
+ *   allConversations() optional: every window's conversations on this machine, this one's included
+ *   timeZone()         optional: the reader's IANA time zone, or ''
  *   log(line)          optional
  */
 function createAgentPlusSource(deps) {
@@ -107,6 +122,8 @@ function createAgentPlusSource(deps) {
   async function deliver(sessionId, text) {
     if (!trusted()) return { outcome: 'notReceived', reason: 'the workspace is not trusted' };
     if (!deps.manager.has(sessionId)) return { outcome: 'notReceived', reason: 'the conversation is not open in this window' };
+    const busy = waitReason(typeof deps.manager.snapshot === 'function' ? deps.manager.snapshot(sessionId) : null);
+    if (busy) return { outcome: 'notReceived', reason: busy };
     try {
       deps.manager.send(sessionId, String(text));
       return { outcome: 'submitted' };
@@ -116,6 +133,9 @@ function createAgentPlusSource(deps) {
   }
 
   const briefOn = () => { try { return deps.brief ? deps.brief() === true : false; } catch (_) { return false; } };
+  const hiddenId = (id) => { try { return deps.hidden ? deps.hidden(id) === true : false; } catch (_) { return false; } };
+  /* This window's conversations as Agent Plus reads them. */
+  const own = () => deps.manager.list().filter((x) => !hiddenId(x.sessionId)).map(toConversation);
 
   const source = {
     protocol: PROTOCOL,
@@ -149,8 +169,17 @@ function createAgentPlusSource(deps) {
     },
 
     async listConversations() {
-      const hidden = (id) => { try { return deps.hidden ? deps.hidden(id) === true : false; } catch (_) { return false; } };
-      return deps.manager.list().filter((s) => !hidden(s.sessionId)).map(toConversation);
+      return own();
+    },
+
+    async listAllConversations() {
+      if (!deps.allConversations) return own();
+      const all = await deps.allConversations();
+      return (Array.isArray(all) ? all : []).filter((c) => c && !hiddenId(c.sessionId));
+    },
+
+    timeZone() {
+      try { const z = deps.timeZone ? deps.timeZone() : ''; return typeof z === 'string' ? z : ''; } catch (_) { return ''; }
     },
 
     reveal(sessionId) {
@@ -184,6 +213,8 @@ function createAgentPlusSource(deps) {
 
   return {
     source,
+    /* This window's conversations as listConversations() gives them, for the window state file. */
+    conversations: own,
     /* A chat panel of ours came to the front with this conversation. */
     focus(sessionId) {
       if (typeof sessionId !== 'string' || !sessionId) return;
@@ -205,8 +236,9 @@ function createAgentPlusSource(deps) {
 }
 
 /*
- * Registers `source` with Agent Plus once. Resolves to { accepted, code, reason, registration }. Never throws: without
- * Agent Plus, or refused by it, the extension works as before, outside Agent Plus.
+ * Registers `source` with Agent Plus once. Resolves to { accepted, code, reason, registration, core }, `core` the
+ * agentPlus interface once accepted. Never throws: without Agent Plus, or refused by it, the extension works as
+ * before, outside Agent Plus.
  */
 async function register(source, { log = () => {} } = {}) {
   const ext = vscode.extensions.getExtension(CORE_ID);
@@ -225,11 +257,11 @@ async function register(source, { log = () => {} } = {}) {
   try { r = core.registerSource(source); } catch (e) { r = { accepted: false, code: 'failed', reason: String((e && e.message) || e) }; }
   if (r && r.accepted === true && r.registration && typeof r.registration.dispose === 'function') {
     log(`registered with Agent Plus ${core.version || ''}`.trim());
-    return { accepted: true, code: '', reason: '', registration: r.registration };
+    return { accepted: true, code: '', reason: '', registration: r.registration, core };
   }
   const code = (r && r.code) || 'failed', reason = (r && r.reason) || 'no reason given';
   log(`Agent Plus did not take the source (${code}): ${reason}`);
   return { accepted: false, code, reason, registration: null };
 }
 
-module.exports = { createAgentPlusSource, register, toConversation, stateOf, sessionOfUri, uriOf, isChatTab, PROTOCOL, ID, CORE_ID, VIEW_TYPE, SCHEME, EXTENSION_ID };
+module.exports = { createAgentPlusSource, register, toConversation, stateOf, waitReason, sessionOfUri, uriOf, isChatTab, PROTOCOL, ID, CORE_ID, VIEW_TYPE, SCHEME, EXTENSION_ID };

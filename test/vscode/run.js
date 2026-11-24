@@ -16,8 +16,12 @@
  * the model adds a row to the work plan with the plugin's tool, Agent Plus's Work plan view shows it,
  * and with the token mode switched to Interface the next message gets no plan; then a command picked from the / list
  * compacts the conversation, a pasted image (with Claude Haiku 4.5), a file picked with @ and an editor selection go with
- * a message, a subagent's progress shows on its card, and the question tool's form is answered in the page. With
- * OpenCode 1 the notice that the work plan needs OpenCode 2 is shown once, and the new controls show only what it offers. The plugin writes what it does to <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
+ * a message, a subagent's progress shows on its card, and the question tool's form is answered in the page; the plan bar
+ * shows the plan's row and opens the Work plan view, the conversation is renamed from its tab's menu, a delivery through
+ * the source is refused while a request waits, and a reply in a tab not in front puts an envelope after its title. The
+ * chat tab's icon is checked for its state dot. With OpenCode 1 the notice that the work plan needs OpenCode 2 is shown
+ * once, the new controls show only what it offers, and its tab offers no Rename. The plugin writes what it does to
+ * <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
  *
@@ -39,6 +43,7 @@ const has = (name) => { const i = args.indexOf(name); if (i < 0) return false; a
 const LOCAL = has('--local');
 const EXE = flag('--vscode');
 const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-plus-ui-${Date.now()}`)));
+/* 1.4.0 or later: the plan bar needs Agent Plus's planSummary. */
 const AGENT_PLUS = flag('--agent-plus', '');
 const BACKEND = flag('--backend', 'fake');
 const OPENCODE = flag('--opencode');
@@ -206,6 +211,43 @@ async function main() {
     void frame;
   };
   const ext = (body, arg, ms) => call(`const e = vscode.extensions.getExtension(${JSON.stringify(ID)}); const api = e.isActive ? e.exports : await e.activate(); ${body}`, arg, ms);
+  /* The chat tab of conversation `id` as VS Code's tab API has it: its label and whether it is in front. */
+  const tabOf = (id) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === "opencodeplus-session:/" + arg);
+    return t ? { label: t.label, active: t.isActive } : null;`, id);
+  /* The image the tab strip draws as the icon of the tab whose label starts with `label`. */
+  const iconOf = (label) => page.evaluate((t) => {
+    for (const tab of document.querySelectorAll('.tabs-container .tab')) {
+      const name = tab.querySelector('.label-name');
+      if (!name || !name.textContent.startsWith(t)) continue;
+      const icon = tab.querySelector('.monaco-icon-label-iconpath');
+      return icon ? icon.style.backgroundImage : 'no icon element';
+    }
+    return 'no such tab';
+  }, label);
+  /* Opens the context menu of the tab whose label starts with `label` and returns its items; the menu stays open. */
+  const tabMenu = async (label) => {
+    await page.evaluate((t) => {
+      for (const tab of document.querySelectorAll('.tabs-container .tab')) {
+        const name = tab.querySelector('.label-name');
+        tab.toggleAttribute('data-test-tab', !!name && name.textContent.startsWith(t));
+      }
+    }, label);
+    await page.click('.tabs-container .tab[data-test-tab]', { button: 'right' });
+    const first = page.locator('.monaco-menu .action-label').first();
+    await first.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    return (await page.locator('.monaco-menu .action-label').allTextContents()).map((x) => x.trim()).filter(Boolean);
+  };
+  /* Renames the conversation of the tab whose label starts with `label` from that tab's context menu. */
+  const renameFromTab = async (label, title, shotName) => {
+    const items = await tabMenu(label);
+    if (!items.includes('Rename Conversation')) { await page.keyboard.press('Escape'); return { items, renamed: false }; }
+    if (shotName) await shot(shotName, { features: ['rename from the tab'], expect: 'The context menu of the chat tab is open; among its entries is "Rename Conversation".' });
+    await page.locator('.monaco-menu .action-label', { hasText: 'Rename Conversation' }).first().click();
+    await page.waitForSelector('.quick-input-widget input', { state: 'visible', timeout: 10000 });
+    await page.fill('.quick-input-widget input', title);
+    await page.keyboard.press('Enter');
+    return { items, renamed: true };
+  };
 
   try {
     await w.hostUp();
@@ -232,7 +274,7 @@ async function main() {
     const tab = await until(() => call(`const t = vscode.window.tabGroups.activeTabGroup.activeTab;
       return t && t.input instanceof vscode.TabInputCustom ? { viewType: t.input.viewType, uri: t.input.uri.toString(), label: t.label } : null;`), 30000);
     check(tab && tab.viewType === 'opencodePlus.chat' && /^opencodeplus-session:\/ses_/.test(tab.uri), 'a new conversation opens a opencodePlus.chat tab of opencodeplus-session:/<id>', tab);
-    const chat = await frameWith(page, '#input', 30000);
+    let chat = await frameWith(page, '#input', 30000);
     check(!!chat, 'the chat page loaded in the tab');
     await shot('02-new-conversation', { features: ['new conversation', 'chat editor tab'],
       expect: `An editor tab is open with the chat page: a header with a model selector showing ${real ? 'the Grok model' : 'Fake Small'}, an empty message area, and a message box at the bottom with a Send button.`,
@@ -257,15 +299,30 @@ async function main() {
         check(!!asked, 'the reply streams in and stops at a permission request with Allow once');
         const waiting = await until(() => ext('return api.test.conversations().find((c) => c.activity === "waiting");'), 10000);
         check(!!waiting, 'the conversation is waiting for the user while the request is open', waiting);
+        const waitIcon = await until(async () => { const t = await tabOf(sessionId); const i = t ? await iconOf(t.label) : ''; return /tab-waiting-dark-/.test(i) ? i : null; }, 10000);
+        check(!!waitIcon, "while it waits, the chat tab's icon is the logo with a red dot", waitIcon || await iconOf((await tabOf(sessionId) || {}).label || ''));
         await shot('03-permission', { features: ['streamed reply', 'tool cards', 'permission request'],
           expect: 'The user message "Hello there, please fix the failing test", a reasoning block, a reply that starts "I\'ll look at the test first.", a read_file tool card with its result, and an edit_file card asking for permission with Allow once, Allow in this project, Deny and View diff buttons.',
           part: '#workbench\\.parts\\.editor' });
         if (asked) await asked.click();
         const done = await until(() => chat.evaluate(() => document.body.dataset.status === 'idle' && /subtracted instead of adding/.test(document.getElementById('log').textContent)), 30000);
         check(done, 'after Allow once the turn finishes with its last reply');
+        const stopIcon = await until(async () => { const t = await tabOf(sessionId); const i = t ? await iconOf(t.label) : ''; return /tab-stopped-dark-/.test(i) ? i : null; }, 10000);
+        check(!!stopIcon, "once the turn is over, the chat tab's icon is the plain logo", stopIcon);
         await shot('04-reply', { features: ['reply', 'reply figures'],
           expect: 'The edit_file card says it was allowed once, and the reply ends with "Fixed: sum subtracted instead of adding." and a code block; below the reply a line of figures such as a duration, ctx and the model name.',
           part: '#workbench\\.parts\\.editor' });
+
+        // 4z. Rename from the chat tab's menu: the tab, the page and the list follow.
+        const fakeLabel = (await tabOf(sessionId) || {}).label || '';
+        const r = await renameFromTab(fakeLabel, 'Renamed in the fake run', '04z-tab-menu');
+        const fakeRenamed = await until(async () => {
+          const t = await tabOf(sessionId);
+          const rows = (await ext('return api.test.sessions();')) || [];
+          const pageTitle = await chat.evaluate(() => document.getElementById('title').textContent);
+          return t && t.label === 'Renamed in the fake run' && pageTitle === 'Renamed in the fake run' && rows.some((x) => x.id === sessionId && x.title === 'Renamed in the fake run') ? { tab: t.label, pageTitle } : null;
+        }, 15000);
+        check(r.renamed && !!fakeRenamed, "Rename in the chat tab's menu renames the conversation: the tab, the page and the Conversations list follow", { r, fakeRenamed });
       }
 
     } else {
@@ -281,6 +338,7 @@ async function main() {
       };
       /* Waits for the turn begun after `before` figures lines to end, answering Allow once on the way; `tick` runs at
          each look. */
+      const waitIcons = [];
       const waitTurn = async (before, name, tick) => {
         await until(async () => (await status()) !== 'idle' || (await figures()) > before, 60000, 200);
         let approved = 0;
@@ -292,6 +350,8 @@ async function main() {
           for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) { button = b; break; }
           if (button) {
             if (!approved) {
+              const t = await tabOf(sessionId);
+              if (t) waitIcons.push(await iconOf(t.label));
               await shot(`${name}-permission`, { features: ['tool call', 'permission request'],
                 expect: 'The user message, a tool card for the call the model made, and a permission card with Allow once, Allow in this project and Deny buttons.',
                 part: '#workbench\\.parts\\.editor' });
@@ -312,6 +372,12 @@ async function main() {
       });
       const lastReply = () => chat.evaluate(() => { const r = [...document.querySelectorAll('#log .msg.reply')].pop(); return r ? r.textContent : ''; });
       const lastUserChips = () => chat.evaluate(() => { const u = [...document.querySelectorAll('#log .msg.user')].pop(); return u ? [...u.querySelectorAll('.att')].map((e) => e.textContent) : []; });
+      /* What OpenCode itself recorded for the session: its /api session.list, with a private server. */
+      const recorded = () => {
+        const r = cp.spawnSync(OPENCODE, ['api', 'session.list', '--param', 'limit=50', '--standalone'],
+          { env: { ...process.env, ...xdgEnv, OPENCODE_DISABLE_AUTOUPDATE: '1' }, encoding: 'utf8', timeout: 60000 });
+        try { return (JSON.parse(r.stdout).data || []).find((s) => s.id === sessionId) || null; } catch (_) { return null; }
+      };
       if (chat) {
         let approved = await turn('列出工作目录下的文件', '03');
         const tools = await chat.evaluate(() => [...document.querySelectorAll('#log .tool')].map((e) => e.textContent.replace(/\s+/g, ' ').slice(0, 80)));
@@ -323,6 +389,8 @@ async function main() {
         check(approved > 0, 'a permission request was shown and approved with Allow once');
         const answer = await chat.evaluate(() => document.getElementById('log').textContent);
         check(/README\.md|notes\.txt|sum\.js/.test(answer), 'the answer names files of the working folder');
+        const idleIcon = await until(async () => { const t = await tabOf(sessionId); const i = t ? await iconOf(t.label) : ''; return /tab-stopped-dark-/.test(i) ? i : null; }, 10000);
+        check(waitIcons.some((i) => /tab-waiting-dark-/.test(i)) && !!idleIcon, "the chat tab's icon has a red dot while the request waits, and is the plain logo once the turn is over", { waitIcons, idleIcon });
         await shot('04-answer', { features: ['answer', 'reply figures'],
           expect: 'The tool card shows its result and the permission card says allowed; the model answer lists the files of the folder (README.md, notes.txt, src); under it a figures line with a duration, ctx, maybe a cost, and the model name grok.',
           part: '#workbench\\.parts\\.editor' });
@@ -346,6 +414,10 @@ async function main() {
           await shot('04z-v1-controls', { features: ['new controls on OpenCode 1'],
             expect: 'The chat page as before, the message box empty; its placeholder may add hints such as "@ to add a file"; no error notice, no question form, no compaction line.',
             part: '#workbench\\.parts\\.editor' });
+          const v1Items = await tabMenu((await tabOf(sessionId) || {}).label || '');
+          await page.keyboard.press('Escape');
+          const v1Bar = await chat.evaluate(() => { const b = document.querySelector('[data-agent-plus-plan-bar]'); return !!b && b.style.display !== 'none'; });
+          check(v1Items.length > 0 && !v1Items.includes('Rename Conversation') && !v1Bar, "on OpenCode 1 the chat tab's menu has no Rename, and the page has no plan bar", { items: v1Items, bar: v1Bar });
         }
 
         if (line >= 2) {
@@ -355,11 +427,6 @@ async function main() {
             const s = document.getElementById(id);
             return { id, hidden: !s || s.hidden, value: s ? s.value : '', values: s ? [...s.options].map((o) => o.value) : [] };
           }));
-          const recorded = () => {
-            const r = cp.spawnSync(OPENCODE, ['api', 'session.list', '--param', 'limit=50', '--standalone'],
-              { env: { ...process.env, ...xdgEnv, OPENCODE_DISABLE_AUTOUPDATE: '1' }, encoding: 'utf8', timeout: 60000 });
-            try { return (JSON.parse(r.stdout).data || []).find((s) => s.id === sessionId) || null; } catch (_) { return null; }
-          };
           const shownPickers = await until(async () => { const o = await pickers(); return o.every((x) => !x.hidden && x.values.length > 1) ? o : null; }, 20000);
           check(!!shownPickers && shownPickers[0].values.includes('plan') && shownPickers[1].values.includes('low'), 'the mode and effort pickers show beside the model', shownPickers || await pickers());
           await chat.selectOption('#mode', 'plan');
@@ -467,6 +534,28 @@ async function main() {
           await shot('04b-plan-row', { features: ['plan tool call'],
             expect: 'The chat shows the request to call add_row, an add_row tool card (its one-line result, "row 1 added: doing", may be folded), and the reply "ok".',
             part: '#workbench\\.parts\\.editor' });
+
+          // 3c0. The plan bar: Agent Plus's summary of the plan right above the input box; a click opens its Work plan view.
+          const barNow = () => chat.evaluate(() => {
+            const b = document.querySelector('[data-agent-plus-plan-bar]');
+            if (!b || b.style.display === 'none') return null;
+            const r = b.getBoundingClientRect(), f = document.getElementById('composer').getBoundingClientRect();
+            return { text: b.textContent, label: b.getAttribute('aria-label'), gap: Math.round(f.top - r.bottom), width: Math.round(r.width), box: Math.round(f.width) };
+          });
+          const bar = await until(barNow, 45000);
+          check(!!bar && (/list the files/.test(bar.text) || /All rows done/.test(bar.text)) && bar.gap >= 0 && bar.gap <= 12 && Math.abs(bar.width - bar.box) <= 2,
+            'once the plan has a row, the plan bar shows it right above the input box, as wide as it', bar);
+          await shot('04b2-plan-bar', { features: ['plan bar'],
+            expect: 'Right above the message box, as wide as it, a one-line bar: a list icon and "Plan", a short coloured track, "1 open", and the row "1 list the files" with its state icon (or a green check and "All rows done"), and an arrow at the right end.',
+            part: '#workbench\\.parts\\.editor' });
+          await call('await vscode.commands.executeCommand("workbench.view.explorer"); return true;').catch(() => {});
+          await until(() => page.evaluate(() => !/Work plan/i.test(document.getElementById('workbench.parts.sidebar').textContent)), 5000);
+          await chat.click('[data-agent-plus-plan-bar]');
+          const barOpened = await until(() => page.evaluate(() => {
+            const side = document.getElementById('workbench.parts.sidebar');
+            return !!side && /Work plan/i.test(side.textContent) && side.textContent.includes('list the files');
+          }), 20000);
+          check(barOpened, "clicking the plan bar opens Agent Plus's Work plan view at this conversation");
           await call('await vscode.commands.executeCommand("agentPlus.workPlan.focus"); return true;').catch(() => {});
           const inView = await until(() => page.evaluate(() => {
             const side = document.getElementById('workbench.parts.sidebar');
@@ -598,14 +687,102 @@ async function main() {
             expect: 'Above it the question tool card (its result folded), then the question card, which now reads "Answered: … Blue": Blue\'s choice is checked and in bold, the other choice and the own-answer box are faded, and there are no buttons; below it the reply "Blue" (or "blue"), with a figures line.',
             part: '#workbench\\.parts\\.editor' });
 
+          // 3l. Rename from the chat tab's menu: the tab, the page, the Conversations list, Agent Plus and OpenCode follow.
+          const NEW_TITLE = 'Renamed by the window test';
+          const r = await renameFromTab((await tabOf(sessionId) || {}).label || '', NEW_TITLE, '13-tab-menu');
+          const renamed = await until(async () => {
+            const t = await tabOf(sessionId);
+            const pageTitle = await chat.evaluate(() => document.getElementById('title').textContent);
+            const rows = (await ext('return api.test.sessions();')) || [];
+            const apRows = (await ext('return api.test.source.listConversations();')) || [];
+            const inOc = recorded();
+            const out = { tab: t && t.label, pageTitle, list: (rows.find((x) => x.id === sessionId) || {}).title,
+              agentPlus: (apRows.find((x) => x.sessionId === sessionId) || {}).title, opencode: inOc && inOc.title };
+            return Object.values(out).every((v) => v === NEW_TITLE) ? out : null;
+          }, 20000);
+          check(r.renamed && !!renamed, "Rename in the chat tab's menu renames the conversation: the tab, the page, the Conversations list, Agent Plus's list and OpenCode's own record follow", { r, renamed });
+          await call('await vscode.commands.executeCommand("agentPlus.conversations.focus"); return true;').catch(() => {});
+          const apView = await until(() => page.evaluate((t) => { const e = document.getElementById('workbench.parts.panel'); return !!e && e.textContent.includes(t); }, NEW_TITLE), 30000);
+          check(apView, "Agent Plus's Conversations view shows the new title");
+          await shot('13b-renamed', { features: ['renamed conversation'],
+            expect: `The chat tab and the page header read "${NEW_TITLE}"; the panel below shows Agent Plus's Conversations view with a row of that title.` });
+          await call('await vscode.commands.executeCommand("workbench.action.closePanel"); return true;').catch(() => {});
+
+          // 3m. While it waits for an approval, a delivery through the source is refused and says why; when the turn
+          // ends, the latest reply is written beside the plan.
+          let refused = null;
+          const askText = 'Run the command `echo waiting-check` with the shell tool, then reply with only the word done.';
+          const beforeAsk = await figures();
+          await chat.fill('#input', askText);
+          await chat.press('#input', 'Enter');
+          await waitTurn(beforeAsk, '14', async () => {
+            if (refused) return;
+            for (const b of await chat.$$('button[data-decision="allowOnce"]')) {
+              if (await b.isVisible()) {
+                refused = await ext('return api.test.source.deliverAnswer(arg, "a message from the steward", { deliveryId: "window-test-1" });', sessionId);
+                return;
+              }
+            }
+          });
+          check(!!refused && refused.outcome === 'notReceived' && /^it is waiting for approval of \S+ in its window$/.test(refused.reason || ''),
+            "while the conversation waits for an approval, the source's deliverAnswer refuses the message and names what it waits for", refused);
+          const replyFile = path.join(plansDir, `${sessionId}.reply.json`);
+          let latest = null;
+          try { latest = JSON.parse(fs.readFileSync(replyFile, 'utf8')); } catch (_) { /* none */ }
+          check(!!latest && latest.format === 1 && latest.said.length > 0 && latest.said[latest.said.length - 1].text === askText && /done/i.test(latest.reply)
+            && !/a message from the steward/.test(JSON.stringify(latest)),
+          'when the turn ends, the latest reply is written beside the plan: the message just sent and the reply to it, and not the refused one', { latest, shown: await lastReply() });
+
+          // 3n. A reply in a tab not in front: an envelope after its title, gone once the tab comes to the front.
+          await call('return vscode.commands.executeCommand("opencodePlus.newConversation");');
+          const secondId = await until(async () => {
+            const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
+            return u && u !== `opencodeplus-session:/${sessionId}` ? u.replace(/^opencodeplus-session:\//, '') : null;
+          }, 30000);
+          const delivered = await ext('return api.test.source.deliverAnswer(arg, "Reply with only the word five.", { deliveryId: "window-test-2" });', sessionId);
+          const unread = await until(async () => {
+            const sn = await ext('return api.test.snapshot(arg);', sessionId);
+            const t = await tabOf(sessionId);
+            return sn && sn.activity === 'stopped' && sn.unseen && t && t.label.endsWith('\u{1F4E9}') ? { label: t.label, active: t.active } : null;
+          }, 180000);
+          const apUnseen = ((await ext('return api.test.source.listConversations();')) || []).find((x) => x.sessionId === sessionId);
+          check(!!secondId && !!delivered && delivered.outcome === 'submitted' && !!unread && !unread.active && !!apUnseen && apUnseen.unseen === true,
+            'a reply in a tab not in front puts an envelope after its title, and Agent Plus hears it is unseen', { secondId, delivered, unread, apUnseen });
+          await shot('15-unread-envelope', { features: ['unread envelope', 'tab state dot'],
+            expect: `Two chat tabs, each with the speech-bubble logo and no dot (neither conversation is working or waiting): the one in front is a new, empty conversation; the other reads "${NEW_TITLE} 📩", the envelope after its title.`,
+            part: '#workbench\\.parts\\.editor' });
+          const all = (await ext('return api.test.source.listAllConversations();')) || [];
+          let windowFile = null;
+          try { windowFile = JSON.parse(fs.readFileSync(await ext('return api.test.windowFile;'), 'utf8')); } catch (_) { /* none */ }
+          check(all.some((c) => c.sessionId === sessionId) && all.some((c) => c.sessionId === secondId) && !!windowFile && windowFile.conversations.some((c) => c.sessionId === sessionId),
+            "listAllConversations gives both conversations, and this window's file holds them for the other windows",
+            { all: all.map((c) => c.sessionId), file: windowFile && windowFile.conversations.map((c) => c.sessionId) });
+          await call('return vscode.commands.executeCommand("opencodePlus.openConversation", arg);', sessionId);
+          const seen = await until(async () => { const t = await tabOf(sessionId); return t && t.active && t.label === NEW_TITLE ? t : null; }, 15000);
+          check(!!seen, 'once that tab comes to the front, the envelope is gone', seen || await tabOf(sessionId));
+          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeplus-session:/" + arg);
+            await vscode.window.tabGroups.close(tabs); return true;`, secondId).catch(() => {});
+          await sleep(1000);
+          chat = await frameWith(page, '#input', 30000);
+          await shot('15b-envelope-gone', { features: ['unread envelope'],
+            expect: `One chat tab, "${NEW_TITLE}", in front with no envelope; its page ends with the reply "five".`,
+            part: '#workbench\\.parts\\.editor' });
+
           /* Last of these: the first message after compacting gets the work plan's note about the plan again, which a
              model may answer instead of the message. */
           // 3g. Slash commands: / lists OpenCode's commands; /compact picked from the list and sent compacts.
           await chat.fill('#input', '/');
           const listedCmds = await until(async () => { const l = await menuItems(); return l.length ? l : null; }, 15000);
           check(!!listedCmds && listedCmds.includes('/compact'), 'typing / lists the slash commands OpenCode offers', listedCmds || []);
+          const order = await chat.evaluate(() => {
+            const r = (el) => (el ? el.getBoundingClientRect() : null);
+            const bar = r(document.querySelector('[data-agent-plus-plan-bar]')), menu = r(document.getElementById('menu')), box = r(document.getElementById('composer'));
+            return bar && menu && box ? { barBottom: Math.round(bar.bottom), menuTop: Math.round(menu.top), menuBottom: Math.round(menu.bottom), boxTop: Math.round(box.top) } : null;
+          });
+          check(!!order && order.barBottom <= order.menuTop && order.boxTop - order.menuBottom >= 0 && order.boxTop - order.menuBottom <= 12,
+            'the / list sits right above the input box, and the plan bar above the list', order);
           await shot('09-slash-menu', { features: ['slash command list'],
-            expect: 'Above the message box, which holds "/", a list of commands such as /init, /review, /compact, each with a short description; the first is highlighted.',
+            expect: 'Right above the message box, which holds "/", a list of commands such as /init, /review, /compact, each with a short description; the first is highlighted. The plan bar is above the list, not between the list and the box.',
             part: '#workbench\\.parts\\.editor' });
           await chat.type('#input', 'comp');
           const narrowed = await until(async () => { const l = await menuItems(); return l[0] === '/compact' ? l : null; }, 5000);
@@ -655,7 +832,9 @@ async function main() {
     const inList = await until(async () => page.evaluate((t) => document.getElementById('workbench.parts.sidebar').textContent.includes(t), await titleNow()), 30000);
     check(inList, 'the Conversations view lists the conversation');
     await shot('06-sessions', { features: ['session list'],
-      expect: 'The OpenCode Plus Conversations view lists one row with the conversation title and a speech-bubble icon (a relative time such as "now" may be cut off by a long title).',
+      expect: real && line >= 2
+        ? 'The OpenCode Plus Conversations view lists two rows with speech-bubble icons: the conversation by its title, and an "Untitled conversation", the empty one the envelope step opened and closed (OpenCode keeps a conversation from the moment it is made). A relative time such as "now" may be cut off by a long title.'
+        : 'The OpenCode Plus Conversations view lists one row with the conversation title and a speech-bubble icon (a relative time such as "now" may be cut off by a long title).',
       part: '#workbench\\.parts\\.sidebar' });
 
     // 6. A reload brings the tab back with its history.

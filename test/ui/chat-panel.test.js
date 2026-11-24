@@ -38,14 +38,15 @@ function setup(opts = {}) {
   return { vscode, panel, conversation, chat, responses };
 }
 
-test('sets the webview up with scripts from the extension only', () => {
+test('sets the webview up with scripts from the extension only; inline styles only for the plan bar fragment', () => {
   const { panel, chat } = setup();
   const { options, html } = panel.webview;
   assert.equal(options.enableScripts, true);
   assert.equal(options.retainContextWhenHidden, undefined);
   const roots = options.localResourceRoots.map((u) => u.path);
   assert.deepEqual(roots, [path.join(ROOT, 'media'), path.join(ROOT, 'node_modules/markdown-it/dist/browser')]);
-  assert.match(html, /Content-Security-Policy" content="default-src 'none'; img-src https:\/\/fake\.webview data:; style-src https:\/\/fake\.webview; font-src https:\/\/fake\.webview; script-src https:\/\/fake\.webview;"/);
+  assert.match(html, /Content-Security-Policy" content="default-src 'none'; img-src https:\/\/fake\.webview data:; style-src https:\/\/fake\.webview 'unsafe-inline'; font-src https:\/\/fake\.webview; script-src https:\/\/fake\.webview;"/);
+  assert.match(html, /media\/plan-bar\.js"><\/script>\n<script src="[^"]*media\/chat\.js/, 'the fragment loads before the page script');
   assert.match(html, /markdown-it\.umd\.min\.js/, 'the markdown library is installed and loaded');
   assert.match(html, /media\/chat\.js/);
   assert.doesNotMatch(html, /<script>|style="/, 'no inline script or style');

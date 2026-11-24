@@ -8,7 +8,8 @@
  * process per window (src/opencode/server.js), started on first use and stopped when no conversation has been open
  * for `idleStopMs`. Each conversation object speaks contracts.js AgentEvents (src/opencode/mapper.js).
  *
- * ACP has no rename, so renameSession throws; deleting uses session/delete where OpenCode offers it (2.x) and
+ * ACP has no rename: on 2.x renameSession goes through /api's session.update (`opencode api ... --standalone`), and
+ * 1.x has no way to do it, so it throws there. Deleting uses session/delete where OpenCode offers it (2.x) and
  * `opencode session delete` otherwise.
  *
  * Subagents run in sessions of their own, which 2.x's session/list returns with the rest and nothing to tell them
@@ -55,6 +56,8 @@ const OWN_QUIET_MS = 20000;
 const OWN_AFTER_TEXT_MS = 4000;
 const KINDS_KEPT = 5000;
 const LOOKUP_ROWS = 200;
+const MAX_TITLE = 200;
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 /* Command lists kept for sessions not open yet: 2.4.1 sends one right after answering session/new or session/load. */
 const COMMANDS_KEPT = 50;
 const CHILD_STATUS = Object.freeze({ created: 'running', running: 'running', completed: 'done', interrupted: 'stopped', failed: 'failed' });
@@ -819,6 +822,8 @@ function createOpenCode(opts = {}) {
         }
       },
       takeConfig(configOptions) { noteConfig(configOptions); },
+      /* A title set from outside this conversation's stream (a rename). */
+      retitle(t) { if (t && t !== h.title) emit([{ type: 'title', title: t }]); },
       childTool(u) {
         if (u && (u.sessionUpdate === 'tool_call_update' || u.sessionUpdate === 'tool_call') && typeof u.toolCallId === 'string' && m.toolName(u.toolCallId)) h.onUpdate(u);
       },
@@ -1021,8 +1026,34 @@ function createOpenCode(opts = {}) {
       return opening.get(id);
     },
 
-    renameSession() {
-      return Promise.reject(new server.OpenCodeError('unsupported', 'OpenCode has no way to rename a conversation over ACP.'));
+    /* Whether this OpenCode can rename conversations (2.x); false when none is found. */
+    canRename() {
+      try {
+        const found = proc && proc.found ? proc.found : find({ configured: settings.binaryPath, env: { ...process.env, ...settings.env } });
+        return !!(found.version && found.version.major >= 2);
+      } catch (_) { return false; }
+    },
+
+    /* 2.x only, in a private server of its own (subcommandArgs), without starting `acp`. The conversation, when open,
+       reports the new title as a title event. */
+    async renameSession(id, title) {
+      const t = String(title == null ? '' : title).replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE);
+      if (!SESSION_ID.test(String(id || ''))) throw new server.OpenCodeError('badRequest', `Not a conversation id: ${String(id).slice(0, 80)}`);
+      if (!t) throw new server.OpenCodeError('badRequest', 'A title cannot be empty.');
+      const found = proc && proc.found ? proc.found : find({ configured: settings.binaryPath, env: { ...process.env, ...settings.env } });
+      if (!found.version || found.version.major < 2) throw new server.OpenCodeError('unsupported', 'OpenCode 1 has no way to rename a conversation; OpenCode 2 has.');
+      const args = server.subcommandArgs(found.version, ['api', 'session.update', '--param', `sessionID=${id}`, '-d', JSON.stringify({ title: t })]);
+      await new Promise((resolve, reject) => {
+        execFile(found.path, args, { timeout: 30000, env: server.subcommandEnv(settings.env), windowsHide: true }, (err, stdout, stderr) => {
+          if (!err) { resolve(); return; }
+          let why = '';
+          try { const v = JSON.parse(String(stdout)); if (v && typeof v.message === 'string') why = v.message; } catch (_) { /* not JSON */ }
+          reject(new server.OpenCodeError('renameFailed', `OpenCode did not rename the conversation: ${(why || String(stderr || err.message)).trim().slice(0, 300)}`));
+        });
+      });
+      const h = handles.get(id);
+      if (h) h.retitle(t);
+      fireChanged(id);
     },
 
     async deleteSession(id) {

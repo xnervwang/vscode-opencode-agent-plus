@@ -60,8 +60,9 @@ test('2.x: the client says it takes compaction updates, forms and child updates'
   assert.deepEqual(caps.elicitation, { form: {} });
   assert.deepEqual(caps.session, { compaction: {} });
   assert.equal(caps._meta['opencode/child-session-updates'], true);
-  assert.equal(server.permissionConfig(2).permissions.some((r) => r.action === 'question'), false, 'the question tool is not turned off on 2.x');
-  assert.equal(server.permissionConfig(1).permission.question, 'deny', '1.x has no way to ask, so it stays off there');
+  assert.equal(server.permissionConfig(server.parseVersion('2.4.1')).permissions.some((r) => r.action === 'question'), false, 'the question tool is not turned off on 2.4.1');
+  assert.equal(server.permissionConfig(server.parseVersion('2.3.0')).permissions.some((r) => r.action === 'question' && r.effect === 'deny'), true, 'an earlier 2.x was not tried, so it stays off');
+  assert.equal(server.permissionConfig(server.parseVersion('1.19.6')).permission.question, 'deny', '1.x has no way to ask, so it stays off there');
 });
 
 test('2.x: slash commands come right after session/new, and a /compact turn reports compacting and its summary', async (t) => {

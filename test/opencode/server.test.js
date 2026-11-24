@@ -78,3 +78,24 @@ test('extra config merges over ours: objects key by key, arrays appended', () =>
   const l3 = acpLaunch({ bin: 'b', version: v1, baseEnv: {}, permissions: false, config: { plugin: ['file:///p/index.js'] } });
   assert.deepEqual(JSON.parse(l3.env.OPENCODE_CONFIG_CONTENT), { plugin: ['file:///p/index.js'] });
 });
+
+test('the question tool is turned off unless the OpenCode found is 2.4.1 or later', () => {
+  const { permissionConfig, asksQuestions } = require('../../src/opencode/server');
+  const off = (cfg) => (cfg.permissions ? cfg.permissions.some((r) => r.action === 'question' && r.effect === 'deny') : cfg.permission.question === 'deny');
+  const at = (text) => parseVersion(text);
+  for (const t of ['2.4.1', '2.4.2', '2.5.0', '2.10.0', '3.0.0']) {
+    assert.equal(asksQuestions(at(t)), true, t);
+    assert.equal(off(permissionConfig(at(t))), false, `${t} asks through forms`);
+  }
+  for (const t of ['2.0.0', '2.3.9', '2.4.0', '1.19.6']) {
+    assert.equal(asksQuestions(at(t)), false, t);
+    assert.equal(off(permissionConfig(at(t))), true, `${t} keeps the tool off`);
+  }
+  assert.equal(off(permissionConfig(2)), true, 'a bare major says too little');
+  assert.equal(off(permissionConfig(null)), true);
+  const launched = (v) => JSON.parse(acpLaunch({ bin: 'b', version: v, baseEnv: {} }).env.OPENCODE_CONFIG_CONTENT);
+  assert.equal(launched(v2).permissions.some((r) => r.action === 'question'), false);
+  assert.deepEqual(launched(at('2.3.0')).permissions.at(-1), { action: 'question', resource: '*', effect: 'deny' });
+  assert.ok(launched(at('2.3.0')).permissions.some((r) => r.action === 'shell' && r.effect === 'ask'), 'the 2.x dialect still');
+  assert.equal(launched(v1).permission.question, 'deny');
+});

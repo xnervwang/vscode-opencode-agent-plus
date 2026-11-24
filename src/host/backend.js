@@ -10,7 +10,8 @@
  *   listSessions()               Promise<SessionInfo[]>
  *   onDidChangeSessions(fn)      { dispose }
  *   createSession(cwd, opts)     Promise of the new session object
- *   renameSession(id, title)     Promise; OpenCode over ACP refuses it
+ *   renameSession(id, title)     Promise; OpenCode 1 refuses it
+ *   canRename()                  whether renameSession can work here (OpenCode 2); loads the module, starts nothing
  *   deleteSession(id)            Promise
  *   session(id, { cwd })         Promise of the session object: id, cwd, title, status, waitingTool, waitingKind,
  *                                lastUserAt, lastReplyAt, on(listener) of AgentEvents, send(text, { images, files }?),
@@ -90,6 +91,12 @@ function createBackend({ options = {}, load } = {}) {
     listen() { try { hook(); } catch (_) { /* not available */ } },
     createSession: (cwd, opts) => call('createSession', cwd, opts || {}),
     renameSession: (id, title) => call('renameSession', id, title),
+    canRename: () => {
+      try {
+        const b = get();
+        return typeof b.canRename === 'function' ? b.canRename() === true : typeof b.renameSession === 'function';
+      } catch (_) { return false; }
+    },
     deleteSession: (id) => call('deleteSession', id),
     session: (id, opts) => call(typeof get().session === 'function' ? 'session' : 'openSession', id, opts || {}),
     isChild: (id) => { try { return !!made && typeof made.isChild === 'function' && made.isChild(id) === true; } catch (_) { return false; } },

@@ -120,3 +120,25 @@ test('age', () => {
   assert.equal(age(NOW - 400 * 86400000, NOW), '1y');
   assert.equal(age(0, NOW), '');
 });
+
+test('rename from a chat tab: the argument names the conversation through idOf, and the box starts at its title', async () => {
+  const vscode = createFakeVscode({ input: 'From the tab' });
+  const calls = [];
+  const tabUri = { scheme: 'opencodeplus-session', path: '/ses_tab' };
+  const view = new SessionsView({
+    vscode,
+    listSessions: async () => [],
+    rename: async (id, title) => calls.push([id, title]),
+    remove: async () => {},
+    idOf: (arg) => (arg === tabUri ? 'ses_tab' : arg === undefined ? 'ses_front' : ''),
+    titleOf: (id) => ({ ses_tab: 'Tab title', ses_front: 'Front title' }[id] || ''),
+  });
+  view.register();
+  const run = vscode.rec.registered.get(RENAME_COMMAND);
+  assert.equal(await run(tabUri), true);
+  assert.equal(vscode.rec.inputs[0].value, 'Tab title');
+  assert.equal(await run(undefined), true, 'with no argument, the tab in front');
+  assert.equal(vscode.rec.inputs[1].value, 'Front title');
+  assert.equal(await run({ scheme: 'file', path: '/x' }), false, 'a tab that is not a chat names none');
+  assert.deepEqual(calls, [['ses_tab', 'From the tab'], ['ses_front', 'From the tab']]);
+});

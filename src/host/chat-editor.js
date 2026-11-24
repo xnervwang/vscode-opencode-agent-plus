@@ -26,6 +26,11 @@ const page = (text) => `<!DOCTYPE html><html><head><meta charset="utf-8">
  *   focus(sessionId)         the panel came to the front
  *   busy(sessionId, pid)     another window runs it: offer to take it over; resolves true when this window may now
  *                            open it, and the tab then shows it
+ *   label(snapshot)          optional: the tab's title for the conversation's snapshot (its title with an envelope
+ *                            while a reply is unread); the title alone otherwise
+ *   iconFor(activity)        optional: the tab's icon for 'working', 'waiting' or 'stopped' ({ light, dark } Uris),
+ *                            or undefined to leave it
+ *   onDidChangeLook(fn)      optional: fires when the label or icon for the same state changes (the colour theme)
  *   log(line)                optional
  */
 class ChatEditorProvider {
@@ -66,15 +71,22 @@ class ChatEditorProvider {
       manager.seen(id);
       try { this.deps.focus(id); } catch (_) { /* nobody listening */ }
     };
-    /* The tab's title, and the page's when the conversation's own events did not bring it there. */
+    /* The tab's title and icon, and the page's title when the conversation's own events did not bring it there. */
+    let icon;
     const retitle = () => {
       const s = manager.snapshot(id);
-      if (!s || !s.title || panel.title === s.title) return;
-      panel.title = s.title;
-      if (view && typeof view.dispatch === 'function' && view.state && view.state.title !== s.title) view.dispatch({ type: 'title', title: s.title });
+      if (!s) return;
+      let label = s.title;
+      try { if (this.deps.label) label = this.deps.label(s) || s.title; } catch (_) { label = s.title; }
+      if (label && panel.title !== label) panel.title = label;
+      let next;
+      try { next = this.deps.iconFor ? this.deps.iconFor(s.activity) : undefined; } catch (_) { next = undefined; }
+      if (next && next !== icon) { icon = next; panel.iconPath = next; }
+      if (s.title && view && typeof view.dispatch === 'function' && view.state && view.state.title !== s.title) view.dispatch({ type: 'title', title: s.title });
     };
     retitle();
     subs.push(manager.onDidChange((e) => { if (e && e.sessionId === id) retitle(); }));
+    if (this.deps.onDidChangeLook) subs.push(this.deps.onDidChangeLook(retitle));
     subs.push(panel.onDidChangeViewState(front));
     subs.push(panel.onDidDispose(() => {
       for (const d of subs) { try { d.dispose(); } catch (_) { /* gone */ } }

@@ -46,9 +46,13 @@ class SessionsView {
    *   statusOf?: (meta: object) => ('working' | 'waiting' | 'idle'),
    *   rename: (id: string, title: string) => unknown,
    *   remove: (id: string) => unknown,
+   *   idOf?: (arg: unknown) => string,
+   *   titleOf?: (id: string) => string,
    *   vscode?: object,
    *   now?: () => number,
    * }} opts
+   * `idOf` names the conversation of a command argument that is not a row or an id (a chat tab's URI, or nothing for
+   * the tab in front); `titleOf` gives the title of one the list has not shown.
    */
   constructor(opts) {
     this.vscode = opts.vscode || require('vscode');
@@ -56,6 +60,8 @@ class SessionsView {
     this.statusOf = opts.statusOf || ((meta) => meta.status || 'idle');
     this.renameSession = opts.rename;
     this.removeSession = opts.remove;
+    this.idOf = typeof opts.idOf === 'function' ? opts.idOf : () => '';
+    this.titleOf = typeof opts.titleOf === 'function' ? opts.titleOf : () => '';
     this.now = opts.now || Date.now;
     this.last = [];
     this.treeView = null;
@@ -130,9 +136,19 @@ class SessionsView {
   }
 
   find(arg) {
-    const id = typeof arg === 'string' ? arg : arg && arg.id;
+    let id = typeof arg === 'string' ? arg : arg && typeof arg.id === 'string' ? arg.id : '';
+    let row = id && typeof arg === 'object' ? arg : null;
+    if (!id) {
+      try { id = String(this.idOf(arg) || ''); } catch (_) { id = ''; }
+      row = null;
+    }
     if (!id) return null;
-    return this.last.find((m) => m.id === id) || (typeof arg === 'object' ? arg : { id });
+    const known = this.last.find((m) => m.id === id);
+    if (known) return known;
+    if (row) return row;
+    let title = '';
+    try { title = String(this.titleOf(id) || ''); } catch (_) { title = ''; }
+    return { id, title };
   }
 
   async promptRename(arg) {

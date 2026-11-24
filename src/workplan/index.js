@@ -26,6 +26,8 @@ const NEEDS_V2 = 'The work plan needs OpenCode 2.';
    files of plan_common.py. */
 const SIDE_SUFFIXES = Object.freeze(['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz', '.images-told',
   '.compacted', '.briefed', '.injected']);
+/* What this extension itself keeps beside a plan: the latest reply for a steward (src/host/reply-file.js). */
+const OWN_SUFFIXES = Object.freeze(['.reply.json']);
 
 /* The plugin as it ships in this extension. */
 function sourceFile() {
@@ -149,13 +151,14 @@ function planPath(sessionId) {
 }
 
 /*
- * When the user deletes a conversation: its plan, the files the hooks keep beside it and its rows moved to closed/.
+ * When the user deletes a conversation: its plan, the files the hooks and this extension keep beside it and its rows
+ * moved to closed/.
  * Agent Plus only reads the plans folder, so nothing else clears them. Only names built from a session id of OpenCode's
  * shape are touched. Returns the names removed, relative to `dir`.
  */
 function removePlan(sessionId, dir = planDir()) {
   if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [];
-  const names = SIDE_SUFFIXES.map((s) => `${sessionId}${s}`).concat(path.join('closed', `${sessionId}.json`));
+  const names = [...SIDE_SUFFIXES, ...OWN_SUFFIXES].map((s) => `${sessionId}${s}`).concat(path.join('closed', `${sessionId}.json`));
   const removed = [];
   for (const name of names) {
     try { fs.unlinkSync(path.join(dir, name)); removed.push(name); } catch (_) { /* not there */ }
@@ -189,4 +192,5 @@ module.exports = {
   writeLauncher,
   removePlan,
   SIDE_SUFFIXES,
+  OWN_SUFFIXES,
 };

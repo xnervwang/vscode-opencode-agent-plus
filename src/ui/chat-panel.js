@@ -17,6 +17,10 @@
  * commands (commands(), `commands` events) and what a message may carry (attachments()) go the same way, as
  * 'commands' and 'caps'. The page asks for workspace files as @ is typed (`findFiles`) and for the editor's selection
  * (`selection`); both are the caller's, and without them the page offers neither.
+ *
+ * The plan bar above the input box draws Agent Plus's summary of the conversation's work plan (`planBar`, the caller's:
+ * src/host/plan-bar.js); the page loads Agent Plus's fragment for it (media/plan-bar.js), which brings its own style
+ * element, so the page's policy lets inline styles in. Without `planBar`, or with a null summary, there is no bar.
  */
 const path = require('path');
 const fs = require('fs');
@@ -86,6 +90,8 @@ class ChatPanel {
    *   onDidChangeState?: (head: object) => void,
    *   findFiles?: (query: string) => Promise<Array<{ path: string, rel: string, name: string }>>,
    *   selection?: { describe(): ({ label: string } | null), current(): object | null, onDidChange(fn: () => void): { dispose(): void } },
+   *   planBar?: { summary(): (object | null), onDidChange(fn: (summary: object | null) => void): { dispose(): void }, open(part: string): unknown },
+   *   onTimeZone?: (zone: string) => void,
    *   vscode?: object,
    *   now?: () => number,
    * }} opts
@@ -112,6 +118,8 @@ class ChatPanel {
     this.commands = this.read('commands', []);
     this.findFiles = typeof opts.findFiles === 'function' ? opts.findFiles : null;
     this.selection = opts.selection || null;
+    this.planBar = opts.planBar || null;
+    this.onTimeZone = typeof opts.onTimeZone === 'function' ? opts.onTimeZone : null;
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
     if (opts.model) state = vm.reduce(state, { type: 'ui.model', model: opts.model });
@@ -135,6 +143,7 @@ class ChatPanel {
       toOff(this.panel.onDidDispose(() => this.dispose())),
     ];
     if (this.selection) this.subs.push(toOff(this.selection.onDidChange(() => { if (this.ready) this.postSelection(); })));
+    if (this.planBar) this.subs.push(toOff(this.planBar.onDidChange((summary) => { if (this.ready) this.post({ type: 'planBar', summary: summary || null }); })));
   }
 
   html(webview, mdDir) {
@@ -148,7 +157,7 @@ class ChatPanel {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${src} data:; style-src ${src}; font-src ${src}; script-src ${src};">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${src} data:; style-src ${src} 'unsafe-inline'; font-src ${src}; script-src ${src};">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${media('chat.css')}">
 </head>
@@ -177,6 +186,7 @@ class ChatPanel {
 </footer>
 ${md}
 <script src="${media('composer.js')}"></script>
+<script src="${media('plan-bar.js')}"></script>
 <script src="${media('chat.js')}"></script>
 </body>
 </html>`;
@@ -234,6 +244,7 @@ ${md}
     this.postCommands();
     this.postCaps();
     this.postSelection();
+    this.postPlanBar();
     if (this.models || this.modelsError) this.postModels();
     else this.loadModels();
   }
@@ -271,6 +282,12 @@ ${md}
     let label = '';
     try { const d = this.selection && this.selection.describe(); label = d && d.label ? String(d.label) : ''; } catch (_) { /* none */ }
     this.post({ type: 'selection', label });
+  }
+
+  postPlanBar() {
+    let summary = null;
+    try { summary = this.planBar ? this.planBar.summary() || null : null; } catch (_) { summary = null; }
+    this.post({ type: 'planBar', summary });
   }
 
   /* contracts.js send extra from what the page sent: images it pasted, files it picked, selections it added. */
@@ -335,6 +352,10 @@ ${md}
     switch (msg.type) {
       case 'ready':
         this.ready = true;
+        /* The zone of the machine the page runs on, which is the reader's also over Remote-SSH. */
+        if (this.onTimeZone && typeof msg.tz === 'string' && msg.tz.length <= 64 && /^[A-Za-z0-9_+\-/]+$/.test(msg.tz)) {
+          try { this.onTimeZone(msg.tz); } catch (_) { /* the caller's */ }
+        }
         this.sendReset();
         break;
       case 'send': {
@@ -366,6 +387,9 @@ ${md}
       }
       case 'abort':
         Promise.resolve().then(() => this.conversation.abort()).catch((err) => this.showError(err));
+        break;
+      case 'planBarOpen':
+        if (this.planBar) Promise.resolve().then(() => this.planBar.open(msg.part === 'answer' ? 'answer' : 'plan')).catch((err) => this.showError(err));
         break;
       case 'permission':
         if (PERMISSION_DECISIONS.includes(msg.decision) && msg.requestId) {

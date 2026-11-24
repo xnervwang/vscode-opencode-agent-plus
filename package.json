@@ -118,9 +118,28 @@
       ],
       "view/item/context": [
         {
+          "command": "opencodePlus.renameConversation",
+          "when": "view == opencodePlus.sessions && viewItem =~ /^opencodePlus\\.session/ && opencodePlus.canRename",
+          "group": "1_edit@1"
+        },
+        {
           "command": "opencodePlus.deleteConversation",
           "when": "view == opencodePlus.sessions && viewItem == opencodePlus.session",
           "group": "9_delete@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "opencodePlus.renameConversation",
+          "when": "resourceScheme == opencodeplus-session && opencodePlus.canRename",
+          "group": "1_opencodePlus@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "opencodePlus.renameConversation",
+          "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canRename",
+          "group": "1_opencodePlus@1"
         }
       ],
       "commandPalette": [
@@ -171,6 +190,11 @@
           "default": true,
           "scope": "application",
           "markdownDescription": "Keep a work plan in each conversation on OpenCode 2: the plan goes with every message, and the model gets tools to change it. Used only while `#agentPlus.tokenMode#` is Custom."
+        },
+        "opencodePlus.planBar": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a bar above the input box with where the conversation's work plan stands, from Agent Plus. Click it to open the Work plan view."
         },
         "opencodePlus.conversationBrief": {
           "type": "boolean",

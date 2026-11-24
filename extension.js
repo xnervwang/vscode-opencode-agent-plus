@@ -16,6 +16,9 @@
  *   src/host/work-plan.js         the work plan plugin OpenCode loads, its Python, and the token mode's switches for it
  *   src/host/file-search.js       the workspace files the chat page's @ list offers
  *   src/host/selection.js         the editor selection the chat page can send along
+ *   src/host/plan-bar.js          the plan bar above each chat page's input box, from Agent Plus's summary
+ *   src/host/window-states.js     every window's open conversations, for Agent Plus's listAllConversations()
+ *   src/host/reply-file.js        each conversation's latest reply beside its plan, for a steward to read
  *
  * OPENCODE_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -34,14 +37,22 @@ const { createSessionsList } = require('./src/host/sessions-list');
 const { createProviderConfig } = require('./src/host/provider-config');
 const { historyFor } = require('./src/host/history');
 const { ChatEditorProvider } = require('./src/host/chat-editor');
-const { logoFiles } = require('./src/host/logo');
+const { logoFiles, tabIcons } = require('./src/host/logo');
+const marks = require('./src/shared/title-marks');
+const envelope = require('./src/shared/envelope');
 const ap = require('./src/host/agentplus-source');
 const { createWorkPlan } = require('./src/host/work-plan');
 const { createFileSearch } = require('./src/host/file-search');
 const { createSelectionTracker } = require('./src/host/selection');
+const { createPlanBar } = require('./src/host/plan-bar');
+const { createWindowStates } = require('./src/host/window-states');
+const { createReplyFiles } = require('./src/host/reply-file');
 const workplan = require('./src/workplan');
 
 const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
+/* Set once the OpenCode found can rename conversations (2.x); the Rename entries show only then. */
+const CONTEXT_RENAME = `${brand.prefix}.canRename`;
+const ZONE_KEY = `${brand.prefix}.timeZone`;
 const TAKE_OVER = 'Take over here';
 const TAKE_ANYWAY = 'Take over anyway';
 const BUSY_TEXT = 'Another VS Code window has this conversation open, or had it open before it lost its connection '
@@ -92,9 +103,19 @@ function activate(context) {
   const settings = createProviderConfig({ vscode, secrets: context.secrets, restart: (o) => backend.restart(plan.launch(o)), log });
   subs.push(settings);
   backend = createBackend({ options: () => ({ ...plan.launch(settings.options()), root: paths.root(), log }) });
-  /* Once OpenCode has started here its version is known; OpenCode 1 keeps no work plan, which is said once. */
+  /* Whether the OpenCode found can rename conversations, for the Rename entries; known once the list or a conversation
+     has started it. */
+  let renameKnown = false;
+  const noteRename = () => {
+    if (renameKnown) return;
+    renameKnown = true;
+    Promise.resolve().then(() => vscode.commands.executeCommand('setContext', CONTEXT_RENAME, backend.canRename())).catch(() => { renameKnown = false; });
+  };
+  /* Once a conversation has started OpenCode here its version is known; OpenCode 1 keeps no work plan, which is said
+     once. */
   let versionKnown = false;
   const noteVersion = () => {
+    noteRename();
     if (versionKnown) return;
     versionKnown = true;
     Promise.resolve().then(() => backend.detect()).then((found) => plan.checkVersion(found.version), () => { versionKnown = false; });
@@ -117,6 +138,8 @@ function activate(context) {
     }).catch(() => {});
   };
 
+  /* Each conversation's latest reply, beside its plan, for a steward to read. */
+  const replies = createReplyFiles({ dir: () => workplan.planDir(), log });
   let manager = null;
   manager = createSessionManager({
     locks,
@@ -135,6 +158,7 @@ function activate(context) {
       });
       conv.saved = historyFor(events);
       conv.on(onAuth);
+      replies.track(id, conv, events);
       return conv;
     },
     isLooking: (id) => {
@@ -144,6 +168,18 @@ function activate(context) {
     log,
   });
   subs.push(manager);
+
+  /* The plan bar of each chat page, fed by Agent Plus once this extension is registered there. */
+  const planBar = createPlanBar({
+    on: () => vscode.workspace.getConfiguration(brand.prefix).get('planBar', true) !== false,
+    run: (command, arg) => vscode.commands.executeCommand(command, arg),
+    log,
+  });
+  subs.push(planBar, vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration(`${brand.prefix}.planBar`)) planBar.settingChanged(); }));
+
+  /* The reader's zone as the last chat page to load reported it. */
+  const memo = context.globalState && typeof context.globalState.get === 'function' ? context.globalState : null;
+  let timeZone = memo ? String(memo.get(ZONE_KEY, '') || '') : '';
 
   /* Shared by the chat tabs; they list files only while @ is typed and follow the selection only while open. */
   const files = createFileSearch({ vscode });
@@ -166,6 +202,16 @@ function activate(context) {
       modelInfo: (providerId, modelId) => models.cached(providerId ? `${providerId}/${modelId}` : modelId) || models.cached(modelId),
       findFiles: (vscode.workspace.workspaceFolders || []).some((f) => f.uri.scheme === 'file') ? (query) => files.search(query) : undefined,
       selection,
+      onTimeZone: (zone) => {
+        if (zone === timeZone) return;
+        timeZone = zone;
+        if (memo) Promise.resolve(memo.update(ZONE_KEY, zone)).catch(() => {});
+      },
+      planBar: {
+        summary: () => planBar.summaryOf(entry.id),
+        onDidChange: (fn) => planBar.follow(entry.id, fn),
+        open: (part) => planBar.open(entry.id, part),
+      },
       vscode,
     });
     for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);
@@ -228,15 +274,30 @@ function activate(context) {
     return openSession(s.id);
   }
 
+  const activeTab = () => { const g = vscode.window.tabGroups.activeTabGroup; return g ? g.activeTab : undefined; };
   const chatTabs = (id) => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
     .filter((t) => ap.isChatTab(t) && ap.sessionOfUri(t.input.uri) === id);
 
+  /* A chat tab says what its conversation is doing by the dot on its icon, and a reply not read yet by an envelope
+     after its title. */
+  let icons;
+  const iconFor = (activity) => {
+    if (icons === undefined) {
+      const files = tabIcons(context.extensionPath, context.globalStorageUri.fsPath);
+      icons = files ? Object.fromEntries(Object.entries(files).map(([k, v]) => [k, { light: vscode.Uri.file(v.light), dark: vscode.Uri.file(v.dark) }])) : null;
+    }
+    if (!icons) return undefined;
+    return icons[activity === 'working' || activity === 'waiting' ? activity : 'stopped'];
+  };
   let link = null;
   const editor = new ChatEditorProvider({
     manager,
     show,
     focus: (id) => { if (link) link.focus(id); },
     busy: (id) => takeOver(id),
+    label: (s) => marks.withMarks(s.title, { unseen: s.unseen, envelope: envelope.envelope(vscode) }),
+    iconFor,
+    onDidChangeLook: (fn) => envelope.onEnvelopeChange(vscode, fn),
     log,
   });
   subs.push(vscode.window.registerCustomEditorProvider(ap.VIEW_TYPE, editor, { supportsMultipleEditorsPerDocument: false }));
@@ -251,6 +312,7 @@ function activate(context) {
     backend: {
       ...backend,
       listSessions: () => backend.listSessions().then((rows) => {
+        noteRename();
         for (const r of rows) if (r.cwd) folders.set(r.id, r.cwd);
         return rows.filter((r) => inScope(r.cwd));
       }),
@@ -273,8 +335,16 @@ function activate(context) {
     listSessions: () => listed.list().catch((e) => { if (e && e.name === 'OpenCodeError') throw new Error(e.message); throw e; }).finally(() => backend.listen()),
     onDidChange: (fn) => listChanged.event(fn),
     statusOf: (meta) => listed.statusOf(meta),
-    rename: (id, title) => listed.rename(id, title),
+    rename: (id, title) => listed.rename(id, marks.withoutMarks(title)),
     remove: (id) => listed.remove(id),
+    /* From a chat tab's menus the argument is its URI; with none, the chat tab in front. */
+    idOf: (arg) => {
+      if (arg instanceof vscode.Uri) return ap.sessionOfUri(arg);
+      if (arg !== undefined) return '';
+      const tab = activeTab();
+      return ap.isChatTab(tab) ? ap.sessionOfUri(tab.input.uri) : '';
+    },
+    titleOf: (id) => { const s = manager.snapshot(id); return s ? s.title : ''; },
     vscode,
   });
   subs.push(sessionsView.register(), sessionsView);
@@ -318,12 +388,18 @@ function activate(context) {
     openHere: (id) => openSession(id),
     trusted: () => vscode.workspace.isTrusted,
     hidden: (id) => backend.isChild(id),
+    allConversations: () => windows.readAll(),
+    timeZone: () => timeZone,
     log,
   });
   subs.push(link, manager.onDidChange(() => link.changed()), plan.onDidChangeNotice(() => link.noticeChanged()));
+  /* What this window has open, for the other windows' listAllConversations(); rewritten a moment after it changes. */
+  const windows = createWindowStates({ dir: path.join(paths.root(), 'windows'), list: () => link.conversations(), log });
+  let stateSoon = null;
+  const stateChanged = () => { if (!stateSoon) stateSoon = setTimeout(() => { stateSoon = null; windows.write(); }, 250); };
+  subs.push(manager.onDidChange(stateChanged), { dispose: () => { clearTimeout(stateSoon); windows.dispose(); } });
   /* The token mode decides whether the conversations keep a brief, which Agent Plus reads with their list. */
   subs.push(vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration('agentPlus.tokenMode')) link.changed(); }));
-  const activeTab = () => { const g = vscode.window.tabGroups.activeTabGroup; return g ? g.activeTab : undefined; };
   subs.push(vscode.window.tabGroups.onDidChangeTabs(() => link.tabsChanged(activeTab())));
   const agentPlus = { accepted: false, code: 'pending', reason: '' };
   const registered = ap.register(link.source, { log }).then((r) => {
@@ -331,6 +407,7 @@ function activate(context) {
     if (r.registration) {
       if (running) running.registration = r.registration; else r.registration.dispose();
       link.refocus();
+      planBar.attach(r.core);
     }
     return vscode.commands.executeCommand('setContext', CONTEXT_AGENT_PLUS, r.accepted);
   }).catch((e) => log(`Agent Plus registration failed: ${(e && e.message) || e}`));
@@ -339,7 +416,8 @@ function activate(context) {
   log(`activated ${context.extension ? context.extension.packageJSON.version : ''}`.trim());
   if (process.env.OPENCODE_PLUS_TEST_CONTROL) {
     return { test: { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
-      source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready,
+      source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready, windowFile: windows.file,
+      send: (id, text) => manager.send(id, text), snapshot: (id) => manager.snapshot(id), replyFile: (id) => replies.fileOf(id),
       told: () => told.slice(), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }) } };
   }
   return undefined;

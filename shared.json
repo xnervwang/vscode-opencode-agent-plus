@@ -90,6 +90,21 @@
       "path": "opencode-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/opencode/plan_agent.py",
       "sha256": "591d2a378a1f7ccaba8f61f5b15e3a0f17bd695f03c76632273f024a79911bbb"
+    },
+    {
+      "path": "src/shared/title-marks.js",
+      "from": "src/title-marks.js",
+      "sha256": "6590ac3e3b8f6e562bb6a73e00cb039956b17a5dcb311057388288a49a8c2ccb"
+    },
+    {
+      "path": "src/shared/envelope.js",
+      "from": "src/envelope.js",
+      "sha256": "300e433bd5dec1c531c01fa3f4777024f81870495e7df3fd87c463705806b50b"
+    },
+    {
+      "path": "media/plan-bar.js",
+      "from": "shared/page/plan-bar.js",
+      "sha256": "d671cb5e0d37ba15303546ff404daf26158a24570b540316232fcad887aaf87a"
     }
   ]
 }

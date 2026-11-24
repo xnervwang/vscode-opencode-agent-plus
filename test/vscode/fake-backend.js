@@ -49,6 +49,7 @@ function createOpenCode() {
       if (ev.type === 'permissionSettled' && --asking <= 0) { c.status = 'working'; c.waitingTool = ''; }
       if (ev.type === 'userMessage') { s.lastUserAt = c.lastUserAt = ev.at || Date.now(); if (!s.title) s.title = c.title = String(ev.text).slice(0, 60); }
       if (ev.type === 'turnEnd') { s.lastReplyAt = c.lastReplyAt = ev.at || Date.now(); c.status = 'idle'; }
+      if (ev.type === 'title') s.title = ev.title;
       write(db);
       if (['turnStart', 'turnEnd', 'permission', 'permissionSettled', 'userMessage'].includes(ev.type)) changed(saved.id);
     });
@@ -85,7 +86,16 @@ function createOpenCode() {
       if (!saved) throw new Error(`no session ${id}`);
       return handle(saved);
     },
-    renameSession: () => Promise.reject(Object.assign(new Error('OpenCode has no way to rename a conversation over ACP.'), { code: 'unsupported' })),
+    canRename: () => true,
+    async renameSession(id, title) {
+      const db = read();
+      if (!db.sessions[id]) throw new Error(`no session ${id}`);
+      db.sessions[id].title = String(title);
+      write(db);
+      const c = live.get(id);
+      if (c) { c.title = String(title); c.emit({ type: 'title', title: String(title) }); }
+      changed(id);
+    },
     async deleteSession(id) { const c = live.get(id); if (c) c.dispose(); const db = read(); delete db.sessions[id]; write(db); changed(id); },
     listModels: () => MODELS,
     defaultModel: () => MODELS[0],
