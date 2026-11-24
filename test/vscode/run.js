@@ -43,8 +43,16 @@ const has = (name) => { const i = args.indexOf(name); if (i < 0) return false; a
 const LOCAL = has('--local');
 const EXE = flag('--vscode');
 const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-plus-ui-${Date.now()}`)));
-/* 1.4.0 or later: the plan bar needs Agent Plus's planSummary. */
-const AGENT_PLUS = flag('--agent-plus', '');
+/* 1.4.0 or later: the plan bar needs Agent Plus's planSummary. Without --agent-plus, the newest package built in a
+   vscode-agent-plus checkout beside this repository. */
+function siblingAgentPlus() {
+  const dir = path.join(ROOT, '..', 'vscode-agent-plus', 'build');
+  const found = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^xnervwang\.agent-plus-[\d.]+\.vsix$/.test(f)) : [];
+  const v = (f) => f.match(/([\d.]+)\.vsix$/)[1].split('.').map(Number);
+  found.sort((a, b) => { const x = v(a), y = v(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; });
+  return found.length ? path.join(dir, found[found.length - 1]) : '';
+}
+const AGENT_PLUS = flag('--agent-plus') || siblingAgentPlus();
 const BACKEND = flag('--backend', 'fake');
 const OPENCODE = flag('--opencode');
 const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-bedrock/us.xai.grok-4.7');
@@ -124,7 +132,7 @@ function stopLeftovers(stateDir) {
 async function main() {
   if (!LOCAL && process.env.CI !== 'true') throw new Error('runs only where CI=true, or with --local: it starts VS Code and installs extensions');
   if (!EXE || !fs.existsSync(EXE)) throw new Error('--vscode <executable> is needed');
-  if (!fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix at ${AGENT_PLUS}`);
+  if (!AGENT_PLUS || !fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix${AGENT_PLUS ? ` at ${AGENT_PLUS}` : ' beside this repository'}; pass --agent-plus <.vsix>`);
   const playwright = need('playwright-core');
 
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-ui-')));
