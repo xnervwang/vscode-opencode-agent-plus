@@ -1,0 +1,127 @@
+{
+  "name": "new-agent",
+  "displayName": "New Agent",
+  "description": "A coding agent for models on Amazon Bedrock, with work plans and conversation overviews.",
+  "version": "0.0.1",
+  "publisher": "xnervwang",
+  "license": "BSD-3-Clause",
+  "private": true,
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In Restricted Mode the agent cannot read or change files or run commands."
+    }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "newAgent",
+          "title": "New Agent",
+          "icon": "images/sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "newAgent": [
+        {
+          "id": "newAgent.sessions",
+          "name": "Conversations"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "newAgent.newConversation",
+        "title": "New Conversation",
+        "category": "New Agent",
+        "icon": "$(add)"
+      },
+      {
+        "command": "newAgent.openConversation",
+        "title": "Open Conversation",
+        "category": "New Agent"
+      },
+      {
+        "command": "newAgent.setBedrockApiKey",
+        "title": "Set Amazon Bedrock API Key",
+        "category": "New Agent"
+      },
+      {
+        "command": "newAgent.clearBedrockApiKey",
+        "title": "Clear Amazon Bedrock API Key",
+        "category": "New Agent"
+      },
+      {
+        "command": "newAgent.testConnection",
+        "title": "Test Model Connection",
+        "category": "New Agent"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "newAgent.newConversation",
+          "when": "view == newAgent.sessions",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "New Agent",
+      "properties": {
+        "newAgent.bedrock.region": {
+          "type": "string",
+          "default": "us-east-1",
+          "description": "AWS Region for Amazon Bedrock."
+        },
+        "newAgent.bedrock.auth": {
+          "type": "string",
+          "enum": [
+            "credentials",
+            "apiKey"
+          ],
+          "default": "credentials",
+          "enumDescriptions": [
+            "AWS credentials from the standard chain: an AWS profile, environment variables or the machine's role.",
+            "An Amazon Bedrock API key, set with the Set Amazon Bedrock API Key command."
+          ],
+          "description": "How to sign in to Amazon Bedrock."
+        },
+        "newAgent.bedrock.profile": {
+          "type": "string",
+          "default": "",
+          "description": "AWS profile to use with credentials sign-in. Empty uses the default chain."
+        },
+        "newAgent.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model id for new conversations, such as xai.grok-4.7. Empty asks on first use."
+        }
+      }
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xnervwang/vscode-new-agent"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock": "3.1176.0",
+    "@aws-sdk/client-bedrock-runtime": "3.1176.0",
+    "@aws-sdk/credential-providers": "3.1176.0"
+  }
+}

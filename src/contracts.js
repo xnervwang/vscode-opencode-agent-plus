@@ -1,0 +1,164 @@
+// BSD 3-Clause License
+// Copyright (c) 2026, Xnerv Wang
+// All rights reserved.
+
+'use strict';
+/*
+ * Shapes shared by the provider layer, the agent core and the UI. Only JSDoc and frozen constants live here, so every
+ * module can require it without pulling in the AWS SDK or the vscode API.
+ */
+
+/**
+ * A conversation message in the provider-neutral form the agent keeps. Adapters convert to and from each API.
+ * @typedef {{ role: 'user' | 'assistant', content: ContentBlock[] }} Message
+ */
+
+/**
+ * @typedef {(
+ *   { type: 'text', text: string } |
+ *   { type: 'image', mediaType: string, data: string } |
+ *   { type: 'toolUse', id: string, name: string, input: object } |
+ *   { type: 'toolResult', toolUseId: string, content: Array<{ type: 'text', text: string } | { type: 'image', mediaType: string, data: string }>, isError?: boolean } |
+ *   { type: 'reasoning', text: string, providerId?: string, opaque?: unknown }
+ * )} ContentBlock
+ * `image.data` is base64. `reasoning.opaque` is whatever the provider must get back unchanged (a signature, encrypted
+ * content); it is only sent back to the provider named by `providerId` and dropped for any other.
+ */
+
+/**
+ * @typedef {{ name: string, description: string, inputSchema: object }} ToolSpec  JSON Schema for the input.
+ */
+
+/**
+ * @typedef {{
+ *   model: ModelInfo,
+ *   system: Array<{ text: string, cache?: boolean }>,
+ *   messages: Message[],
+ *   tools: ToolSpec[],
+ *   maxOutputTokens?: number,
+ *   effort?: 'low' | 'medium' | 'high',
+ *   cacheLastMessage?: boolean
+ * }} ChatRequest
+ * `cache: true` on a system part and `cacheLastMessage` mark prompt-cache points; adapters drop them where unsupported.
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   invokeId: string,
+ *   name: string,
+ *   vendor: string,
+ *   providerId: string,
+ *   contextWindow: number,
+ *   maxOutputTokens: number,
+ *   supports: {
+ *     tools: boolean, parallelTools: boolean, images: boolean, documents: boolean,
+ *     temperature: boolean, promptCache: boolean, reasoning: 'none' | 'effort' | 'always'
+ *   },
+ *   pricing?: { input: number, output: number, cacheRead?: number, cacheWrite?: number },
+ *   known: boolean
+ * }} ModelInfo
+ * `invokeId` is what the API is called with (for Bedrock, the inference profile id when the model needs one).
+ * Prices are USD per million tokens. `known` is false when the numbers are defaults rather than from the catalog.
+ */
+
+/**
+ * @typedef {(
+ *   { type: 'text', delta: string } |
+ *   { type: 'reasoning', delta: string, opaque?: unknown } |
+ *   { type: 'toolUseStart', index: number, id: string, name: string } |
+ *   { type: 'toolUseDelta', index: number, inputDelta: string } |
+ *   { type: 'toolUseEnd', index: number } |
+ *   { type: 'usage', input: number, output: number, cacheRead?: number, cacheWrite?: number } |
+ *   { type: 'stop', reason: StopReason } |
+ *   { type: 'error', error: ProviderError }
+ * )} StreamEvent
+ */
+
+/** @typedef {'endTurn' | 'toolUse' | 'maxTokens' | 'refused' | 'reasoningOnly'} StopReason */
+
+/**
+ * @typedef {(
+ *   { kind: 'auth', message: string } |
+ *   { kind: 'permission', message: string, action?: string } |
+ *   { kind: 'modelNotEnabled', message: string } |
+ *   { kind: 'throttled', message: string, retryAfterMs?: number } |
+ *   { kind: 'contextTooLong', message: string } |
+ *   { kind: 'badRequest', message: string, field?: string } |
+ *   { kind: 'refused', message: string } |
+ *   { kind: 'unavailable', message: string } |
+ *   { kind: 'aborted', message: string }
+ * )} ProviderError
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   label: string,
+ *   checkAuth(signal?: AbortSignal): Promise<{ ok: boolean, detail: string }>,
+ *   listModels(signal?: AbortSignal): Promise<ModelInfo[]>,
+ *   stream(req: ChatRequest, signal?: AbortSignal): AsyncIterable<StreamEvent>
+ * }} ModelProvider
+ */
+
+/**
+ * A tool the agent can call. `run` gets the parsed input and a context; it never throws for an ordinary failure, it
+ * returns `isError: true` with a message the model can read.
+ * @typedef {{
+ *   spec: ToolSpec,
+ *   needsPermission(input: object, ctx: ToolContext): PermissionRequest | null,
+ *   run(input: object, ctx: ToolContext): Promise<{ content: string, isError?: boolean, display?: object }>
+ * }} Tool
+ */
+
+/**
+ * @typedef {{ cwd: string, signal: AbortSignal, sessionId: string }} ToolContext
+ */
+
+/**
+ * @typedef {{
+ *   kind: 'edit' | 'write' | 'command' | 'read-outside',
+ *   tool: string,
+ *   summary: string,
+ *   detail?: string,
+ *   path?: string,
+ *   command?: string,
+ *   diff?: { path: string, before: string, after: string }
+ * }} PermissionRequest
+ */
+
+/** @typedef {'allowOnce' | 'allowSession' | 'deny'} PermissionDecision */
+
+/**
+ * Events the agent core emits for one conversation; the UI draws from these and nothing else.
+ * @typedef {(
+ *   { type: 'turnStart', turnId: string, at: number } |
+ *   { type: 'userMessage', text: string, at: number } |
+ *   { type: 'text', delta: string } |
+ *   { type: 'reasoning', delta: string } |
+ *   { type: 'toolCall', id: string, name: string, input: object, at: number } |
+ *   { type: 'toolResult', id: string, content: string, isError: boolean, display?: object, at: number } |
+ *   { type: 'permission', requestId: string, request: PermissionRequest } |
+ *   { type: 'permissionSettled', requestId: string, decision: PermissionDecision } |
+ *   { type: 'usage', input: number, output: number, cacheRead?: number, cacheWrite?: number, contextUsed: number, costUsd?: number } |
+ *   { type: 'turnEnd', turnId: string, reason: StopReason | 'aborted' | 'error', at: number, error?: ProviderError } |
+ *   { type: 'title', title: string }
+ * )} AgentEvent
+ */
+
+/**
+ * One line of a session file (`<sessionsDir>/<id>.jsonl`), appended in order.
+ * @typedef {(
+ *   { kind: 'meta', format: 1, id: string, cwd: string, createdAt: number, providerId: string, modelId: string, title?: string } |
+ *   { kind: 'message', at: number, message: Message } |
+ *   { kind: 'usage', at: number, input: number, output: number, cacheRead?: number, cacheWrite?: number, costUsd?: number } |
+ *   { kind: 'title', at: number, title: string } |
+ *   { kind: 'model', at: number, providerId: string, modelId: string }
+ * )} SessionRecord
+ */
+
+const STOP_REASONS = Object.freeze(['endTurn', 'toolUse', 'maxTokens', 'refused', 'reasoningOnly']);
+const ERROR_KINDS = Object.freeze(['auth', 'permission', 'modelNotEnabled', 'throttled', 'contextTooLong', 'badRequest', 'refused', 'unavailable', 'aborted']);
+const PERMISSION_DECISIONS = Object.freeze(['allowOnce', 'allowSession', 'deny']);
+
+module.exports = { STOP_REASONS, ERROR_KINDS, PERMISSION_DECISIONS };
