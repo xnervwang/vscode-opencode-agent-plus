@@ -8,9 +8,10 @@
  * sends back what the user does. It keeps no conversation state of its own beyond the draft in the input, which
  * survives the page being unloaded while hidden.
  *
- * Messages in:  reset { items, head }, update { items, head }, models { models, current, error }; each carries the
+ * Messages in:  reset { items, head }, update { items, head }, models { models, current, error },
+ *               options { options: [{ id, name, value, values: [{ value, name, description? }] }] }; each carries the
  *               extension host's `now`.
- * Messages out: ready, send, abort, permission, viewDiff, setModel, reloadModels, copy, openLink.
+ * Messages out: ready, send, abort, permission, viewDiff, setModel, setOption, reloadModels, copy, openLink.
  */
 (function () {
   const api = acquireVsCodeApi();
@@ -26,6 +27,8 @@
   const statusEl = $('status');
   const queuedEl = $('queued');
   const modelSel = $('model');
+  /* The settings shown next to the model, by the id the conversation's options() gives them. */
+  const optionSels = { mode: $('mode'), effort: $('effort') };
   const ring = $('ring');
   const titleEl = $('title');
   const ringFill = ring.querySelector('.fill');
@@ -262,6 +265,7 @@
         if (item.contextUsed) parts.push(`Context: ${item.contextUsed.toLocaleString('en-US')} tokens` +
           (item.contextWindow ? ` of ${item.contextWindow.toLocaleString('en-US')}` : ''));
         if (item.modelId) parts.push(`Model: ${item.modelId}`);
+        if (item.effort) parts.push(`Effort: ${item.effort}`);
         entry.el.title = parts.join('\n');
         break;
       }
@@ -387,6 +391,33 @@
     }
   });
 
+  /* ---------- mode and effort ---------- */
+
+  function applyOptions(list) {
+    const byId = new Map((Array.isArray(list) ? list : []).map((o) => [o.id, o]));
+    for (const [id, sel] of Object.entries(optionSels)) {
+      const o = byId.get(id);
+      const values = o && Array.isArray(o.values) ? o.values : [];
+      sel.hidden = !values.length;
+      if (!values.length) { sel.replaceChildren(); continue; }
+      sel.replaceChildren(...values.map((v) => {
+        const opt = option(v.value, v.name || v.value);
+        if (v.description) opt.title = v.description;
+        return opt;
+      }));
+      sel.value = o.value;
+      sel.dataset.current = o.value;
+      const shown = values.find((v) => v.value === o.value);
+      sel.title = `${o.name || id}: ${shown ? shown.name : o.value}`;
+    }
+  }
+
+  for (const [id, sel] of Object.entries(optionSels)) {
+    sel.addEventListener('change', () => {
+      if (sel.value && sel.value !== sel.dataset.current) api.postMessage({ type: 'setOption', id, value: sel.value });
+    });
+  }
+
   /* ---------- composer ---------- */
 
   function autosize() {
@@ -484,6 +515,8 @@
       if (wasAtBottom) scrollEnd();
     } else if (m.type === 'models') {
       applyModels(m);
+    } else if (m.type === 'options') {
+      applyOptions(m.options);
     }
   });
 

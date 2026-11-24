@@ -17,6 +17,8 @@
  */
 
 const MAX_SHOWN = 20000;
+/* Such a turn starts when a background task finishes, or when a subagent running in the background asks for permission. */
+const UNSOLICITED_NOTE = 'OpenCode went on without a message from you, for a background task (a subagent or a command).';
 const REGION_PREFIX = /^(us|eu|apac|ap|ca|jp|au|us-gov|global)\./;
 
 function initialState() {
@@ -85,7 +87,7 @@ function figuresText(f) {
   if (f.contextUsed > 0 && f.contextPct != null) parts.push(`ctx ${f.contextPct}%`);
   else if (f.contextUsed > 0) parts.push(`ctx ${fmtTokens(f.contextUsed)}`);
   if (f.costUsd != null) parts.push(fmtCost(f.costUsd));
-  if (f.model) parts.push(f.model);
+  if (f.model) parts.push(f.effort ? `${f.model} ${f.effort}` : f.model);
   return parts.filter(Boolean).join(' · ');
 }
 
@@ -190,7 +192,7 @@ function settle(s) {
   return { ...s, status: statusOf(s) };
 }
 
-function startTurn(s, id, at) {
+function startTurn(s, id, at, effort) {
   const model = s.model;
   return settle({
     ...s,
@@ -199,6 +201,7 @@ function startTurn(s, id, at) {
     turn: {
       id: id || `t${s.seq + 1}`,
       startedAt: at,
+      effort: typeof effort === 'string' ? effort : '',
       modelId: model ? model.id : '',
       contextWindow: model ? model.contextWindow || 0 : 0,
       tools: {},
@@ -253,6 +256,7 @@ function endTurn(s, ev, at) {
     costUsd: s.costKnown ? s.costUsd : null,
     model: shortModel(turn.modelId),
     modelId: turn.modelId,
+    effort: turn.effort || '',
     reason: ev.reason || 'endTurn',
   };
   figures.text = figuresText(figures);
@@ -273,7 +277,10 @@ function reduce(s, ev, now) {
       if (typeof ev.modelId === 'string' && ev.modelId && (!s.model || s.model.id !== ev.modelId)) {
         s = { ...s, model: { id: ev.modelId, name: ev.modelId, vendor: '', contextWindow: 0 } };
       }
-      return startTurn(s, ev.turnId, at);
+      s = startTurn(s, ev.turnId, at, ev.effort);
+      /* A turn the agent began itself has no user message to explain the reply that follows. */
+      if (ev.unsolicited === true) s = append(s, { kind: 'notice', turn: s.turn.id, at, level: 'info', text: UNSOLICITED_NOTE }).s;
+      return s;
 
     case 'userMessage': {
       /* Text a plugin added for the model to read, not something the user wrote. */
@@ -364,6 +371,8 @@ function reduce(s, ev, now) {
     }
 
     case 'retry':
+      /* Attempt 0: the retry has started, so the countdown goes. */
+      if (!(ev.attempt > 0)) return { ...s, retry: null };
       return {
         ...s,
         retry: {

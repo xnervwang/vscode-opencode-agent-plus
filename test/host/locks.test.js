@@ -62,6 +62,58 @@ test('release and releaseAll remove only what this process holds', () => {
   assert.deepStrictEqual(locks.held(), []);
 });
 
+test('a holder asked to let go stops the conversation, releases and answers; the asker then takes it', async (t) => {
+  const dir = tmp();
+  const holder = createLocks({ dir, pid: 111, alive: () => true });
+  t.after(() => holder.dispose());
+  const asked = [];
+  holder.onTakeover(async (id, req) => { asked.push([id, req.pid]); await new Promise((r) => setTimeout(r, 20)); });
+  assert.deepStrictEqual(holder.acquire(ID), { ok: true });
+  const asker = createLocks({ dir, pid: 222, alive: (pid) => pid === 111 });
+  assert.strictEqual(asker.holder(ID), 111);
+  const outcome = await asker.requestTakeover(ID, { timeoutMs: 5000 });
+  assert.strictEqual(outcome, 'released');
+  assert.deepStrictEqual(asked, [[ID, 222]]);
+  assert.deepStrictEqual(holder.held(), [], 'the holder no longer has it');
+  assert.deepStrictEqual(asker.acquire(ID), { ok: true });
+  assert.deepStrictEqual(fs.readdirSync(dir), [`${ID}.lock`], 'the request and the answer are cleaned up');
+});
+
+test('a holder that does not answer times out; force takes the lock anyway', async () => {
+  const dir = tmp();
+  createLocks({ dir, pid: 111, alive: () => true, watch: () => ({ close() {} }) }).acquire(ID);
+  const asker = createLocks({ dir, pid: 222, alive: (pid) => pid === 111 });
+  const started = Date.now();
+  assert.strictEqual(await asker.requestTakeover(ID, { timeoutMs: 150 }), 'timeout');
+  assert.ok(Date.now() - started >= 140);
+  assert.deepStrictEqual(asker.acquire(ID), { ok: false, pid: 111 });
+  assert.deepStrictEqual(asker.acquire(ID, { force: true }), { ok: true });
+  assert.strictEqual(JSON.parse(fs.readFileSync(asker.file(ID), 'utf8')).pid, 222);
+  assert.deepStrictEqual(fs.readdirSync(dir), [`${ID}.lock`]);
+  assert.strictEqual(await createLocks({ dir, pid: 333, alive: () => false }).requestTakeover(ID), 'free', 'no live holder: nothing to ask');
+});
+
+test('the folder is watched only while a lock is held, and old or own requests are ignored', async () => {
+  const dir = tmp();
+  const watches = [];
+  const watch = (d, fn) => { const w = { fn, closed: false, close() { w.closed = true; } }; watches.push(w); return w; };
+  const locks = createLocks({ dir, pid: 111, alive: () => true, watch });
+  const asked = [];
+  locks.onTakeover((id) => { asked.push(id); });
+  assert.strictEqual(watches.length, 0);
+  locks.acquire(ID);
+  assert.strictEqual(watches.length, 1);
+  fs.writeFileSync(path.join(dir, `${ID}.takeover`), JSON.stringify({ pid: 111, at: Date.now() }));
+  watches[0].fn('rename', `${ID}.takeover`);
+  fs.writeFileSync(path.join(dir, `${ID}.takeover`), JSON.stringify({ pid: 222, at: Date.now() - 120000 }));
+  watches[0].fn('rename', `${ID}.takeover`);
+  await new Promise((r) => setImmediate(r));
+  assert.deepStrictEqual(asked, [], "its own request and one left behind long ago are not answered");
+  assert.deepStrictEqual(locks.held(), [ID]);
+  locks.release(ID);
+  assert.strictEqual(watches[0].closed, true);
+});
+
 test('processAlive', () => {
   assert.strictEqual(processAlive(process.pid), true);
   assert.strictEqual(processAlive(0), false);

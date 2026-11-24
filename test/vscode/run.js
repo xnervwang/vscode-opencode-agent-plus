@@ -11,7 +11,9 @@
  * under xvfb-run and goes through the steps below, saving a screenshot of each to <out>/shots with a look.json that
  * test/vscode/LOOK.md explains. `fake` (the default) puts test/vscode/fake-backend.js behind the chat; `opencode` uses
  * the real backend with the OpenCode at --opencode and the user's AWS profile `self`, for a run against a real model.
- * With OpenCode 2 the model also adds a row to the work plan with the plugin's tool, Agent Plus's Work plan view shows it,
+ * With OpenCode 2 the page's mode and effort pickers are switched and the next turns checked against what OpenCode
+ * recorded, a subagent's session stays out of the list while the turn OpenCode starts when it finishes shows in the page,
+ * the model adds a row to the work plan with the plugin's tool, Agent Plus's Work plan view shows it,
  * and with the token mode switched to Interface the next message gets no plan; with OpenCode 1 the notice that the work
  * plan needs OpenCode 2 is shown once. The plugin writes what it does to <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
@@ -74,8 +76,9 @@ function writeSettings(user, extra) {
   }, null, 2));
 }
 
-/* OpenCode processes still running with this run's state folder in their environment (2.x's acp starts a background
-   service that outlives it); they are stopped. Linux only, where /proc shows another process's environment. */
+/* OpenCode processes still running with this run's state folder in their environment (a background service an OpenCode
+   subcommand without --standalone would have left); they are stopped. Linux only, where /proc shows another process's
+   environment. */
 function stopLeftovers(stateDir) {
   if (process.platform !== 'linux' || !stateDir) return 'no leftover check on this platform';
   const left = [];
@@ -195,7 +198,7 @@ async function main() {
       && fs.existsSync(path.join(plansDir, 'config.json')), 20000);
     check(inPlace, "the work plan plugin, its scripts and config.json are in place in the extension's folder");
     await shot('01-activity-bar', { features: ['activity bar icon', 'Conversations view'],
-      expect: 'The activity bar on the far left has the OpenCode Plus icon (a speech bubble with three dots) selected; the side bar shows the NEW AGENT container with a Conversations view, empty or with a hint.',
+      expect: 'The activity bar on the far left has the OpenCode Plus icon (a speech bubble with three dots) selected; the side bar shows the OpenCode Plus container with a Conversations view (its header may read "OpenCode Plus: Convers…"), empty or with a hint.',
       part: '#workbench\\.parts\\.sidebar' });
 
     // 2. A new conversation opens a chat tab.
@@ -288,6 +291,69 @@ async function main() {
           part: '#workbench\\.parts\\.editor' });
 
         if (line >= 2) {
+          // 3e. Mode and effort, as OpenCode offers them: picked in the page, they take effect from the next turn. What
+          // OpenCode itself recorded for the session says so (its /api session.list, with a private server).
+          const pickers = () => chat.evaluate(() => ['mode', 'effort'].map((id) => {
+            const s = document.getElementById(id);
+            return { id, hidden: !s || s.hidden, value: s ? s.value : '', values: s ? [...s.options].map((o) => o.value) : [] };
+          }));
+          const recorded = () => {
+            const r = cp.spawnSync(OPENCODE, ['api', 'session.list', '--param', 'limit=50', '--standalone'],
+              { env: { ...process.env, ...xdgEnv, OPENCODE_DISABLE_AUTOUPDATE: '1' }, encoding: 'utf8', timeout: 60000 });
+            try { return (JSON.parse(r.stdout).data || []).find((s) => s.id === sessionId) || null; } catch (_) { return null; }
+          };
+          const shownPickers = await until(async () => { const o = await pickers(); return o.every((x) => !x.hidden && x.values.length > 1) ? o : null; }, 20000);
+          check(!!shownPickers && shownPickers[0].values.includes('plan') && shownPickers[1].values.includes('low'), 'the mode and effort pickers show beside the model', shownPickers || await pickers());
+          await chat.selectOption('#mode', 'plan');
+          const planShown = await until(async () => (await pickers())[0].value === 'plan', 10000);
+          await shot('04d-mode-plan', { features: ['mode picker', 'effort picker'],
+            expect: 'The chat header has, right of the model picker, a mode picker now showing Plan and an effort picker; the rest of the page is unchanged.',
+            part: '#workbench\\.parts\\.editor' });
+          await turn('Use the write tool to create a file named plan-test.txt containing the word hi. Then tell me in one line whether you could.', '04d');
+          const planFile = path.join(p.folder, 'plan-test.txt');
+          const inPlan = recorded();
+          check(planShown && !fs.existsSync(planFile) && !!inPlan && inPlan.agent === 'plan', 'with Plan picked, the next turn runs as the plan agent and writes no file',
+            { planShown, file: fs.existsSync(planFile), agent: inPlan && inPlan.agent });
+          await chat.selectOption('#mode', 'build');
+          await until(async () => (await pickers())[0].value === 'build', 10000);
+          await chat.selectOption('#effort', 'low');
+          const lowShown = await until(async () => (await pickers())[1].value === 'low', 10000);
+          await turn('Reply with only the word four.', '04e');
+          const fig = await chat.evaluate(() => { const f = [...document.querySelectorAll('#log .figures')].pop(); return f ? f.textContent : ''; });
+          const inLow = recorded();
+          check(lowShown && / low$/.test(fig) && !!inLow && inLow.agent === 'build' && !!inLow.model && inLow.model.variant === 'low',
+            'with Build and effort Low picked, the next turn runs with both, and its figures name the effort', { fig, agent: inLow && inLow.agent, model: inLow && inLow.model });
+          await shot('04e-effort-low', { features: ['effort in reply figures'],
+            expect: 'The Plan turn says the file could not be written; then "Reply with only the word four." and the reply "four", whose figures line ends with the model name followed by "low"; the pickers show Build and Low.',
+            part: '#workbench\\.parts\\.editor' });
+
+          // 3f. A subagent: its session stays out of the list, and the turn OpenCode starts when it finishes shows here.
+          const notices = () => chat.evaluate(() => [...document.querySelectorAll('#log .notice')].map((e) => e.textContent));
+          await turn('Use the subagent tool to start one subagent whose task is: use the shell tool to run the command sleep 8, then reply finished. After launching it, end your response at once without waiting.', '04f');
+          const activities = new Set();
+          let clicked = 0, wentOn = false;
+          const end = Date.now() + 150000;
+          while (Date.now() < end) {
+            for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) { await b.click(); clicked++; await sleep(500); }
+            const c = ((await ext('return api.test.conversations();')) || []).find((x) => x.sessionId === sessionId);
+            if (c) activities.add(c.activity);
+            if ((await notices()).some((t) => /went on without a message from you/.test(t)) && (await status()) === 'idle') { wentOn = true; break; }
+            await sleep(500);
+          }
+          check(wentOn && activities.has('working'), 'for the background subagent OpenCode went on without a message: the page says so, the conversation worked and went back to idle',
+            { clicked, activities: [...activities], notices: await notices() });
+          let kinds = {};
+          try { kinds = JSON.parse(fs.readFileSync(path.join(p.agentHome, 'opencode-sessions.json'), 'utf8')).parents || {}; } catch (_) { /* none */ }
+          const children = Object.keys(kinds).filter((k) => kinds[k] === sessionId);
+          const rowsNow = ((await ext('return api.test.sessions();')) || []).map((r) => r.id);
+          check(children.length > 0 && rowsNow.includes(sessionId) && !children.some((k) => rowsNow.includes(k)), "the subagent's session is known as a child and left out of the Conversations list",
+            { children, rows: rowsNow });
+          await shot('04f-subagent', { features: ['subagent', 'turn OpenCode started itself'],
+            expect: 'After the subagent request and its short reply (with its figures line), a notice "OpenCode went on without a message from you, for a background task (a subagent or a command).", then the subagent\'s sleep command as a shell card and a permission card (allowed once), and the reply that the subagent has finished, with its figures line.',
+            part: '#workbench\\.parts\\.editor' });
+        }
+
+        if (line >= 2) {
           // 3c. The work plan: a row added with the plugin's tool, shown by Agent Plus's Work plan view.
           const planFile = path.join(plansDir, `${sessionId}.json`);
           const rows = () => {
@@ -369,7 +435,7 @@ async function main() {
     const inList = await until(async () => page.evaluate((t) => document.getElementById('workbench.parts.sidebar').textContent.includes(t), await titleNow()), 30000);
     check(inList, 'the Conversations view lists the conversation');
     await shot('06-sessions', { features: ['session list'],
-      expect: 'The NEW AGENT Conversations view lists one row with the conversation title and a speech-bubble icon (a relative time such as "now" may be cut off by a long title).',
+      expect: 'The OpenCode Plus Conversations view lists one row with the conversation title and a speech-bubble icon (a relative time such as "now" may be cut off by a long title).',
       part: '#workbench\\.parts\\.sidebar' });
 
     // 6. A reload brings the tab back with its history.

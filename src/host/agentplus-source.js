@@ -89,6 +89,7 @@ function emitter() {
  *   reveal(sessionId)  Promise<boolean>: bring its tab in this window to the front
  *   openHere(sessionId)  Promise<boolean>: open it in this window
  *   trusted()          whether the workspace is trusted
+ *   hidden(sessionId)  optional: true for a session not to list (a subagent's, open in a tab restored from before)
  *   log(line)          optional
  */
 function createAgentPlusSource(deps) {
@@ -148,7 +149,8 @@ function createAgentPlusSource(deps) {
     },
 
     async listConversations() {
-      return deps.manager.list().map(toConversation);
+      const hidden = (id) => { try { return deps.hidden ? deps.hidden(id) === true : false; } catch (_) { return false; } };
+      return deps.manager.list().filter((s) => !hidden(s.sessionId)).map(toConversation);
     },
 
     reveal(sessionId) {

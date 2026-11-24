@@ -16,6 +16,9 @@
  *
  * usage_update carries the session's running cost; AgentEvent usage carries the cost of one call, so the difference
  * from the last one seen is sent.
+ *
+ * OpenCode 2.x reports a retry it has scheduled as a session_info_update whose _meta["opencode/retry"] holds the next
+ * attempt, and clears it with null when that attempt starts; they become `retry` events, attempt 0 for the clearing.
  */
 
 const STOP = Object.freeze({
@@ -27,6 +30,7 @@ const STOP = Object.freeze({
 });
 
 const DEFAULT_TITLE = /^(New session|Child session) - \d{4}-\d\d-\d\dT[\d:.]+Z$/;
+const RETRY_META = 'opencode/retry';
 
 function normalizeTitle(t) {
   const s = typeof t === 'string' ? t.trim() : '';
@@ -162,6 +166,17 @@ function modelsFromConfig(configOptions, contextWindows = {}) {
   return { models, current: typeof opt.currentValue === 'string' ? opt.currentValue : '' };
 }
 
+/* AgentEvent retry from the value of _meta["opencode/retry"]: { attempt, nextRetryAt, error: { message, status } }. */
+function retryEvent(r, at) {
+  if (!r || typeof r !== 'object') return { type: 'retry', attempt: 0, at };
+  const e = r.error;
+  const pe = toProviderError(typeof e === 'string' ? e : e && e.message);
+  if (e && e.status === 429) pe.kind = 'throttled';
+  const next = Date.parse(r.nextRetryAt || '');
+  const waitMs = Number.isFinite(next) ? Math.max(0, next - at) : num(r.retryAfterMs);
+  return { type: 'retry', attempt: num(r.attempt) || 1, waitMs, error: pe, at };
+}
+
 function createMapper({ now = Date.now } = {}) {
   let turn = null;
   let replaying = false;
@@ -174,12 +189,24 @@ function createMapper({ now = Date.now } = {}) {
   let contextWindow = 0;
   const tools = new Map();
 
-  function begin(turnId, text, at, modelId) {
-    const t = at || now();
+  function turnStart(turnId, t, modelId, effort) {
     turn = { id: turnId, startedAt: t, agentOutput: false };
     const start = { type: 'turnStart', turnId, at: t };
     if (modelId) start.modelId = modelId;
-    return [start, { type: 'userMessage', text: String(text || ''), at: t }];
+    if (effort) start.effort = effort;
+    return start;
+  }
+
+  function begin(turnId, text, at, modelId, effort) {
+    const t = at || now();
+    return [turnStart(turnId, t, modelId, effort), { type: 'userMessage', text: String(text || ''), at: t }];
+  }
+
+  /* A turn OpenCode began without a prompt (a subagent or a background shell it waited for finished): no user message. */
+  function beginOwn(turnId, at, modelId, effort) {
+    const start = turnStart(turnId, at || now(), modelId, effort);
+    start.unsolicited = true;
+    return [start];
   }
 
   function flushUser() {
@@ -288,6 +315,8 @@ function createMapper({ now = Date.now } = {}) {
         return out;
       }
       case 'session_info_update': {
+        const meta = u._meta && typeof u._meta === 'object' ? u._meta : null;
+        if (meta && Object.prototype.hasOwnProperty.call(meta, RETRY_META)) out.push(retryEvent(meta[RETRY_META], now()));
         const title = normalizeTitle(u.title);
         if (title) out.push({ type: 'title', title });
         return out;
@@ -350,6 +379,7 @@ function createMapper({ now = Date.now } = {}) {
 
   return {
     begin,
+    beginOwn,
     update,
     permission,
     settled,
@@ -364,4 +394,4 @@ function createMapper({ now = Date.now } = {}) {
   };
 }
 
-module.exports = { createMapper, permissionRequest, toolNameOf, modelsFromConfig, toProviderError, normalizeTitle, contentText, STOP };
+module.exports = { createMapper, permissionRequest, toolNameOf, modelsFromConfig, toProviderError, normalizeTitle, contentText, retryEvent, STOP, RETRY_META };

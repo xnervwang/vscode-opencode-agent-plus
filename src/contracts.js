@@ -134,10 +134,14 @@
 /**
  * Events the agent core emits for one conversation; the UI draws from these and nothing else. A userMessage with
  * `synthetic: true` is text a plugin added for the model (a work-plan line, a turn-end note), not something the user typed.
- * `turnStart.modelId` is the model the turn runs on (provider/model). `usage.contextWindow` is that model's context
- * window when the agent reports it, so the share in use can be shown before the model list knows the window.
+ * `turnStart.modelId` is the model the turn runs on (provider/model) and `effort` the effort it runs with when one is
+ * set; `unsolicited: true` marks a turn the agent began itself (a subagent or a background command it waited for has
+ * finished), which has no userMessage. `usage.contextWindow` is that model's context window when the agent reports it,
+ * so the share in use can be shown before the model list knows the window. `retry` says the agent will try the model
+ * again in `waitMs`; attempt 0 says that try has started. `options` carries the conversation's settings anew whenever
+ * they change.
  * @typedef {(
- *   { type: 'turnStart', turnId: string, at: number, modelId?: string } |
+ *   { type: 'turnStart', turnId: string, at: number, modelId?: string, effort?: string, unsolicited?: true } |
  *   { type: 'userMessage', text: string, at: number, synthetic?: boolean } |
  *   { type: 'text', delta: string } |
  *   { type: 'reasoning', delta: string } |
@@ -147,8 +151,36 @@
  *   { type: 'permissionSettled', requestId: string, decision: PermissionDecision } |
  *   { type: 'usage', input: number, output: number, cacheRead?: number, cacheWrite?: number, contextUsed: number, contextWindow?: number, costUsd?: number } |
  *   { type: 'turnEnd', turnId: string, reason: StopReason | 'aborted' | 'error', at: number, error?: ProviderError } |
- *   { type: 'title', title: string }
+ *   { type: 'title', title: string } |
+ *   { type: 'retry', attempt: number, waitMs?: number, error?: ProviderError, at: number } |
+ *   { type: 'options', options: ConfigOption[] }
  * )} AgentEvent
+ */
+
+/**
+ * A setting of one conversation the agent offers, such as OpenCode's mode (build / plan) or effort.
+ * @typedef {{ id: string, name: string, value: string, values: Array<{ value: string, name: string, description?: string }> }} ConfigOption
+ */
+
+/**
+ * A conversation as the agent core hands it to the UI (src/opencode/index.js makes them; src/host/backend.js lists
+ * what the host relies on). `send` resolves with the turnEnd of its message's turn and never rejects; a message sent
+ * while a turn runs waits for it. `options()` lists the settings the agent offers for this conversation, [] when none,
+ * and `setOption` changes one from the next turn on.
+ * @typedef {{
+ *   id: string, cwd: string, title: string, status: 'working' | 'waiting' | 'idle', waitingTool: string,
+ *   lastUserAt: number, lastReplyAt: number,
+ *   on(listener: (ev: AgentEvent) => void): () => void,
+ *   send(text: string, images?: Array<{ mediaType: string, data: string }>): Promise<AgentEvent | null>,
+ *   abort(): void,
+ *   setModel(model: ModelInfo | string): Promise<void>,
+ *   getModel(): string,
+ *   options(): ConfigOption[],
+ *   setOption(id: string, value: string): Promise<void>,
+ *   respondPermission(requestId: string, decision: PermissionDecision): boolean,
+ *   history(): Promise<AgentEvent[]>,
+ *   dispose(): void
+ * }} Conversation
  */
 
 /**

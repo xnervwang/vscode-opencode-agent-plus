@@ -38,6 +38,13 @@ const { createWorkPlan } = require('./src/host/work-plan');
 const workplan = require('./src/workplan');
 
 const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
+const TAKE_OVER = 'Take over here';
+const TAKE_ANYWAY = 'Take over anyway';
+const BUSY_TEXT = 'Another VS Code window has this conversation open, or had it open before it lost its connection '
+  + '(VS Code keeps such a window running for a while). Take it over to continue here: the other window stops its turn '
+  + 'and closes the conversation.';
+const FORCE_TEXT = 'The other window did not let go of the conversation within 10 seconds. Take it over anyway? '
+  + 'If that window is still running, both windows may change the conversation at the same time.';
 let running = null;
 
 function activate(context) {
@@ -56,6 +63,12 @@ function activate(context) {
     told.push(String(text));
     if (told.length > 50) told.shift();
     Promise.resolve(vscode.window.showInformationMessage(text)).catch(() => {});
+  };
+  /* The same with buttons; resolves with the one chosen, or undefined. */
+  const ask = (text, ...buttons) => {
+    told.push(String(text));
+    if (told.length > 50) told.shift();
+    return Promise.resolve(vscode.window.showInformationMessage(text, ...buttons)).catch(() => undefined);
   };
   /* OpenCode's own errors (not installed, not found where the settings say) already say what to do. */
   const fail = (what, e) => {
@@ -83,7 +96,8 @@ function activate(context) {
     Promise.resolve().then(() => backend.detect()).then((found) => plan.checkVersion(found.version), () => { versionKnown = false; });
   };
   const models = createModels({ vscode, listModels: () => backend.listModels(), defaultModel: () => backend.defaultModel() });
-  const locks = createLocks({ dir: path.join(paths.root(), 'locks') });
+  const locks = createLocks({ dir: path.join(paths.root(), 'locks'), log });
+  subs.push(locks);
   /* Sessions this window just made, handed to the chat tab that opens them; folders of listed ones, for openSession. */
   const made = new Map();
   const folders = new Map();
@@ -159,11 +173,36 @@ function activate(context) {
     return chat;
   }
 
-  /* Its tab here to the front, or a new tab; false when another window has it open. */
+  /*
+   * Another window holds it: offers to take it over, asks that window to let go, and when it does not answer in time
+   * offers to take it anyway. True once this window may open it.
+   */
+  async function takeOver(id) {
+    const choice = await ask(BUSY_TEXT, TAKE_OVER);
+    if (choice !== TAKE_OVER) return false;
+    const r = await locks.requestTakeover(id);
+    log(`taking over ${id}: ${r}`);
+    if (r !== 'timeout') return true;
+    const force = await Promise.resolve(vscode.window.showWarningMessage(FORCE_TEXT, { modal: true }, TAKE_ANYWAY)).catch(() => undefined);
+    if (force !== TAKE_ANYWAY) return false;
+    const lock = locks.acquire(id, { force: true });
+    if (!lock.ok) fail('The conversation could not be taken over', lock.error || 'the lock kept changing');
+    return lock.ok;
+  }
+  /* The holder's side: the conversation stops here and its tabs go, also in a window whose client has gone. */
+  locks.onTakeover((id) => {
+    const e = manager.get(id);
+    const panels = e ? [...e.panels] : [];
+    manager.close(id, { abort: true });
+    for (const p of panels) { try { p.dispose(); } catch (_) { /* gone */ } }
+    tell('This conversation was taken over by another VS Code window.');
+  });
+
+  /* Its tab here to the front, or a new tab; false when another window has it open and keeps it. */
   async function openSession(id) {
     const panel = manager.panelOf(id);
     if (panel) { panel.reveal(panel.viewColumn); return true; }
-    if (locks.holder(id)) { tell('This conversation is open in another VS Code window.'); return false; }
+    if (locks.holder(id) && !(await takeOver(id))) return false;
     await vscode.commands.executeCommand('vscode.openWith', ap.uriOf(id), ap.VIEW_TYPE, { preview: false });
     return true;
   }
@@ -186,7 +225,7 @@ function activate(context) {
     manager,
     show,
     focus: (id) => { if (link) link.focus(id); },
-    busy: () => tell('This conversation is open in another VS Code window. Close it there to continue it here.'),
+    busy: (id) => takeOver(id),
     log,
   });
   subs.push(vscode.window.registerCustomEditorProvider(ap.VIEW_TYPE, editor, { supportsMultipleEditorsPerDocument: false }));
@@ -267,6 +306,7 @@ function activate(context) {
     reveal: async (id) => { const p = manager.panelOf(id); if (!p) return false; p.reveal(p.viewColumn); return true; },
     openHere: (id) => openSession(id),
     trusted: () => vscode.workspace.isTrusted,
+    hidden: (id) => backend.isChild(id),
     log,
   });
   subs.push(link, manager.onDidChange(() => link.changed()), plan.onDidChangeNotice(() => link.noticeChanged()));
@@ -287,7 +327,8 @@ function activate(context) {
   running = { manager, backend, registration: null };
   log(`activated ${context.extension ? context.extension.packageJSON.version : ''}`.trim());
   if (process.env.OPENCODE_PLUS_TEST_CONTROL) {
-    return { test: { agentPlus, registered, conversations: () => manager.list(), source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready,
+    return { test: { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
+      source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready,
       told: () => told.slice(), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }) } };
   }
   return undefined;

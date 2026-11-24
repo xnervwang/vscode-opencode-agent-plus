@@ -66,7 +66,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-#model {
+#model, select.option {
   max-width: 45%;
   background: var(--vscode-dropdown-background);
   color: var(--vscode-dropdown-foreground);
@@ -74,6 +74,12 @@ button:focus-visible, select:focus-visible, summary:focus-visible {
   border-radius: 3px;
   padding: 2px 4px;
   font: inherit;
+}
+select.option {
+  max-width: 18%;
+}
+select.option[hidden] {
+  display: none;
 }
 .ring {
   display: inline-flex;

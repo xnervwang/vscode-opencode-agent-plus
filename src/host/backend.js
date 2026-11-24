@@ -14,7 +14,9 @@
  *   deleteSession(id)            Promise
  *   session(id, { cwd })         Promise of the session object: id, cwd, title, status, waitingTool, lastUserAt,
  *                                lastReplyAt, on(listener) of AgentEvents, send(text, images?), abort(), setModel(model),
- *                                getModel(), respondPermission(requestId, decision), history(), dispose()
+ *                                getModel(), options(), setOption(id, value), respondPermission(requestId, decision),
+ *                                history(), dispose()
+ *   isChild(id)                  whether a session is a subagent's; false until the module is loaded
  *   listModels(), defaultModel() Promise<ModelInfo[]>, Promise<ModelInfo | string | null>
  *   bedrockStatus(), restart(settings), detect()   passed through
  *   dispose()                    Promise
@@ -89,6 +91,7 @@ function createBackend({ options = {}, load } = {}) {
     renameSession: (id, title) => call('renameSession', id, title),
     deleteSession: (id) => call('deleteSession', id),
     session: (id, opts) => call(typeof get().session === 'function' ? 'session' : 'openSession', id, opts || {}),
+    isChild: (id) => { try { return !!made && typeof made.isChild === 'function' && made.isChild(id) === true; } catch (_) { return false; } },
     listModels: () => call('listModels').then((l) => (Array.isArray(l) ? l : [])),
     defaultModel: () => (made && typeof made.defaultModel !== 'function' ? Promise.resolve(null) : call('defaultModel')),
     bedrockStatus: () => (made && typeof made.bedrockStatus !== 'function' ? Promise.resolve(null) : call('bedrockStatus')),

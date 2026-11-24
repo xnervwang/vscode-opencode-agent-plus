@@ -78,6 +78,11 @@ function withModelChoice(inner, deps) {
     abort: pass('abort'),
     setModel,
     getModel: () => facade.modelName,
+    options: () => (typeof inner.options === 'function' ? inner.options() : []),
+    setOption(optionId, value) {
+      if (typeof inner.setOption !== 'function') return Promise.reject(new Error('This agent has no settings for a conversation.'));
+      return Promise.resolve().then(() => inner.setOption(optionId, value));
+    },
     respond(requestId, decision) {
       if (typeof inner.respondPermission === 'function') return inner.respondPermission(requestId, decision);
       return typeof inner.respond === 'function' ? inner.respond(requestId, decision) : false;

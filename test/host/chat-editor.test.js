@@ -19,9 +19,10 @@ const { uriOf } = require('../../src/host/agentplus-source');
 
 const A = '3f2b6c1e-0000-4000-8000-00000000000a';
 
-function setup({ locked = false } = {}) {
+function setup({ locked = false, onBusy = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'na-ce-'));
-  if (locked) createLocks({ dir, pid: 7777, alive: () => true }).acquire(A);
+  const other = createLocks({ dir, pid: 7777, alive: () => true });
+  if (locked) other.acquire(A);
   const convs = [];
   const manager = createSessionManager({
     locks: createLocks({ dir, pid: 1000, alive: (pid) => pid === 7777 }),
@@ -39,7 +40,7 @@ function setup({ locked = false } = {}) {
     manager,
     show: (panel, entry) => { const v = { panel, entry, disposed: 0, dispose() { v.disposed++; } }; shown.push(v); return v; },
     focus: (id) => focused.push(id),
-    busy: (id, pid) => busy.push([id, pid]),
+    busy: async (id, pid) => { busy.push([id, pid]); return onBusy ? onBusy(other) : false; },
   });
   return { manager, provider, shown, focused, busy, convs };
 }
@@ -78,14 +79,24 @@ test('closing the tab disposes the page and closes the conversation', async () =
   assert.strictEqual(s.convs[0].aborted, 1);
 });
 
-test('a conversation running in another window is not opened here', async () => {
+test('a conversation running in another window is not opened here unless taken over', async () => {
   const s = setup({ locked: true });
   const panel = control.panel();
   await open(s.provider, uriOf(A), panel);
   assert.strictEqual(s.shown.length, 0);
-  assert.match(panel.webview.html, /open in another window/);
+  assert.match(panel.webview.html, /Another VS Code window has this conversation open/);
+  assert.match(panel.webview.html, /Take over here/);
   assert.match(panel.webview.html, /default-src 'none'/);
   assert.deepStrictEqual(s.busy, [[A, 7777]]);
+});
+
+test('once the other window lets go, the same tab opens the conversation', async () => {
+  const s = setup({ locked: true, onBusy: (other) => { other.release(A); return true; } });
+  const panel = control.panel();
+  await open(s.provider, uriOf(A), panel);
+  assert.deepStrictEqual(s.busy, [[A, 7777]]);
+  assert.strictEqual(s.shown.length, 1);
+  assert.strictEqual(s.manager.panelOf(A), panel);
 });
 
 test('a URI that names no conversation, and a tab closed while it opened', async () => {

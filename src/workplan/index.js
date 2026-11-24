@@ -9,7 +9,9 @@
  * No vscode API here.
  *
  * Copies go under paths.root() rather than being used from the extension's folder: that folder is named by version
- * and removed on update, while OpenCode 2's shared background service outlives the window that started it.
+ * and removed on update, while an OpenCode another window started before the update still loads the plugin and runs
+ * the scripts from where it was told. (OpenCode 2's `acp` runs a private server that ends with it; it does not use the
+ * shared background service.)
  */
 const fs = require('fs');
 const path = require('path');

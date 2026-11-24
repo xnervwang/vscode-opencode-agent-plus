@@ -11,6 +11,9 @@
  * The panel does not keep its page while hidden; the page asks for the whole view again when it loads ('ready'), and
  * updates are held back while it is hidden. Between loads only the items that changed are posted, at most once per
  * frame.
+ *
+ * The conversation's settings (its options(): mode, effort) go to the page as they are, in an 'options' message, and
+ * again whenever an `options` event says they changed; a conversation without options() shows none.
  */
 const path = require('path');
 const fs = require('fs');
@@ -66,7 +69,7 @@ class ChatPanel {
    *   panel: import('vscode').WebviewPanel,
    *   extensionUri: import('vscode').Uri,
    *   conversation: { on(listener: (ev: object) => void): (Function|{dispose(): void}), send(text: string): unknown,
-   *     abort(): unknown, setModel(model: object): unknown },
+   *     abort(): unknown, setModel(model: object): unknown, options?(): object[], setOption?(id: string, value: string): unknown },
    *   listModels: () => Promise<object[]>,
    *   respond: (requestId: string, decision: string) => unknown,
    *   history?: object[],
@@ -95,6 +98,7 @@ class ChatPanel {
     this.timer = null;
     this.disposed = false;
     this.lastKey = '';
+    this.options = this.readOptions();
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
     if (opts.model) state = vm.reduce(state, { type: 'ui.model', model: opts.model });
@@ -139,6 +143,8 @@ class ChatPanel {
   <div id="title"></div>
   <div class="spacer"></div>
   <select id="model" title="Model"><option>Loading models…</option></select>
+  <select id="mode" class="option" hidden></select>
+  <select id="effort" class="option" hidden></select>
   <span id="ring" class="ring"><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6"></circle><circle class="fill" cx="8" cy="8" r="6"></circle></svg></span>
 </header>
 <main id="log" aria-live="polite"></main>
@@ -160,6 +166,11 @@ ${md}
   /* Applies one AgentEvent or ui.* action and schedules a post. onDidChangeState hears of status and title changes. */
   dispatch(ev) {
     if (this.disposed) return;
+    if (ev && ev.type === 'options') {
+      this.options = Array.isArray(ev.options) ? ev.options : [];
+      if (this.ready) this.postOptions();
+      return;
+    }
     this.state = vm.reduce(this.state, ev, this.now());
     const key = `${this.state.status}\n${this.state.title}`;
     if (this.onDidChangeState && key !== this.lastKey) {
@@ -195,8 +206,20 @@ ${md}
   sendReset() {
     this.posted = this.state;
     this.post({ type: 'reset', ...vm.toView(this.state) });
+    this.postOptions();
     if (this.models || this.modelsError) this.postModels();
     else this.loadModels();
+  }
+
+  readOptions() {
+    try {
+      const list = typeof this.conversation.options === 'function' ? this.conversation.options() : [];
+      return Array.isArray(list) ? list : [];
+    } catch (_) { return []; }
+  }
+
+  postOptions() {
+    this.post({ type: 'options', options: this.options });
   }
 
   loadModels() {
@@ -256,6 +279,16 @@ ${md}
             this.showError(err);
             this.postModels();
           });
+        break;
+      }
+      case 'setOption': {
+        const id = String(msg.id || '');
+        const value = String(msg.value || '');
+        const opt = this.options.find((o) => o && o.id === id);
+        if (!opt || !Array.isArray(opt.values) || !opt.values.some((v) => v && v.value === value)) break;
+        Promise.resolve().then(() => this.conversation.setOption(id, value)).then(
+          () => { this.options = this.readOptions(); this.postOptions(); },
+          (err) => { this.showError(err); this.options = this.readOptions(); this.postOptions(); });
         break;
       }
       case 'reloadModels':

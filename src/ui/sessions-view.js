@@ -97,7 +97,11 @@ class SessionsView {
       : status === 'waiting'
         ? new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.red'))
         : new vscode.ThemeIcon('comment-discussion');
-    const when = lastActive(meta) ? new Date(lastActive(meta)).toLocaleString() : '';
+    /* The extension host may run on another machine in another time zone (Remote-SSH), so the time names its zone. */
+    const ago = item.description;
+    const when = lastActive(meta)
+      ? `${ago === 'now' ? 'just now' : `${ago} ago`} (${new Date(lastActive(meta)).toLocaleString(undefined, { timeZoneName: 'short' })})`
+      : '';
     item.tooltip = [
       title,
       `${STATUS_WORDS[status] || status}${when ? ` · last active ${when}` : ''}`,

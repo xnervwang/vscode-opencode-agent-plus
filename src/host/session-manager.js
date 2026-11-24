@@ -127,6 +127,8 @@ function createSessionManager(deps) {
         break;
       case 'title':
         if (typeof ev.title === 'string' && ev.title.trim()) e.title = ev.title.trim(); break;
+      case 'options':
+        return;
       default:
         e.lastActiveAt = now();
         return;

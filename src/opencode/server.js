@@ -9,9 +9,13 @@
  *
  * OpenCode 1.x serves an HTTP API from inside `acp` as well, on 127.0.0.1 and without a password unless
  * OPENCODE_SERVER_PASSWORD is set, which would let any local user run tools as us; so a random one is always set.
- * OpenCode 2.x `acp` always talks to the machine's shared background service (`opencode service`). The environment
- * set here (AWS credentials, the permission rules below) only reaches that service when this process is what starts
- * it; otherwise the service keeps the settings it was started with.
+ * OpenCode 2.x `acp` starts a private server of its own (`serve --stdio --port 0`) that inherits the environment set
+ * here (AWS credentials, the permission rules below), whether or not the machine's shared background service runs.
+ *
+ * Its other subcommands are different: `opencode api`, `session list`, `session export` and the like connect to the
+ * shared background service, and start a lasting one with our environment when none runs, which the user's own
+ * OpenCode would then use. On 2.x every subcommand this extension runs goes through subcommandArgs(), which adds
+ * `--standalone` (a private server for that one command).
  */
 const fs = require('fs');
 const os = require('os');
@@ -163,6 +167,16 @@ function acpLaunch({ bin, version, env = {}, permissions = true, config = null, 
   return { command: bin, args, env: merged };
 }
 
+/* The arguments of an OpenCode subcommand other than `acp` (see the top of this file); 1.x has no `--standalone`. */
+function subcommandArgs(version, args) {
+  return (version && version.major >= 2) ? [...args, '--standalone'] : [...args];
+}
+
+/* The environment of such a subcommand. */
+function subcommandEnv(env = {}, baseEnv = process.env) {
+  return { ...baseEnv, ...env, OPENCODE_DISABLE_AUTOUPDATE: '1' };
+}
+
 /*
  * Starts the process. stderr is kept as a short tail for error messages. The child exits on its own when stdin
  * closes, so a crashed extension host does not leave it behind.
@@ -203,4 +217,6 @@ module.exports = {
   startAcp,
   stopAcp,
   candidates,
+  subcommandArgs,
+  subcommandEnv,
 };

@@ -12,6 +12,8 @@ const vscode = require('vscode');
 const { sessionOfUri } = require('./agentplus-source');
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const BUSY_PAGE = 'Another VS Code window has this conversation open, or had it open before it lost its connection. '
+  + 'Choose "Take over here" in the notification to continue it in this window.';
 const page = (text) => `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none';"></head>
 <body><p>${esc(text)}</p></body></html>`;
@@ -22,7 +24,8 @@ const page = (text) => `<!DOCTYPE html><html><head><meta charset="utf-8">
  *   show(panel, entry)       puts the chat page into `panel` for the open conversation `entry`; returns something with
  *                            dispose(), or nothing
  *   focus(sessionId)         the panel came to the front
- *   busy(sessionId, pid)     another window runs it; tell the user
+ *   busy(sessionId, pid)     another window runs it: offer to take it over; resolves true when this window may now
+ *                            open it, and the tab then shows it
  *   log(line)                optional
  */
 class ChatEditorProvider {
@@ -37,16 +40,19 @@ class ChatEditorProvider {
     const subs = [];
     subs.push(panel.onDidDispose(() => { gone = true; }));
     if (!id) { panel.webview.html = page('This tab does not name a conversation.'); return; }
-    const r = await manager.open(id);
+    let r = await manager.open(id);
+    if (!gone && !r.ok && r.pid && this.deps.busy) {
+      panel.webview.html = page(BUSY_PAGE);
+      let taken = false;
+      try { taken = (await this.deps.busy(id, r.pid)) === true; } catch (_) { /* told nothing */ }
+      if (taken && !gone) r = await manager.open(id);
+    }
     if (gone) {
       if (r.ok && !manager.panelOf(id)) manager.close(id);
       return;
     }
     if (!r.ok) {
-      panel.webview.html = page(r.pid
-        ? 'This conversation is open in another window. Close it there to continue it here.'
-        : `This conversation could not be opened: ${r.error || 'unknown error'}`);
-      if (r.pid && this.deps.busy) { try { this.deps.busy(id, r.pid); } catch (_) { /* told nothing */ } }
+      panel.webview.html = page(r.pid ? BUSY_PAGE : `This conversation could not be opened: ${r.error || 'unknown error'}`);
       return;
     }
     manager.attach(id, panel);

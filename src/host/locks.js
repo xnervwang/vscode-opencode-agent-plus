@@ -8,6 +8,11 @@
  * in one window at a time. The file is written whole under another name and then hard-linked into place, so a reader
  * never sees half of one. A lock whose process is gone, or that was written before the machine last booted (its pid
  * may be someone else's now), is taken over.
+ *
+ * A live holder can be asked to let go: the asking window writes <id>.takeover, and the holder, which watches the
+ * folder with fs.watch while it holds any lock, hands the request to onTakeover, releases the lock and answers with
+ * <id>.letgo naming the asker. Over Remote-SSH a window whose client went away without closing keeps its extension
+ * host running for hours, holding its locks; that host still answers.
  */
 const fs = require('fs');
 const os = require('os');
@@ -15,6 +20,11 @@ const path = require('path');
 
 /* os.uptime() has whole seconds and the clock can be stepped, so a lock this close to the boot still counts. */
 const BOOT_SLACK_MS = 120000;
+const TAKEOVER = '.takeover';
+const LETGO = '.letgo';
+/* A request older than this was left behind by an asker that gave up. */
+const REQUEST_TTL_MS = 60000;
+const TAKEOVER_WAIT_MS = 10000;
 
 function processAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -23,21 +33,74 @@ function processAlive(pid) {
 
 const bootTime = () => Date.now() - os.uptime() * 1000;
 
-function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bootTime, now = Date.now } = {}) {
+function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bootTime, now = Date.now, watch = fs.watch, log } = {}) {
   if (!dir) throw new Error('createLocks needs a dir');
+  const note = (line) => { try { if (log) log(line); } catch (_) { /* not logged */ } };
   const held = new Set();
   const file = (id) => path.join(dir, `${id}.lock`);
-  const read = (id) => {
+  const readJson = (p) => {
     try {
-      const rec = JSON.parse(fs.readFileSync(file(id), 'utf8'));
+      const rec = JSON.parse(fs.readFileSync(p, 'utf8'));
       return rec && typeof rec === 'object' ? rec : null;
     } catch (_) { return null; }
   };
+  const read = (id) => readJson(file(id));
+  /* Written whole under another name, then renamed into place. */
+  const writeWhole = (p, rec) => {
+    const tmp = path.join(dir, `.${path.basename(p)}.${pid}.${now()}.tmp`);
+    fs.writeFileSync(tmp, JSON.stringify(rec));
+    fs.renameSync(tmp, p);
+  };
+  const unlink = (p) => { try { fs.unlinkSync(p); } catch (_) { /* gone */ } };
   /* Another live process holds it. */
   const othersLive = (rec) => !!rec && rec.pid !== pid && alive(rec.pid) && !(Number(rec.at) < booted() - BOOT_SLACK_MS);
 
-  /* { ok: true } when this process holds the lock now; { ok: false, pid } when another live process does. */
-  function acquire(id) {
+  let onTakeover = null;
+  let watcher = null;
+  const answering = new Set();
+
+  async function answer(id) {
+    if (answering.has(id) || !held.has(id)) return;
+    const req = readJson(path.join(dir, `${id}${TAKEOVER}`));
+    if (!req || req.pid === pid || !(now() - Number(req.at) < REQUEST_TTL_MS)) return;
+    answering.add(id);
+    try {
+      note(`process ${req.pid} asks to take over ${id}`);
+      try { if (onTakeover) await onTakeover(id, req); } catch (e) { note(`letting go of ${id} failed: ${(e && e.message) || e}`); }
+      release(id);
+      try { writeWhole(path.join(dir, `${id}${LETGO}`), { pid, for: req.pid, at: now() }); } catch (e) { note(`answering the takeover of ${id} failed: ${e.message}`); }
+    } finally {
+      answering.delete(id);
+    }
+  }
+
+  /* Watches only while it holds a lock, so a window with no conversation open has no watcher. */
+  function syncWatcher() {
+    if (held.size && !watcher) {
+      try {
+        watcher = watch(dir, (event, name) => {
+          const n = String(name || '');
+          if (n.endsWith(TAKEOVER)) answer(n.slice(0, -TAKEOVER.length));
+        });
+        if (watcher && typeof watcher.on === 'function') watcher.on('error', () => { closeWatcher(); });
+        if (watcher && typeof watcher.unref === 'function') watcher.unref();
+      } catch (e) {
+        note(`watching ${dir} failed: ${e.message}`);
+        watcher = null;
+      }
+    } else if (!held.size && watcher) closeWatcher();
+  }
+  function closeWatcher() {
+    const w = watcher;
+    watcher = null;
+    try { if (w) w.close(); } catch (_) { /* closed */ }
+  }
+
+  /*
+   * { ok: true } when this process holds the lock now; { ok: false, pid } when another live process does. `force`
+   * takes it from a live holder too, which then no longer owns it but may still be running the conversation.
+   */
+  function acquire(id, { force = false } = {}) {
     fs.mkdirSync(dir, { recursive: true });
     const tmp = path.join(dir, `.${id}.${pid}.${now()}.tmp`);
     fs.writeFileSync(tmp, JSON.stringify({ pid, at: now(), host: os.hostname() }));
@@ -46,18 +109,19 @@ function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bo
         try {
           fs.linkSync(tmp, file(id));
           held.add(id);
+          syncWatcher();
           return { ok: true };
         } catch (e) {
           if (!e || e.code !== 'EEXIST') return { ok: false, pid: 0, error: String((e && e.message) || e) };
         }
         const rec = read(id);
-        if (rec && rec.pid === pid) { held.add(id); return { ok: true }; }
-        if (othersLive(rec)) return { ok: false, pid: rec.pid };
-        try { fs.unlinkSync(file(id)); } catch (_) { /* someone else removed it first */ }
+        if (rec && rec.pid === pid) { held.add(id); syncWatcher(); return { ok: true }; }
+        if (othersLive(rec) && !force) return { ok: false, pid: rec.pid };
+        unlink(file(id));
       }
       return { ok: false, pid: 0, error: 'the lock kept changing' };
     } finally {
-      try { fs.unlinkSync(tmp); } catch (_) { /* already gone */ }
+      unlink(tmp);
     }
   }
 
@@ -70,12 +134,63 @@ function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bo
   function release(id) {
     held.delete(id);
     const rec = read(id);
-    if (rec && rec.pid === pid) { try { fs.unlinkSync(file(id)); } catch (_) { /* gone */ } }
+    if (rec && rec.pid === pid) unlink(file(id));
+    syncWatcher();
   }
 
   function releaseAll() { for (const id of [...held]) release(id); }
 
-  return { acquire, holder, release, releaseAll, held: () => [...held], file };
+  /*
+   * Asks the live holder to let go and waits for it, at most `timeoutMs`. Resolves 'free' (nobody else held it),
+   * 'released' (the holder let go, or went away) or 'timeout'.
+   */
+  function requestTakeover(id, { timeoutMs = TAKEOVER_WAIT_MS } = {}) {
+    const first = holder(id);
+    if (!first) return Promise.resolve('free');
+    fs.mkdirSync(dir, { recursive: true });
+    const reqFile = path.join(dir, `${id}${TAKEOVER}`);
+    const letgoFile = path.join(dir, `${id}${LETGO}`);
+    unlink(letgoFile);
+    writeWhole(reqFile, { pid, at: now(), host: os.hostname() });
+    return new Promise((resolve) => {
+      let w = null;
+      let timer = null;
+      let settled = false;
+      const finish = (outcome) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        try { if (w) w.close(); } catch (_) { /* closed */ }
+        const req = readJson(reqFile);
+        if (req && req.pid === pid) unlink(reqFile);
+        const ans = readJson(letgoFile);
+        if (ans && ans.for === pid) unlink(letgoFile);
+        resolve(outcome);
+      };
+      const check = () => {
+        const ans = readJson(letgoFile);
+        if (ans && ans.for === pid) return finish('released');
+        if (holder(id) !== first) return finish('released');
+        return undefined;
+      };
+      try { w = watch(dir, () => check()); } catch (e) { note(`watching ${dir} failed: ${e.message}`); }
+      timer = setTimeout(() => finish(holder(id) === first ? 'timeout' : 'released'), timeoutMs);
+      check();
+    });
+  }
+
+  return {
+    acquire,
+    holder,
+    release,
+    releaseAll,
+    requestTakeover,
+    /* fn(id, request) stops the conversation here; the lock is released and the asker answered once it returns. */
+    onTakeover(fn) { onTakeover = typeof fn === 'function' ? fn : null; },
+    held: () => [...held],
+    file,
+    dispose() { closeWatcher(); },
+  };
 }
 
-module.exports = { createLocks, processAlive, BOOT_SLACK_MS };
+module.exports = { createLocks, processAlive, BOOT_SLACK_MS, TAKEOVER_WAIT_MS };

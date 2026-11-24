@@ -7,7 +7,9 @@
  * Stands in for `opencode acp`: replays a script recorded from the real thing (fixtures/*.jsonl). Each script line is
  * one request the client sent, with what OpenCode sent back meanwhile: notifications, requests of its own (played
  * when the client has answered them) and `waitFor` a client notification such as session/cancel. A request takes the
- * next recorded line for its method, or the last one again when they run out.
+ * next recorded line for its method, or the last one again when they run out. `after` holds what OpenCode sent once
+ * it had answered, before the client's next request (a turn it started on its own); each step's recorded `delayMs`
+ * is scaled by opts.afterScale, 0 by default, so they follow at once.
  */
 const fs = require('fs');
 const path = require('path');
@@ -59,6 +61,20 @@ function fakeAgent(script, opts = {}) {
     return new Promise((resolve) => noticeWaiters.push({ method, resolve }));
   }
 
+  async function playStep(step) {
+    if (step.notify) write({ jsonrpc: '2.0', method: step.notify, params: step.params });
+    else if (step.waitFor) await waitNotice(step.waitFor);
+    else if (step.request) {
+      const id = nextId++;
+      const answered = new Promise((resolve) => answers.set(id, resolve));
+      write({ jsonrpc: '2.0', id, method: step.request, params: step.params });
+      await answered;
+    }
+  }
+
+  const scale = typeof opts.afterScale === 'number' ? opts.afterScale : 0;
+  const playedAfter = [];
+
   async function play(msg) {
     const list = byMethod.get(msg.method);
     if (!list) { write({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: `"Method not found": ${msg.method}` } }); return; }
@@ -67,18 +83,19 @@ function fakeAgent(script, opts = {}) {
     const entry = list[Math.min(n, list.length - 1)];
     for (const step of entry.send || []) {
       await tick();
-      if (step.notify) write({ jsonrpc: '2.0', method: step.notify, params: step.params });
-      else if (step.waitFor) await waitNotice(step.waitFor);
-      else if (step.request) {
-        const id = nextId++;
-        const answered = new Promise((resolve) => answers.set(id, resolve));
-        write({ jsonrpc: '2.0', id, method: step.request, params: step.params });
-        await answered;
-      }
+      await playStep(step);
     }
     await tick();
     if (entry.error) write({ jsonrpc: '2.0', id: msg.id, error: entry.error });
     else write({ jsonrpc: '2.0', id: msg.id, result: entry.reply === undefined ? null : entry.reply });
+    let last = 0;
+    for (const step of n < list.length ? entry.after || [] : []) {
+      const wait = scale > 0 ? Math.max(0, ((step.delayMs || 0) - last) * scale) : 0;
+      last = step.delayMs || last;
+      if (wait) await new Promise((r) => setTimeout(r, wait)); else await tick();
+      await playStep(step);
+      playedAfter.push(step);
+    }
   }
 
   let buf = '';
@@ -104,14 +121,14 @@ function fakeAgent(script, opts = {}) {
   });
   child.stdin.on('finish', () => exit(0));
 
-  return { child, received, methods: () => received.filter((m) => m.method).map((m) => m.method) };
+  return { child, received, playedAfter, methods: () => received.filter((m) => m.method).map((m) => m.method) };
 }
 
 /* A startAcp replacement for createOpenCode that hands out fake agents and keeps them for the test to inspect. */
-function fakeStarter(scriptName, extra = []) {
+function fakeStarter(scriptName, extra = [], agentOpts = {}) {
   const agents = [];
   const start = (launchOpts) => {
-    const a = fakeAgent([...loadScript(scriptName), ...extra]);
+    const a = fakeAgent([...loadScript(scriptName), ...extra], agentOpts);
     a.launch = launchOpts;
     agents.push(a);
     return { child: a.child, stderrTail: () => '', args: ['acp'] };
