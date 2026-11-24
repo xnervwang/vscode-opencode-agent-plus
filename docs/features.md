@@ -118,7 +118,7 @@ On OpenCode 2, when OpenCode Plus finds Python, it installs a work plan plugin f
 
 The plan bar above the input box (`opencodePlus.planBar`) shows the plan's open rows, the current row and a red count of questions waiting for your answer. Click the bar to open the Work plan view. Click the red count to open Agent Plus's Answer view for those questions.
 
-When the [Token Mode](#token-mode) enables work plans, each message includes the open rows, and the model gets tools to update the plan (`add_row`, `set_row`, `set_status`, `set_summary`). Reminders to update the plan arrive with the next message. During compaction, the work plan plugin asks the model to include the plan's location and open rows in the summary. The next message asks the model to read the plan first.
+When the [Token Mode](#token-mode) enables work plans, each message includes the open rows, and the model gets tools to update the plan (`add_row`, `set_row`, `set_status`, `set_summary`). Reminders to update the plan arrive with the next message. During compaction, the work plan plugin asks the model to include the plan's location and open rows in the summary. If the plan still has open rows, the next message asks the model to read the plan first.
 
 OpenCode Plus stores plans in `~/.opencode-plus/plans/` on the machine where OpenCode runs. Deleting a conversation also removes its plan (see [The Conversations List](#the-conversations-list)).
 
