@@ -1,0 +1,189 @@
+// BSD 3-Clause License
+// Copyright (c) 2026, Xnerv Wang
+// All rights reserved.
+
+'use strict';
+/*
+ * The Conversations view in the activity bar (newAgent.sessions): one row per saved conversation, most recently
+ * active first, with its title, how long ago it was active and a status icon. Everything shown comes from the injected
+ * listSessions(); the list is redrawn when the injected onDidChange fires and when the view becomes visible again,
+ * which also keeps the "5m" ages roughly current without a timer.
+ */
+
+const RENAME_COMMAND = 'newAgent.renameConversation';
+const DELETE_COMMAND = 'newAgent.deleteConversation';
+const OPEN_COMMAND = 'newAgent.openConversation';
+const CONTEXT_IDLE = 'newAgent.session';
+const CONTEXT_BUSY = 'newAgent.session.busy';
+
+const STATUS_WORDS = { working: 'Working', waiting: 'Waiting for you', idle: 'Idle' };
+
+function age(ms, now) {
+  if (typeof ms !== 'number' || !isFinite(ms) || !ms) return '';
+  const s = Math.max(0, Math.floor((now - ms) / 1000));
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
+  const mo = Math.floor(d / 30);
+  const y = Math.floor(d / 365);
+  return y > 0 ? `${y}y` : mo > 0 ? `${mo}mo` : d > 0 ? `${d}d` : h > 0 ? `${h}h` : m > 0 ? `${m}m` : 'now';
+}
+
+function lastActive(meta) {
+  return meta.lastActiveAt || meta.lastReplyAt || meta.lastUserAt || meta.createdAt || 0;
+}
+
+function toOff(sub) {
+  if (typeof sub === 'function') return sub;
+  return () => sub && typeof sub.dispose === 'function' && sub.dispose();
+}
+
+class SessionsView {
+  /**
+   * @param {{
+   *   listSessions: () => (object[] | Promise<object[]>),
+   *   onDidChange?: (listener: () => void) => ({ dispose(): void } | Function),
+   *   statusOf?: (meta: object) => ('working' | 'waiting' | 'idle'),
+   *   rename: (id: string, title: string) => unknown,
+   *   remove: (id: string) => unknown,
+   *   vscode?: object,
+   *   now?: () => number,
+   * }} opts
+   */
+  constructor(opts) {
+    this.vscode = opts.vscode || require('vscode');
+    this.listSessions = opts.listSessions;
+    this.statusOf = opts.statusOf || ((meta) => meta.status || 'idle');
+    this.renameSession = opts.rename;
+    this.removeSession = opts.remove;
+    this.now = opts.now || Date.now;
+    this.last = [];
+    this.treeView = null;
+    this.emitter = new this.vscode.EventEmitter();
+    this.onDidChangeTreeData = this.emitter.event;
+    this.subs = [() => this.emitter.dispose()];
+    if (typeof opts.onDidChange === 'function') this.subs.push(toOff(opts.onDidChange(() => this.refresh())));
+  }
+
+  refresh() {
+    this.emitter.fire(undefined);
+  }
+
+  async getChildren(element) {
+    if (element) return [];
+    let list;
+    try {
+      list = await this.listSessions();
+      if (this.treeView) this.treeView.message = undefined;
+    } catch (err) {
+      if (this.treeView) this.treeView.message = `Couldn't list conversations: ${(err && err.message) || err}`;
+      return [];
+    }
+    this.last = (Array.isArray(list) ? list : []).filter((m) => m && m.id)
+      .sort((a, b) => lastActive(b) - lastActive(a));
+    return this.last;
+  }
+
+  getTreeItem(meta) {
+    const vscode = this.vscode;
+    const status = this.statusOf(meta) || 'idle';
+    const title = meta.title || 'Untitled conversation';
+    const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
+    const now = this.now();
+    item.id = meta.id;
+    item.description = age(lastActive(meta), now);
+    item.iconPath = status === 'working'
+      ? new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.green'))
+      : status === 'waiting'
+        ? new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.red'))
+        : new vscode.ThemeIcon('comment-discussion');
+    const when = lastActive(meta) ? new Date(lastActive(meta)).toLocaleString() : '';
+    item.tooltip = [
+      title,
+      `${STATUS_WORDS[status] || status}${when ? ` · last active ${when}` : ''}`,
+      meta.cwd ? `Folder: ${meta.cwd}` : '',
+      meta.modelId ? `Model: ${meta.modelId}` : '',
+      `ID: ${meta.id}`,
+    ].filter(Boolean).join('\n');
+    item.contextValue = status === 'idle' ? CONTEXT_IDLE : CONTEXT_BUSY;
+    item.command = { command: OPEN_COMMAND, title: 'Open Conversation', arguments: [meta.id] };
+    return item;
+  }
+
+  /* Creates the tree view and registers Rename and Delete. Returns one disposable for all of it. */
+  register() {
+    const vscode = this.vscode;
+    this.treeView = vscode.window.createTreeView('newAgent.sessions', { treeDataProvider: this });
+    const disposables = [
+      this.treeView,
+      this.treeView.onDidChangeVisibility((e) => {
+        if (e.visible) this.refresh();
+      }),
+      vscode.commands.registerCommand(RENAME_COMMAND, (arg) => this.promptRename(arg)),
+      vscode.commands.registerCommand(DELETE_COMMAND, (arg) => this.confirmDelete(arg)),
+    ];
+    return { dispose: () => disposables.forEach((d) => d && d.dispose && d.dispose()) };
+  }
+
+  find(arg) {
+    const id = typeof arg === 'string' ? arg : arg && arg.id;
+    if (!id) return null;
+    return this.last.find((m) => m.id === id) || (typeof arg === 'object' ? arg : { id });
+  }
+
+  async promptRename(arg) {
+    const meta = this.find(arg);
+    if (!meta) return false;
+    const title = await this.vscode.window.showInputBox({
+      prompt: 'New title for the conversation',
+      value: meta.title || '',
+      validateInput: (v) => (v.trim() ? null : 'Enter a title.'),
+    });
+    if (title === undefined || !title.trim()) return false;
+    try {
+      await this.renameSession(meta.id, title.trim());
+    } catch (err) {
+      this.vscode.window.showErrorMessage(`Couldn't rename the conversation: ${(err && err.message) || err}`);
+      return false;
+    }
+    this.refresh();
+    return true;
+  }
+
+  async confirmDelete(arg) {
+    const meta = this.find(arg);
+    if (!meta) return false;
+    const window = this.vscode.window;
+    if ((this.statusOf(meta) || 'idle') !== 'idle') {
+      window.showInformationMessage('Stop the conversation before deleting it.');
+      return false;
+    }
+    const title = meta.title || 'Untitled conversation';
+    const choice = await window.showWarningMessage(`Delete "${title}"?`,
+      { modal: true, detail: 'The conversation is removed from disk and cannot be restored.' }, 'Delete');
+    if (choice !== 'Delete') return false;
+    try {
+      await this.removeSession(meta.id);
+    } catch (err) {
+      window.showErrorMessage(`Couldn't delete the conversation: ${(err && err.message) || err}`);
+      return false;
+    }
+    this.refresh();
+    return true;
+  }
+
+  dispose() {
+    for (const off of this.subs) off();
+    this.subs = [];
+  }
+}
+
+module.exports = {
+  SessionsView,
+  age,
+  RENAME_COMMAND,
+  DELETE_COMMAND,
+  OPEN_COMMAND,
+  CONTEXT_IDLE,
+  CONTEXT_BUSY,
+};
