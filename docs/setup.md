@@ -31,7 +31,7 @@ The chat page shows controls for slash commands, image paste, mode and effort on
 
 ## How OpenCode Plus Finds OpenCode
 
-If you set `opencodePlus.opencode.path`, OpenCode Plus uses that path. It must point to an executable file. Let any running turn finish before you change the setting, because changing it restarts OpenCode ([When Settings Start OpenCode Again](settings.md#when-settings-start-opencode-again)).
+If you set `opencodePlus.opencode.path` in your User or Remote settings, OpenCode Plus uses that path. It must point to an executable file. Let any running turn finish before you change the setting, because changing it restarts OpenCode ([When Settings Start OpenCode Again](settings.md#when-settings-start-opencode-again)).
 
 If you leave the setting empty, OpenCode Plus looks for `opencode` in this order. On Windows, it also looks for `opencode.exe` and `opencode.cmd`.
 
@@ -55,7 +55,7 @@ You need VS Code 1.96 or later. Search for OpenCode Plus in the Extensions view 
 
 ### Python for the Work Plan
 
-The work plan needs Python 3.7 or later. OpenCode Plus looks for Python when it starts. If it can't find a suitable version, you'll see a message in Agent Plus's Work plan view. If VS Code is in Restricted Mode because you haven't trusted the workspace, OpenCode Plus waits until you trust it before setting up the work plan.
+The work plan needs Python 3.7 or later. OpenCode Plus looks for Python when it starts. If it can't find a suitable version, you'll see a message in Agent Plus's Work plan view. If VS Code is in Restricted Mode because you haven't trusted the workspace, OpenCode Plus does nothing, including setting up the work plan, until you trust it.
 
 On Windows, OpenCode Plus offers to download python.org's embeddable Python 3.12.7 (about 11 MB). You can start the download yourself with `OpenCode Plus: Download Python for Work Plans`. If you install Python yourself, run `OpenCode Plus: Look for Python Again for Work Plans` to repeat the search.
 
@@ -71,7 +71,7 @@ You can give OpenCode Bedrock credentials through OpenCode Plus or configure Ope
 
 ### Through OpenCode Plus Settings
 
-Set your AWS profile and Region in the VS Code Settings editor, or store a Bedrock API key with the Command Palette. OpenCode Plus passes only the values you set. If you leave a setting empty, OpenCode keeps using the value from its own configuration or environment.
+Set your AWS profile and Region in the User settings of the VS Code Settings editor (in a Remote-SSH window, in its Remote settings), or store a Bedrock API key with the Command Palette. OpenCode Plus passes only the values you set. If you leave a setting empty, OpenCode keeps using the value from its own configuration or environment.
 
 | OpenCode Plus setting or command | Environment variable OpenCode receives |
 | --- | --- |

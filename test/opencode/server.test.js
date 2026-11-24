@@ -29,6 +29,15 @@ test('not found, or a configured path that is not there, says how to install', (
   assert.throws(() => findOpenCode({ ...opts, configured: '/nope/opencode' }), (e) => e.code === 'configuredNotFound' && e.message.includes('/nope/opencode'));
 });
 
+test('the install hint gives OpenCode 2 first, then OpenCode 1 for chatting, as docs/setup.md does', () => {
+  const { INSTALL_HINT: hint } = require('../../src/opencode/server');
+  const two = hint.indexOf('`npm install -g @opencode/cli`');
+  const one = hint.indexOf('OpenCode 1 also works for chatting');
+  assert.ok(two >= 0 && one > two, hint);
+  assert.ok(hint.indexOf('opencode.ai/install') > one && hint.indexOf('`npm install -g opencode-ai`') > one, hint);
+  assert.match(hint, /in your user settings, or in the remote machine's settings over Remote-SSH/);
+});
+
 test('1.x runs `acp` on 127.0.0.1 with a password and the 1.x permission keys', () => {
   const l = acpLaunch({ bin: '/b/opencode', version: v1, env: { AWS_PROFILE: 'p' }, baseEnv: { PATH: '/usr/bin' } });
   assert.deepEqual(l.args, ['acp', '--hostname', '127.0.0.1']);

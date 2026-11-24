@@ -32,7 +32,13 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In Restricted Mode the agent cannot read or change files or run commands."
+      "description": "In Restricted Mode, this extension does nothing. It starts when the workspace is trusted.",
+      "restrictedConfigurations": [
+        "opencodePlus.opencode.path",
+        "opencodePlus.opencode.askPermissions",
+        "opencodePlus.bedrock.profile",
+        "opencodePlus.bedrock.region"
+      ]
     }
   },
   "contributes": {
@@ -153,12 +159,12 @@
       "view/title": [
         {
           "command": "opencodePlus.newConversation",
-          "when": "view == opencodePlus.sessions",
+          "when": "view == opencodePlus.sessions && isWorkspaceTrusted",
           "group": "navigation"
         },
         {
           "command": "opencodePlus.findConversation",
-          "when": "view == opencodePlus.sessions",
+          "when": "view == opencodePlus.sessions && isWorkspaceTrusted",
           "group": "navigation@2"
         }
       ],
@@ -238,7 +244,7 @@
         },
         {
           "command": "opencodePlus.forkConversation",
-          "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canFork"
+          "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canFork && isWorkspaceTrusted"
         },
         {
           "command": "opencodePlus.diffAllowOnce",
@@ -251,6 +257,46 @@
         {
           "command": "opencodePlus.diffDeny",
           "when": "false"
+        },
+        {
+          "command": "opencodePlus.newConversation",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.chooseModel",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.testConnection",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.setBedrockApiKey",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.clearBedrockApiKey",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.downloadPython",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.findPython",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.findConversation",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.clearRecentlyClosed",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodePlus.showMcpServers",
+          "when": "isWorkspaceTrusted"
         }
       ],
       "webview/context": [
@@ -272,21 +318,25 @@
         "opencodePlus.opencode.path": {
           "type": "string",
           "default": "",
+          "scope": "machine",
           "description": "Path to the opencode executable. Empty looks for it on PATH and where its installers put it."
         },
         "opencodePlus.opencode.askPermissions": {
           "type": "boolean",
           "default": true,
+          "scope": "machine",
           "description": "Ask before OpenCode edits files, runs commands, fetches web pages or reads outside the project. This replaces the edit, bash, webfetch and external_directory rules of your own OpenCode configuration; turn it off to keep those."
         },
         "opencodePlus.bedrock.profile": {
           "type": "string",
           "default": "",
+          "scope": "machine",
           "description": "AWS profile for Amazon Bedrock, given to OpenCode as AWS_PROFILE. Empty leaves it to OpenCode and your AWS configuration."
         },
         "opencodePlus.bedrock.region": {
           "type": "string",
           "default": "",
+          "scope": "machine",
           "description": "AWS Region for Amazon Bedrock, given to OpenCode as AWS_REGION. Empty leaves it to OpenCode and your AWS configuration."
         },
         "opencodePlus.workPlan": {
@@ -334,7 +384,13 @@
     "viewsWelcome": [
       {
         "view": "opencodePlus.sessions",
-        "contents": "No conversations yet.\n[New Conversation](command:opencodePlus.newConversation)"
+        "contents": "No conversations yet.\n[New Conversation](command:opencodePlus.newConversation)",
+        "when": "isWorkspaceTrusted"
+      },
+      {
+        "view": "opencodePlus.sessions",
+        "contents": "OpenCode Plus does nothing in Restricted Mode. It starts when you trust this workspace.\n[Manage Workspace Trust](command:workbench.trust.manage)",
+        "when": "!isWorkspaceTrusted"
       }
     ]
   },

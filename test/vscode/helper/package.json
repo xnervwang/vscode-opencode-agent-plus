@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "private": true,
   "engines": { "vscode": "^1.96.0" },
+  "capabilities": { "untrustedWorkspaces": { "supported": true } },
   "activationEvents": ["*"],
   "main": "./extension.js"
 }

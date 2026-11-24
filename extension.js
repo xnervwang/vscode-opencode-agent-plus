@@ -6,7 +6,8 @@
 /*
  * Activation registers the commands, the Conversations view, the chat editor and the listeners, and nothing more: the
  * agent (OpenCode, through src/host/backend.js and src/opencode/) starts when the first conversation or the
- * Conversations view needs it, and a conversation's history is read when its tab opens.
+ * Conversations view needs it, and a conversation's history is read when its tab opens. In Restricted Mode not even
+ * that: start() waits until the workspace is trusted (src/host/trust-gate.js).
  *
  *   src/host/chat-editor.js       a chat tab is the custom editor opencodePlus.chat of opencodeplus-session:/<session id>
  *   src/host/session-manager.js   the conversations open in this window, one window each (src/host/locks.js)
@@ -24,6 +25,7 @@
  *   src/host/conversation-links.js   the conversations a reply names, linked in the chat page
  *   src/host/recent-closed.js     the chat tabs closed in this workspace, for the Recently closed group
  *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
+ *   src/host/trust-gate.js        what the commands, the chat tabs and the view do before the workspace is trusted
  *
  * OPENCODE_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -60,6 +62,9 @@ const { createRecentClosed } = require('./src/host/recent-closed');
 const { findConversation } = require('./src/host/find-conversation');
 const hookSettings = require('./src/shared/hook-settings');
 const tokenMode = require('./src/shared/token-mode');
+const { createTrustGate } = require('./src/host/trust-gate');
+const COMMANDS = require('./package.json').contributes.commands.map((c) => c.command);
+const VIEW_ID = `${brand.prefix}.sessions`;
 
 const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
 /* Set once the OpenCode found can rename conversations (2.x); the Rename entries show only then. */
@@ -86,8 +91,20 @@ const quietClose = new Set();
 function activate(context) {
   const channel = vscode.window.createOutputChannel(brand.displayName, { log: true });
   const log = (line) => channel.info(String(line));
+  context.subscriptions.push(channel);
+  const gate = createTrustGate({ vscode, viewType: ap.VIEW_TYPE, viewId: VIEW_ID, commands: COMMANDS, log });
+  context.subscriptions.push(gate);
+  /* The window tests' handle; its other members come with start(). */
+  const api = process.env.OPENCODE_PLUS_TEST_CONTROL ? { test: { restricted: () => !gate.started, waitingTabs: () => gate.waiting() } } : undefined;
+  gate.whenTrusted(() => {
+    const test = start(context, log, gate);
+    if (api && test) Object.assign(api.test, test);
+  });
+  return api;
+}
+
+function start(context, log, gate) {
   const subs = context.subscriptions;
-  subs.push(channel);
 
   const folder = () => {
     const f = vscode.workspace.workspaceFolders;
@@ -215,7 +232,6 @@ function activate(context) {
     try { if (hookSettings.writeClientZone(workplan.planDir(), zone)) log(`the reader's time zone for the plugin: ${zone}`); } catch (e) { log(`writing the time zone failed: ${e.message}`); }
   };
   writeZone(timeZone);
-  if (typeof vscode.workspace.onDidGrantWorkspaceTrust === 'function') subs.push(vscode.workspace.onDidGrantWorkspaceTrust(() => writeZone(timeZone)));
 
   /* The chat pages open in this window, and whether they chime. */
   const chats = new Set();
@@ -456,7 +472,7 @@ function activate(context) {
     onDidChangeLook: (fn) => envelope.onEnvelopeChange(vscode, fn),
     log,
   });
-  subs.push(vscode.window.registerCustomEditorProvider(ap.VIEW_TYPE, editor, { supportsMultipleEditorsPerDocument: false }));
+  gate.useEditor(editor);
 
   /* The Conversations view: the sessions of this window's folders, redrawn when one here or OpenCode's list changes. */
   const inScope = (cwd) => {
@@ -622,11 +638,12 @@ function activate(context) {
   running = { manager, backend, registration: null };
   log(`activated ${context.extension ? context.extension.packageJSON.version : ''}`.trim());
   if (process.env.OPENCODE_PLUS_TEST_CONTROL) {
-    return { test: { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
+    return { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
       source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready, windowFile: windows.file,
       send: (id, text) => manager.send(id, text), snapshot: (id) => manager.snapshot(id), replyFile: (id) => replies.fileOf(id),
       told: () => told.slice(), sound: () => soundOn, recent: () => recent.get(), links: () => links.list(), infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
-      zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }) } };
+      zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }),
+      backendInfo: () => backend.info() };
   }
   return undefined;
 }

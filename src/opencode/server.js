@@ -23,8 +23,9 @@ const path = require('path');
 const crypto = require('crypto');
 const childProcess = require('child_process');
 
-const INSTALL_HINT = 'Install it with `curl -fsSL https://opencode.ai/install | bash` or `npm install -g opencode-ai`, '
-  + 'then reload the window. If it is installed somewhere else, set its path in the settings.';
+const INSTALL_HINT = 'Install OpenCode 2 with `npm install -g @opencode/cli`, then reload the window. OpenCode 1 also works for '
+  + 'chatting: `curl -fsSL https://opencode.ai/install | bash` or `npm install -g opencode-ai` installs it. If OpenCode is '
+  + 'installed somewhere else, set its path in your user settings, or in the remote machine\'s settings over Remote-SSH.';
 
 class OpenCodeError extends Error {
   constructor(code, message) {

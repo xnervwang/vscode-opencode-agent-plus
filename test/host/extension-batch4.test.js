@@ -115,7 +115,7 @@ test('package.json declares the two commands, the list\'s search button, the cle
   const cmd = (id) => c.commands.find((x) => x.command === id);
   assert.strictEqual(cmd('opencodePlus.findConversation').title, 'Find Conversation…');
   assert.strictEqual(cmd('opencodePlus.clearRecentlyClosed').icon, '$(clear-all)');
-  assert.ok(c.menus['view/title'].some((m) => m.command === 'opencodePlus.findConversation' && m.when === 'view == opencodePlus.sessions'));
+  assert.ok(c.menus['view/title'].some((m) => m.command === 'opencodePlus.findConversation' && m.when === 'view == opencodePlus.sessions && isWorkspaceTrusted'));
   const clear = c.menus['view/item/context'].find((m) => m.command === 'opencodePlus.clearRecentlyClosed');
   assert.deepStrictEqual([clear.when, clear.group], ['view == opencodePlus.sessions && viewItem == opencodePlus.group.recent', 'inline']);
   /* Rename, Fork and Delete take conversation rows only, which the group's row is not. */

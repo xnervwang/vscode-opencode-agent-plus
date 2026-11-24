@@ -6,8 +6,9 @@
 /*
  * The parts of the VS Code API that src/host/ touches, enough to run it in Node: events, URIs, tab inputs, a tab model
  * the test drives, commands, settings, secrets, messages, quick picks (also one made with createQuickPick, which the
- * test answers through state.quickPick) and webview panels. install() makes
- * require('vscode') return it.
+ * test answers through state.quickPick), webview panels and workspace trust (control.grantTrust()). install() makes
+ * require('vscode') return it. With state.strictCommands set, registering a command id that is still registered throws,
+ * as VS Code does.
  */
 const Module = require('module');
 const path = require('path');
@@ -65,10 +66,11 @@ function create() {
   const tabsChanged = new EventEmitter();
   const configChanged = new EventEmitter();
   const secretsChanged = new EventEmitter();
+  const trustGranted = new EventEmitter();
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
   const state = { commands: [], handlers: {}, registered: [], said: [], answers: [], config: {}, configWrites: [], secrets: new Map(),
     picks: [], pickAnswer: null, inputs: [], inputAnswer: undefined, extensions: new Map(), context: {}, progress: [],
-    editors: {}, trees: {}, log: [], closedTabs: [] };
+    editors: {}, trees: {}, log: [], closedTabs: [], treeProviders: {}, live: new Map(), unregistered: [], strictCommands: false };
   const say = (kind) => async (message, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
     state.said.push({ kind, message, buttons });
@@ -97,6 +99,11 @@ function create() {
         state.trees[id] = view;
         return view;
       },
+      registerTreeDataProvider: (id, provider) => {
+        const entry = { provider, disposed: false };
+        state.treeProviders[id] = entry;
+        return { dispose() { entry.disposed = true; } };
+      },
       showInformationMessage: say('info'),
       showWarningMessage: say('warning'),
       showErrorMessage: say('error'),
@@ -120,7 +127,20 @@ function create() {
         if (state.handlers[cmd]) return state.handlers[cmd](...args);
         return undefined;
       },
-      registerCommand: (id, fn) => { state.registered.push(id); state.handlers[id] = fn; return { dispose() {} }; },
+      registerCommand: (id, fn) => {
+        if (state.strictCommands && state.live.get(id)) throw new Error(`command '${id}' already exists`);
+        state.registered.push(id);
+        state.handlers[id] = fn;
+        state.live.set(id, (state.live.get(id) || 0) + 1);
+        let gone = false;
+        return { dispose() {
+          if (gone) return;
+          gone = true;
+          state.live.set(id, state.live.get(id) - 1);
+          state.unregistered.push(id);
+          if (state.handlers[id] === fn) delete state.handlers[id];
+        } };
+      },
     },
     extensions: { getExtension: (id) => state.extensions.get(id) },
     workspace: {
@@ -136,6 +156,7 @@ function create() {
         },
       }),
       onDidChangeConfiguration: configChanged.event,
+      onDidGrantWorkspaceTrust: trustGranted.event,
       registerTextDocumentContentProvider: () => ({ dispose() {} }),
       createFileSystemWatcher: () => ({ onDidCreate: () => ({ dispose() {} }), onDidChange: () => ({ dispose() {} }), onDidDelete: () => ({ dispose() {} }), dispose() {} }),
     },
@@ -168,6 +189,11 @@ function create() {
     },
     chatTab(sessionId) { return { label: 'chat', input: new TabInputCustom(Uri.from({ scheme: 'opencodeplus-session', path: `/${sessionId}` }), 'opencodePlus.chat') }; },
     fileTab(p) { return { label: path.basename(p), input: new TabInputText(Uri.file(p)) }; },
+    /* The user trusts the workspace. */
+    grantTrust() {
+      vscode.workspace.isTrusted = true;
+      trustGranted.fire();
+    },
     setConfig(full, v) {
       state.config[full] = v;
       configChanged.fire({ affectsConfiguration: (s) => full === s || full.startsWith(s + '.') });

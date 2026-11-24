@@ -9,10 +9,10 @@ You can change these settings under OpenCode Plus in the VS Code Settings editor
 | Setting | Default | What it does |
 |---|---|---|
 | `opencodePlus.model` | Empty | Sets the [model for new conversations](setup.md#installing-opencode-plus). Use `provider/model`, such as `amazon-bedrock/us.xai.grok-4.7`. If you leave it empty, your first message prompts you to choose a model. |
-| `opencodePlus.opencode.path` | Empty | Sets the path to the [OpenCode executable](setup.md#how-opencode-plus-finds-opencode). If you leave it empty, OpenCode Plus searches for it. |
-| `opencodePlus.opencode.askPermissions` | On | Applies [OpenCode Plus's permission rules](features.md#messages-tools-and-permissions) for edits, commands, web requests and access outside the project. |
-| `opencodePlus.bedrock.profile` | Empty | Sets the [AWS profile for Amazon Bedrock](setup.md#through-opencode-plus-settings). |
-| `opencodePlus.bedrock.region` | Empty | Sets the [AWS Region for Amazon Bedrock](setup.md#through-opencode-plus-settings). |
+| `opencodePlus.opencode.path` | Empty | Sets the path to the [OpenCode executable](setup.md#how-opencode-plus-finds-opencode). If you leave it empty, OpenCode Plus searches for it. Set it in User or Remote settings, not Workspace settings. |
+| `opencodePlus.opencode.askPermissions` | On | Applies [OpenCode Plus's permission rules](features.md#messages-tools-and-permissions) for edits, commands, web requests and access outside the project. Set it in User or Remote settings, not Workspace settings. |
+| `opencodePlus.bedrock.profile` | Empty | Sets the [AWS profile for Amazon Bedrock](setup.md#through-opencode-plus-settings). Set it in User or Remote settings, not Workspace settings. |
+| `opencodePlus.bedrock.region` | Empty | Sets the [AWS Region for Amazon Bedrock](setup.md#through-opencode-plus-settings). Set it in User or Remote settings, not Workspace settings. |
 | `opencodePlus.workPlan` | On | Lets the model keep a work plan when you choose Custom in [Token Mode](features.md#token-mode). |
 | `opencodePlus.planBar` | On | Shows the [plan bar](features.md#work-plan-and-plan-bar) above the input box. |
 | `opencodePlus.conversationLinks` | On | Turns mentions of other conversations into [links in replies](features.md#links-and-images-in-replies). |

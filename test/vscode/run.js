@@ -6,6 +6,7 @@
 /*
  * node test/vscode/run.js --local --vscode <executable> --out <dir> [--agent-plus <.vsix>] [--backend fake|opencode]
  *   [--opencode <executable>] [--model <provider/model>] [--deps <folder with node_modules>] [--fonts <fonts.conf>]
+ *   [--restricted]
  *
  * Packs this extension (build/pack-vsix.js), installs it and Agent Plus into a profile of its own, starts that VS Code
  * under xvfb-run and goes through the steps below, saving a screenshot of each to <out>/shots with a look.json that
@@ -28,6 +29,7 @@
  * once a second source is registered (Agent Plus draws a source's logo only then). With OpenCode 1 the notice that the work plan needs OpenCode 2 is shown
  * once, the new controls show only what it offers, and its tab offers no Rename but Fork. The plugin writes what it does to
  * <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
+ * --restricted runs test/vscode/lib/restricted.js instead: the folder untrusted, then trusted.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
  *
@@ -64,6 +66,7 @@ const OPENCODE = flag('--opencode');
 const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-bedrock/us.xai.grok-4.7');
 const DEPS = flag('--deps');
 const FONTS = flag('--fonts');
+const RESTRICTED = has('--restricted');
 const ID = 'xnervwang.opencode-plus';
 const HAIKU = 'amazon-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
@@ -104,6 +107,7 @@ function pageTime(text, near) {
 
 const need = (name) => require(DEPS ? path.join(DEPS, 'node_modules', name) : name);
 const { open, until, sleep, frameWith } = require('./lib/window');
+const restricted = require('./lib/restricted');
 
 /* VS Code's environment: none of the variables that would send the install to the VS Code running this script. */
 function cleanEnv(home, extra) {
@@ -170,6 +174,7 @@ async function main() {
   fs.writeFileSync(path.join(p.folder, 'src', 'sum.js'), 'module.exports = (a, b) => a + b;\n');
   fs.writeFileSync(path.join(p.folder, 'codeword.txt'), 'The code word is KIWI-93.\n');
   fs.writeFileSync(path.join(p.folder, 'colours.txt'), 'Colours of the week.\nThe colour of the day is MAGENTA.\nThat is all.\n');
+  const prepared = RESTRICTED ? restricted.prepareFolder(p.folder, root) : null;
   console.log(`temporary root ${root}; results in ${OUT}`);
 
   const vsix = path.join(root, 'opencode-plus.vsix');
@@ -209,7 +214,7 @@ async function main() {
   }
   console.log(code(['--list-extensions', '--show-versions', `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`], env).out);
   writeSettings(p.user, { 'opencodePlus.model': MODEL, ...(OPENCODE ? { 'opencodePlus.opencode.path': OPENCODE } : {}),
-    ...(real ? { 'opencodePlus.bedrock.profile': 'self', 'opencodePlus.bedrock.region': 'us-east-1' } : {}) });
+    ...(real ? { 'opencodePlus.bedrock.profile': 'self', 'opencodePlus.bedrock.region': 'us-east-1' } : {}), ...(RESTRICTED ? restricted.TRUST_SETTINGS : {}) });
 
   const steps = [];
   let failed = 0, passed = 0;
@@ -220,7 +225,7 @@ async function main() {
     return false;
   };
 
-  const w = await open({ exe: EXE, profile: p, env, playwright, log: path.join(OUT, 'vscode.log') });
+  const w = await open({ exe: EXE, profile: p, env, playwright, log: path.join(OUT, 'vscode.log'), trust: RESTRICTED });
   const { page, call } = w;
   let previous = null;
   /* A screenshot of the window and of one part of it, recorded in look.json. */
@@ -403,6 +408,23 @@ async function main() {
       listed: await page.evaluate(() => [...document.querySelectorAll('.quick-input-list .monaco-list-row')].map((x) => x.textContent)) });
     return opened;
   };
+
+  if (RESTRICTED) {
+    try {
+      await w.hostUp();
+      await until(() => ext('return !!(api && api.test);'), 60000);
+      await restricted.run({ page, call, ext, check, shot, until, sleep, frameWith, control: p.control, home: p.agentHome, real, opencode: OPENCODE, prepared });
+    } catch (e) {
+      check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
+      try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }
+    } finally {
+      await w.close();
+      if (real) console.log(`  note  ${stopLeftovers(xdgEnv.XDG_STATE_HOME)}`);
+    }
+    console.log(`\nVS Code window: ${passed} passed, ${failed} failed; screenshots in ${shots}`);
+    process.exitCode = failed ? 1 : 0;
+    return;
+  }
 
   /* When the real model's first message was sent, for its time after the reload. */
   let firstSentAt = 0;

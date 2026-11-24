@@ -28,12 +28,13 @@ async function until(test, ms, every = 250) {
   }
 }
 
-/* `exe` VS Code's executable; `profile` { exts, user, folder, control }; `env` the window's environment. */
-async function open({ exe, profile, env, playwright, log, size = '1600x1000' }) {
+/* `exe` VS Code's executable; `profile` { exts, user, folder, control }; `env` the window's environment; `trust` leaves
+   Workspace Trust on, which the user settings then decide. */
+async function open({ exe, profile, env, playwright, log, size = '1600x1000', trust = false }) {
   fs.mkdirSync(profile.control, { recursive: true });
   const portFile = path.join(profile.user, 'DevToolsActivePort');
   fs.rmSync(portFile, { force: true });
-  const args = [profile.folder, ...FLAGS, `--extensions-dir=${profile.exts}`, `--user-data-dir=${profile.user}`,
+  const args = [profile.folder, ...FLAGS.filter((f) => !trust || f !== '--disable-workspace-trust'), `--extensions-dir=${profile.exts}`, `--user-data-dir=${profile.user}`,
     `--extensionDevelopmentPath=${HELPER}`, '--remote-debugging-port=0'];
   const [prog, argv] = process.platform === 'linux' && !env.DISPLAY
     ? ['xvfb-run', ['-a', `--server-args=-screen 0 ${size}x24`, exe, ...args]]
