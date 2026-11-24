@@ -44,6 +44,9 @@ test('2.x: a rename runs `opencode api session.update --standalone` and the open
   s.on((ev) => seen.push(ev));
   const changed = [];
   oc.onDidChangeSessions((e) => changed.push(e.sessionId));
+  /* Opening it ran its export, for the times of the replay. */
+  assert.deepEqual(calls.map((c) => c.args), [['session', 'export', LOADED, '--standalone']]);
+  calls.length = 0;
   await oc.renameSession(LOADED, '  Weekly   report\n draft ');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].file, '/fake/bin/opencode');

@@ -72,6 +72,12 @@
         "icon": "$(edit)"
       },
       {
+        "command": "opencodePlus.forkConversation",
+        "title": "Fork Conversation",
+        "category": "OpenCode Plus",
+        "icon": "$(repo-forked)"
+      },
+      {
         "command": "opencodePlus.deleteConversation",
         "title": "Delete Conversation",
         "category": "OpenCode Plus",
@@ -106,6 +112,29 @@
         "command": "opencodePlus.findPython",
         "title": "Look for Python Again for Work Plans",
         "category": "OpenCode Plus"
+      },
+      {
+        "command": "opencodePlus.showMcpServers",
+        "title": "Show MCP Servers",
+        "category": "OpenCode Plus"
+      },
+      {
+        "command": "opencodePlus.diffAllowOnce",
+        "title": "Allow Once",
+        "category": "OpenCode Plus",
+        "icon": "$(check)"
+      },
+      {
+        "command": "opencodePlus.diffAllowInProject",
+        "title": "Allow in This Project",
+        "category": "OpenCode Plus",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "opencodePlus.diffDeny",
+        "title": "Deny",
+        "category": "OpenCode Plus",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -123,6 +152,11 @@
           "group": "1_edit@1"
         },
         {
+          "command": "opencodePlus.forkConversation",
+          "when": "view == opencodePlus.sessions && viewItem =~ /^opencodePlus\\.session/ && opencodePlus.canFork",
+          "group": "1_edit@2"
+        },
+        {
           "command": "opencodePlus.deleteConversation",
           "when": "view == opencodePlus.sessions && viewItem == opencodePlus.session",
           "group": "9_delete@1"
@@ -133,13 +167,38 @@
           "command": "opencodePlus.renameConversation",
           "when": "resourceScheme == opencodeplus-session && opencodePlus.canRename",
           "group": "1_opencodePlus@1"
+        },
+        {
+          "command": "opencodePlus.forkConversation",
+          "when": "resourceScheme == opencodeplus-session && opencodePlus.canFork",
+          "group": "1_opencodePlus@2"
         }
       ],
       "editor/title": [
         {
+          "command": "opencodePlus.diffAllowOnce",
+          "when": "resourceScheme =~ /^opencodeplus-diff$/i && resourcePath in opencodePlus.openDiffs",
+          "group": "navigation@1"
+        },
+        {
+          "command": "opencodePlus.diffAllowInProject",
+          "when": "resourceScheme =~ /^opencodeplus-diff$/i && resourcePath in opencodePlus.openDiffs",
+          "group": "navigation@2"
+        },
+        {
+          "command": "opencodePlus.diffDeny",
+          "when": "resourceScheme =~ /^opencodeplus-diff$/i && resourcePath in opencodePlus.openDiffs",
+          "group": "navigation@3"
+        },
+        {
           "command": "opencodePlus.renameConversation",
           "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canRename",
           "group": "1_opencodePlus@1"
+        },
+        {
+          "command": "opencodePlus.forkConversation",
+          "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canFork",
+          "group": "1_opencodePlus@2"
         }
       ],
       "commandPalette": [
@@ -154,6 +213,29 @@
         {
           "command": "opencodePlus.deleteConversation",
           "when": "false"
+        },
+        {
+          "command": "opencodePlus.forkConversation",
+          "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canFork"
+        },
+        {
+          "command": "opencodePlus.diffAllowOnce",
+          "when": "false"
+        },
+        {
+          "command": "opencodePlus.diffAllowInProject",
+          "when": "false"
+        },
+        {
+          "command": "opencodePlus.diffDeny",
+          "when": "false"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "opencodePlus.forkConversation",
+          "when": "webviewId == 'opencodePlus.chat' && opencodePlus.canFork",
+          "group": "1_opencodePlus@1"
         }
       ]
     },
@@ -201,6 +283,12 @@
           "default": true,
           "scope": "application",
           "markdownDescription": "Have the model keep a short summary and status of each conversation in its plan, shown by Agent Plus when the conversation is clicked. Used only while `#agentPlus.tokenMode#` is Custom."
+        },
+        "opencodePlus.tellOpenCodeYourTimeZone": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "markdownDescription": "Tell the model the time zone you read the conversation in when it differs from that of the machine OpenCode runs on, as over Remote-SSH, so it gives times in yours. It is said once, and again after a compaction or when a date or the offset changes. Used only while `#agentPlus.tokenMode#` is Custom."
         }
       }
     },

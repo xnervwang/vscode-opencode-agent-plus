@@ -1,0 +1,163 @@
+{
+  "info": {
+    "id": "ses_df253483effeDS9GAB4SMCCKaz",
+    "slug": "nimble-panda",
+    "projectID": "global",
+    "directory": "/work/project",
+    "path": "local/work/project",
+    "title": "KESTREL reply request",
+    "agent": "build",
+    "model": {
+      "id": "us.xai.grok-4.7",
+      "providerID": "amazon-bedrock",
+      "variant": "low"
+    },
+    "version": "1.19.6",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0.05335715,
+    "tokens": {
+      "input": 24117,
+      "output": 43,
+      "reasoning": 0,
+      "cache": {
+        "read": 29,
+        "write": 0
+      }
+    },
+    "time": {
+      "created": 1795525752769,
+      "updated": 1795525754850
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1795525752815
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "amazon-bedrock",
+          "modelID": "us.xai.grok-4.7",
+          "variant": "low"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "msg_20dacb7ef001aFhDxICVL0meIJ",
+        "sessionID": "ses_df253483effeDS9GAB4SMCCKaz"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Reply with the word KESTREL only.",
+          "id": "prt_20dacb7f3001gdr0tqw2E6ZKqS",
+          "sessionID": "ses_df253483effeDS9GAB4SMCCKaz",
+          "messageID": "msg_20dacb7ef001aFhDxICVL0meIJ"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_20dacb7ef001aFhDxICVL0meIJ",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "variant": "low",
+        "path": {
+          "cwd": "/work/project",
+          "root": "/"
+        },
+        "cost": 0.05335715,
+        "tokens": {
+          "total": 24189,
+          "input": 24117,
+          "output": 43,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 29
+          }
+        },
+        "modelID": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "time": {
+          "created": 1795525752832,
+          "completed": 1795525754845
+        },
+        "finish": "stop",
+        "id": "msg_20dacb8000012mg2thfzifdIMr",
+        "sessionID": "ses_df253483effeDS9GAB4SMCCKaz"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "prt_20dacbba0001ttDpDfColMpqU2",
+          "sessionID": "ses_df253483effeDS9GAB4SMCCKaz",
+          "messageID": "msg_20dacb8000012mg2thfzifdIMr"
+        },
+        {
+          "type": "reasoning",
+          "text": "The reply will contain only the word KESTREL.",
+          "time": {
+            "start": 1795525754829,
+            "end": 1795525754832
+          },
+          "id": "prt_20dacbfcd001aAEP8SjIdqjzvd",
+          "sessionID": "ses_df253483effeDS9GAB4SMCCKaz",
+          "messageID": "msg_20dacb8000012mg2thfzifdIMr"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "start": 1795525754834,
+            "end": 1795525754836
+          },
+          "metadata": {
+            "bedrock": {
+              "redactedContent": "cnNuX2V5SmhiR2NpT2lKRlV6STFOaUlzSW5SNWNDSTZJbUZ5WTJncmFuZHpJaXdpY0hKdlptbHNaU0k2SW1GeVkyZ3RNU0lzSW1semN5STZJbUYzY3lJc0ltdHBaQ0k2SWpZMGRTMUVlalZoTUVoUlFsOHlaMU15YzNad01GQkVTMmxhUzI4d1drRmhMV0l0UlZZNFdrdHFlVkVpTENKalpYSjBhV1pwWTJGMFpTSTZJbVY1U21oaVIyTnBUMmxLUmxWNlNURk9hVWx6U1c1U05XTkRTVFpKYlVaNVdUSm5kR015Ykc1aWJWWjVTekp3TTJONVNYTkpia0o1WWpKYWNHSkhWV2xQYVVwb1kyMU9iMHhVUldsTVEwcHdZek5OYVU5cFNtaGtNMDFwVEVOS2NtRlhVV2xQYVVsNVZHNU9TR1Z1V205aE1uUlhaRmRrTUZnd1ZuSk9WbWhvVm1wT1RWRjZTWGxXZWtVMVRWZGpOV0ZWV1hwVVJYQjNWbTFhYm1SdFNtNUpiakF1WlhsS2NXUXljMmxQYm5OcFlUTlNOVWxxYjJsU1ZVMXBURU5LYW1OdVdXbFBhVXBSVEZSSk1VNXBTWE5KYm1kcFQybEtNV1ZZVmxCV1IyUTFWRWhHZFZaVmF6VmFWR040WVZWMFMwNXJVWFJsYXpGaFRqTkNXbVZ1VVhSUlZtdzBXa1ZTU1ZVelFuVlRNMlJ5U1dsM2FXVlRTVFpKYTNSSFRucG9SazVJUWxaV2JtY3lXbFpGTTJGc1RtcFRha2swVVd0dk5GRnRiR1pPYTJoUFpFVmFORTB6VmtaaVJuQnhUVlpOTTA1SFRXbE1RMG94WXpKVmFVOXBTbnBoVjJOcFRFTkthR0pIWTJsUGFVcEdWWHBKTVU1cFNYTkpiWFJ3V2tOSk5rbHFXVEJrVXpGRlpXcFdhRTFGYUZKUmJEaDVXakZOZVdNelduZE5Sa0pGVXpKc1lWTXlPSGRYYTBab1RGZEpkRkpXV1RSWGEzUnhaVlpGYVdaVGQybGpTRXAyWkcxc2ExcFlTbnBKYW5CaVNXNW9hR0ZUU21STVEwb3pZMjFzTUZwV09XMWpiVGwwU1dwdmVFNTZhekZPUkdjeFRXcE5Na3hEU2pOamJXd3dXbFk1TVdKdVVuQmlRMGsyVFZSak5VNVVWVE5OVkZsNlRtbDNhV050Vm1oYVJqa3hZbTVTY0dKRFNUWk5WR2MxVFVSck1VMUVVWGROU0RBdVozVk5kMXBoVW05b2VHeGtiWGhNWTI1NExXOXBiRFp5Y25kdmFEVnZjMmx3UVRST1RrbHlZbkV5ZEZwc2Jrb3RibEpvTUMxaE9FWnJUSFJuTlVOVlVIVlhWMDF0WDJOS1dETjBjVkppYVZrM0xWYzNkbWNpTENKcGMzTmZiV1YwWVNJNmV5SnliM1YwYVc1bklqb2lVRVJZTVNKOWZRLmV5SndjbTkwWldOMFpXUWlPaUpsZVVwcFkyMUdkVmt5YUdaaFYxRnBUMmxLVlZkWE5UTmFWWEJDWkhwbk5HSnRjSE5ZTW1nd1QwZFNhR0ZXY0c1SmFYZHBZekpHYzJSRFNUWkpiR3hIVjBSR1VFMUhPVWRpVnpWdFZFaGFWMDB5TlUxVFZtUnRXVlpKTUZkSWFIUk5la2swWkVSYVNtUjZaR3hZTVd3MVZVUkNibGRHYTJsTVEwcHFZakkxTUZwWE5UQllNalYyWW0xT2JFbHFiMmxWYlZaclUwVjRVR0ZVYUVaUFYwcDRZa2RvZG1KVFNYTkpia3BzV1RKc2QyRlhWblZrU0UxcFQyeDBOMGx1UW5OWldGSnRZak5LZEVscWIybFpXR1I2U1dsM2FXRXliR3RKYW05cFYxVk9hV1J1VWpST1ZVNXVUMGhDUzFWVE1VOU1XR3hOVWtWU2JHSXpjR3hPYW1SU1ZqQjRiRTVGYTNSVVJFNVpVMFZ3VkZKWE9YbFNVMGx6U1cxV2RWa3pTalZqU0ZKc1drWTVhV050Um5WWk1tZHBUMmxLY21Gc1dYZFRhbVJKVlc1Rk5HUkZlSFZhVlZwcFRrWktjVmt5Um1sUmFURldaRWRrWmxac1JYZE5NMWw2VFZaYU1GVXhWVFZrV0VwTFkxaGtXR1ZHT1RKTlJYUTFZbGMxYWxZemNGQlVNMDUwVDBab2JFOUZXa1ZrYkRsV1pFWldWazU2WkVaaGExcGhZbXN4YVZkcmJESlVRekZ5VWxaS2RtVkZTbTlUUjBaMVRWUk9iMWd4VGxCV1JscEVURlJHV2xKRVFsUk9WMlJXV2tkR1JGUXhiSEJYUjNCWlltMTBNV1JYVW5oaVJXd3paV3hHUldOR1ZqRmhSRkkyVjJ4Wk1WWkVUbEprUldjd1pFUldNazFxV21sVU1IUlFXbFZyZVZvelRYaGhNSEJwVDFVMVptUlRNVVpTVkZwRVUxVTBkMDlIUlhkamJYaFpZMnBhY2xGdVdrNVNiVFZFWWxka1RFMXNjR3hsUmtaWlpXcHNjbEo2WkhkT2VscFhWbTVDTVZOWFRrWlphM040VlZWT2NHVkdaREJoU0ZKSVRVUm9lVlZxVm5GamFsSnBZMWhGTVZFd2NETmtiWEF6WWxWc1dHTXhRVEZPV0ZwM1RUSm9NR1I2WkVwUk0yeDFVVlZPTlUxc2FEQlZNMlIzVm5wS1NFOUVVbWxhUmxaTlpWWlpOV0Y2YUhsa1ZtaEZZVWhGZUdKV2EzaGliVGxzVWtod2FsRlVWalpTTWpsbVRGUm9TR0l4VGxGaU0xSktVbTF3V0U0emNFUmhhbEpRVTJwc1JHUlZSbWhaVmxaUFlXNXNiR05GY3pSVlYzaEpWbTAxTUZvd1JrWmlXR1IyV0hwT2VWUldaSFpsYldjeFpVaG9jR1ZYZDNSYVNFMDFZVVpPV0ZsWFdqRlVWazV0WTFkd1JtVnJOWGxZTW5BelUwWkdlVkpXVmtSaGJVcExWMFZXWVdWcVRtaFRiV2hJWlVSQ1YxTjZSazVVVkdSR1VURkdabGxZUWxwTlZtdzBWbXRqZEZWRVVUQmhhM0JXWWtaS1UxZ3hVbUZrYkZwUVRtdEtTMVJVYUZOUFF6RnJZMFZzZEU0d05VSldibWhaVmtaSmVrOUhTbEppTW1OMFdWWmtOVmxYZEZWaVZURmFUV3BTVkU5Rk9XaGFXRUp1V2pCV1ZrNXJSbk5QVkUwd1QxZEpNRTVZVGpWU1dGcDRZME5LT1ZoWU1DSXNJbU5wY0dobGNuUmxlSFFpT2lKbFZFRmFjVzE0TTJKQmVVOXFjRVpqYVdOa2NqaGZWRFY2VjE5Uk5UWkxNV1p4VFVvMlNGQlBkRVJ4VTB4RmRWbEVORUl6U0hWeFNUQjRaVFp6VTNkellUUkpUa1ZaYlhWNlV6RXdXV1IyZUhaUFZuUk1iVlZ5TFdac1VrdDZSMjVuVG05a2RHRkdTRmRRUjFkMGMwdEdNSEZSTkVKUGVVbDRRbU5pTjJaWlpsUllUR3RtYTFZM1kyeGlkMnBMVEUxWFprNXpTMmd0VFV0dmIwUndUMmhLUzFSVVVFOU1VVVpTWVV0QlJ6Sm5NbWhIYTJsb1ZqTXpkekZ5WTA0dFdWbE5Xa1pqY2xoalYyMUVZVkZ4TVRoVmEzZDVWMFpNU1hwSE0xTnJkM3B0VjNNeWExaHJSbEpOU1hKQ2FGSTBRbkJUT1daRFUydHhZbE5STTFZd1QydHhTMWRWZUZOb1ltZ3dSR040TnpKNGFFZzBUelpQVVZCNFFrZEZMVFZQY25SWVRIcG5WRTlyTTFCc1luaENZa1JYVkV0UldYVXhjVWxvZGxWVFVXRkpiRm8wUW5GNFNUUkZjakp5TlZRNGRXTkhVamx0WldwTWFsRmFiMFZVU0ZaM01GUkZjbWx2VXpndFNHaEZhMDlpZDFRd2VqQTRaWHB0VTJFNFltMDJTVlZEZDFWZlltbzBNVVJ6TldWQ1FqazFNVEV6UVU1T2NYa3RZMmhTYVRCTVZHWXhVVEZZTkc5eGRHVk9iSEJDYjBab1ZDMU5kVVpMU0U1MlZtcGZjbXBwZVRWcVdtNDNkWFJ1YTE5dk1GSjFkVlp3WkZSVVgycHhSR1JUZG1SWWRUZFdNMjVJZUV0U2JreFRURUZFWm5sZmJFZEpkRlkwYjJ0WFJtSnFhV3BWUTNsVVl6WkZVRlpqZW5CblNTMUVOM1JYTldGVU0xTXhTMWczUkhFMk5VVjZkMHhOVlZsT2IyWnNXbmx0WlRCdkxXWk9PWE5LWVZOT1ZFZFRORXBvTm10SFMyMTFSM0EyWjBrMFlWVkVWMXB4WkY5TFYyNXFaRk5rUVdOVWJWbEJTbFZCYW00MExXSkNabGxOZWxoMGMwOVRjamd6VFU5M2VFOW1ibkJoZEU5aVQzazViakEyV2s1MlJHbE1TRFJrWlhKeFNWVkVWMkY2Tmw5SVJVOTZaSGxEVTI1R1N6QmpkVlJyYlV4SGRHRnphR0ZIY0RSWlQwTm9aWGR6UTFJM01sTnJZMmhLUjFOWlZ6Z3ljV3g0VkUxdU5uUTVRM3BIYUVGNFdERlFWVVJ6WjJ0dFQxcG1VM0ZKWVdZdFMwOXVOa2QwTTJ0eGNYbERXR001VERsWU1tSnJWSHBKTWxScWFsZHhXazV4TTNreGFXRkNUVkZUU1RNM04yUTBTVkJIUWxwS1psWlhPWFJSYW1kNWRqaEZielF0Y1ZsM1ZHUkZla1J6TlZCeFZqTnJVVmRxVVMxQmJtbHRiQzFSTjNnMmJsaFBiMmMzT1hWRFIzQktTRmRFVTFNekxVOTFTa28zUkZGcU9ETTJjRXRCVGt4WmEweHRWMVZhVFhjaWZRLkYzaVBZTHFmSXVDQUNIX2V2dTU2V3pua1BTQmN2a202cVEwSk9ZbVZyTXdfU0V3TGdvd2ZZRk1EZDNxLVVzXzBsU1R5WU83UWdoaTIyYlNJSzVnQWR3"
+            }
+          },
+          "id": "prt_20dacbfd2001j92ab9CQp4m4f4",
+          "sessionID": "ses_df253483effeDS9GAB4SMCCKaz",
+          "messageID": "msg_20dacb8000012mg2thfzifdIMr"
+        },
+        {
+          "type": "text",
+          "text": "KESTREL",
+          "time": {
+            "start": 1795525754837,
+            "end": 1795525754839
+          },
+          "id": "prt_20dacbfd5001z2rP9hGbSkJ8Jz",
+          "sessionID": "ses_df253483effeDS9GAB4SMCCKaz",
+          "messageID": "msg_20dacb8000012mg2thfzifdIMr"
+        },
+        {
+          "reason": "stop",
+          "type": "step-finish",
+          "tokens": {
+            "total": 24189,
+            "input": 24117,
+            "output": 43,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 29
+            }
+          },
+          "cost": 0.05335715,
+          "id": "prt_20dacbfd90014pcvOIz0h5knkv",
+          "sessionID": "ses_df253483effeDS9GAB4SMCCKaz",
+          "messageID": "msg_20dacb8000012mg2thfzifdIMr"
+        }
+      ]
+    }
+  ]
+}

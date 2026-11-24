@@ -21,6 +21,13 @@
  * The plan bar above the input box draws Agent Plus's summary of the conversation's work plan (`planBar`, the caller's:
  * src/host/plan-bar.js); the page loads Agent Plus's fragment for it (media/plan-bar.js), which brings its own style
  * element, so the page's policy lets inline styles in. Without `planBar`, or with a null summary, there is no bar.
+ *
+ * What else the page offers comes from the caller, and is not offered without it: `rewind` (to before a user message),
+ * `info` (the conversation's ids and paths for the info box), `sound` (whether the page chimes, kept by the caller) and
+ * `loadImage` (a local image a reply shows, read by the caller and sent back as a data: URL, so the page's resource roots
+ * never widen; VS Code reloads a page whose options change). A diff opened from a permission card gets Allow once, Allow
+ * in this project and Deny in its editor's title bar (see answerFromDiff); its right side's path is listed under the
+ * context key opencodePlus.openDiffs while the request is open.
  */
 const path = require('path');
 const fs = require('fs');
@@ -28,6 +35,7 @@ const vm = require('./view-model');
 const { PERMISSION_DECISIONS } = require('../contracts');
 
 const DIFF_SCHEME = 'opencodePlus-diff';
+const OPEN_DIFFS_KEY = 'opencodePlus.openDiffs';
 /* What a message may carry: as many images, each of at most this many bytes once decoded. */
 const MAX_IMAGES = 8;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -54,6 +62,32 @@ function releaseDiffProvider() {
   diffRegistration.dispose();
   diffRegistration = null;
   diffDocs.clear();
+}
+
+/* The diffs of requests still open: right side's path -> { panel, requestId }; the title bar buttons answer through it. */
+const openDiffs = new Map();
+let diffKeyVscode = null;
+function publishDiffs() {
+  if (!diffKeyVscode) return;
+  Promise.resolve(diffKeyVscode.commands.executeCommand('setContext', OPEN_DIFFS_KEY, [...openDiffs.keys()])).catch(() => {});
+}
+function forgetDiffs(panel, requestId) {
+  let gone = false;
+  for (const [k, v] of openDiffs) if (v.panel === panel && (requestId === undefined || v.requestId === requestId)) { openDiffs.delete(k); gone = true; }
+  if (gone) publishDiffs();
+}
+
+/*
+ * Answers the permission request whose diff `uri` (its right side) shows; true when one was open. The title bar's
+ * buttons call it.
+ */
+function answerFromDiff(uri, decision) {
+  const key = uri && typeof uri.path === 'string' ? uri.path : '';
+  const d = openDiffs.get(key);
+  if (!d || !PERMISSION_DECISIONS.includes(decision)) return false;
+  forgetDiffs(d.panel, d.requestId);
+  Promise.resolve().then(() => d.panel.respond(d.requestId, decision)).catch((err) => d.panel.showError(err));
+  return true;
 }
 
 function putDiffDoc(uri, text) {
@@ -92,6 +126,10 @@ class ChatPanel {
    *   selection?: { describe(): ({ label: string } | null), current(): object | null, onDidChange(fn: () => void): { dispose(): void } },
    *   planBar?: { summary(): (object | null), onDidChange(fn: (summary: object | null) => void): { dispose(): void }, open(part: string): unknown },
    *   onTimeZone?: (zone: string) => void,
+   *   rewind?: (target: { itemId: string, messageId: string, text: string, ordinal: number }) => unknown,
+   *   info?: () => (Array<{ label: string, value: string }> | Promise<Array<{ label: string, value: string }>>),
+   *   sound?: { on(): boolean, set(on: boolean): unknown },
+   *   loadImage?: (src: string) => Promise<{ ok: true, dataUrl: string } | { ok: false, reason: string }>,
    *   vscode?: object,
    *   now?: () => number,
    * }} opts
@@ -120,6 +158,10 @@ class ChatPanel {
     this.selection = opts.selection || null;
     this.planBar = opts.planBar || null;
     this.onTimeZone = typeof opts.onTimeZone === 'function' ? opts.onTimeZone : null;
+    this.rewind = typeof opts.rewind === 'function' ? opts.rewind : null;
+    this.info = typeof opts.info === 'function' ? opts.info : null;
+    this.sound = opts.sound && typeof opts.sound.on === 'function' ? opts.sound : null;
+    this.loadImage = typeof opts.loadImage === 'function' ? opts.loadImage : null;
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
     if (opts.model) state = vm.reduce(state, { type: 'ui.model', model: opts.model });
@@ -134,6 +176,7 @@ class ChatPanel {
     webview.html = this.html(webview, mdDir);
 
     acquireDiffProvider(vscode);
+    diffKeyVscode = vscode;
     this.subs = [
       subscribe(this.conversation, (ev) => this.dispatch(ev)),
       toOff(webview.onDidReceiveMessage((msg) => this.onMessage(msg))),
@@ -169,9 +212,12 @@ class ChatPanel {
   <select id="mode" class="option" hidden></select>
   <select id="effort" class="option" hidden></select>
   <span id="ring" class="ring"><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6"></circle><circle class="fill" cx="8" cy="8" r="6"></circle></svg></span>
+  <button id="infoBtn" class="icon" type="button" title="About this conversation" hidden>i</button>
 </header>
+<div id="infoBox" role="dialog" hidden></div>
 <main id="log" aria-live="polite"></main>
 <footer id="bottom">
+  <details id="background" hidden><summary></summary><div class="bg-list"></div></details>
   <div id="status" hidden></div>
   <div id="queued"></div>
   <div id="menu" role="listbox" hidden></div>
@@ -180,11 +226,13 @@ class ChatPanel {
   <form id="composer">
     <textarea id="input" rows="1" placeholder="Ask anything. Enter to send, Shift+Enter for a new line"></textarea>
     <button id="addSelection" class="secondary" type="button" hidden></button>
-    <button id="stop" type="button" title="Stop" hidden>Stop</button>
+    <button id="sound" class="icon" type="button" hidden></button>
+    <button id="stop" type="button" title="Stop (Esc)" hidden>Stop</button>
     <button id="send" type="submit" title="Send">Send</button>
   </form>
 </footer>
 ${md}
+<script src="${media('kit.js')}"></script>
 <script src="${media('composer.js')}"></script>
 <script src="${media('plan-bar.js')}"></script>
 <script src="${media('chat.js')}"></script>
@@ -206,6 +254,7 @@ ${md}
       return;
     }
     this.state = vm.reduce(this.state, ev, this.now());
+    if (ev && (ev.type === 'permissionSettled' || ev.type === 'turnEnd')) forgetDiffs(this, ev.type === 'turnEnd' ? undefined : ev.requestId);
     const key = `${this.state.status}\n${this.state.title}`;
     if (this.onDidChangeState && key !== this.lastKey) {
       this.lastKey = key;
@@ -237,9 +286,23 @@ ${md}
     Promise.resolve(this.panel.webview.postMessage({ ...msg, now: this.now() })).catch(() => {});
   }
 
+  /* A new history for the page, as after a rewind: the view is built again from `events` and sent whole. */
+  replaceHistory(events, draft) {
+    if (this.disposed) return;
+    const model = this.state.model;
+    let state = vm.initialState();
+    if (model) state = vm.reduce(state, { type: 'ui.model', model });
+    for (const ev of Array.isArray(events) ? events : []) state = vm.reduce(state, ev, this.now());
+    this.state = state;
+    forgetDiffs(this);
+    if (this.ready) this.sendReset();
+    if (typeof draft === 'string' && draft) this.post({ type: 'draft', text: draft });
+  }
+
   sendReset() {
     this.posted = this.state;
     this.post({ type: 'reset', ...vm.toView(this.state) });
+    this.postSound();
     this.postOptions();
     this.postCommands();
     this.postCaps();
@@ -275,7 +338,25 @@ ${md}
   /* Files need the caller's search; a selection needs the caller's editor tracking. */
   postCaps() {
     const a = this.read('attachments', {});
-    this.post({ type: 'caps', images: a.images === true, files: a.files === true && !!this.findFiles, selection: a.selection === true && !!this.selection });
+    this.post({ type: 'caps', images: a.images === true, files: a.files === true && !!this.findFiles, selection: a.selection === true && !!this.selection,
+      rewind: !!this.rewind, info: !!this.info, replyImages: !!this.loadImage });
+  }
+
+  postSound() {
+    let on = false;
+    try { on = this.sound ? this.sound.on() === true : false; } catch (_) { on = false; }
+    this.post({ type: 'sound', shown: !!this.sound, on });
+  }
+
+  /* The user message item `itemId`, with its place among the user's own messages; null when there is none. */
+  userItem(itemId) {
+    let ordinal = -1;
+    for (const it of this.state.items) {
+      if (it.kind !== 'user') continue;
+      ordinal += 1;
+      if (it.id === itemId) return { item: it, ordinal };
+    }
+    return null;
   }
 
   postSelection() {
@@ -369,6 +450,35 @@ ${md}
       case 'question':
         this.answerQuestion(msg);
         break;
+      case 'rewind': {
+        const found = this.rewind && this.userItem(String(msg.itemId || ''));
+        if (!found) break;
+        if (this.state.status !== 'idle') { this.showError(new Error('The conversation is working; wait for the turn to end, or stop it, before rewinding.')); break; }
+        Promise.resolve().then(() => this.rewind({ itemId: found.item.id, messageId: found.item.messageId || '', text: found.item.text, ordinal: found.ordinal }))
+          .catch((err) => this.showError(err));
+        break;
+      }
+      case 'info':
+        if (!this.info) break;
+        Promise.resolve().then(() => this.info()).then(
+          (rows) => this.post({ type: 'info', rows: (Array.isArray(rows) ? rows : []).filter((r) => r && r.label).map((r) => ({ label: String(r.label), value: String(r.value == null ? '' : r.value) })) }),
+          (err) => this.post({ type: 'info', rows: [], error: (err && err.message) || String(err) }));
+        break;
+      case 'setSound':
+        if (this.sound) Promise.resolve().then(() => this.sound.set(msg.on === true)).catch(() => {});
+        break;
+      case 'image': {
+        const id = String(msg.id || '').slice(0, 40);
+        const src = String(msg.src || '').slice(0, 4096);
+        if (!id || !this.loadImage) break;
+        Promise.resolve().then(() => this.loadImage(src)).then(
+          (r) => this.post(r && r.ok ? { type: 'image', id, ok: true, dataUrl: r.dataUrl } : { type: 'image', id, ok: false, reason: (r && r.reason) || 'The image could not be read.' }),
+          (err) => this.post({ type: 'image', id, ok: false, reason: (err && err.message) || String(err) }));
+        break;
+      }
+      case 'background':
+        Promise.resolve().then(() => (typeof this.conversation.checkBackground === 'function' ? this.conversation.checkBackground() : undefined)).catch(() => {});
+        break;
       case 'findFiles': {
         const seq = Number(msg.seq) || 0;
         const query = String(msg.query || '').slice(0, 200);
@@ -447,6 +557,10 @@ ${md}
     const right = Uri.from({ scheme: DIFF_SCHEME, path: `/${requestId}/after/${name}` });
     putDiffDoc(left, diff.before);
     putDiffDoc(right, diff.after);
+    if (this.state.pending[requestId]) {
+      openDiffs.set(right.path, { panel: this, requestId });
+      publishDiffs();
+    }
     await commands.executeCommand('vscode.diff', left, right, `${name} (proposed change)`, { preview: true });
   }
 
@@ -466,6 +580,7 @@ ${md}
       } catch (e) { /* already gone */ }
     }
     this.subs = [];
+    forgetDiffs(this);
     releaseDiffProvider();
   }
 }
@@ -474,4 +589,4 @@ function toOff(disposable) {
   return () => disposable && disposable.dispose && disposable.dispose();
 }
 
-module.exports = { ChatPanel, DIFF_SCHEME, MAX_IMAGE_BYTES, MAX_IMAGES };
+module.exports = { ChatPanel, DIFF_SCHEME, OPEN_DIFFS_KEY, MAX_IMAGE_BYTES, MAX_IMAGES, answerFromDiff };

@@ -8,6 +8,9 @@
  * active first, with its title, how long ago it was active and a status icon. Everything shown comes from the injected
  * listSessions(); the list is redrawn when the injected onDidChange fires and when the view becomes visible again,
  * which also keeps the "5m" ages roughly current without a timer.
+ *
+ * Conversations open in this window come first, in a group of their own ("Open in this window"), and the rest after
+ * them in another; with only one kind there are no groups.
  */
 
 const RENAME_COMMAND = 'opencodePlus.renameConversation';
@@ -15,6 +18,8 @@ const DELETE_COMMAND = 'opencodePlus.deleteConversation';
 const OPEN_COMMAND = 'opencodePlus.openConversation';
 const CONTEXT_IDLE = 'opencodePlus.session';
 const CONTEXT_BUSY = 'opencodePlus.session.busy';
+const CONTEXT_GROUP = 'opencodePlus.group';
+const GROUPS = Object.freeze({ open: 'Open in this window', other: 'Other conversations' });
 
 const STATUS_WORDS = { working: 'Working', waiting: 'Waiting for you', idle: 'Idle' };
 
@@ -48,6 +53,7 @@ class SessionsView {
    *   remove: (id: string) => unknown,
    *   idOf?: (arg: unknown) => string,
    *   titleOf?: (id: string) => string,
+   *   isOpenHere?: (id: string) => boolean,
    *   vscode?: object,
    *   now?: () => number,
    * }} opts
@@ -62,6 +68,7 @@ class SessionsView {
     this.removeSession = opts.remove;
     this.idOf = typeof opts.idOf === 'function' ? opts.idOf : () => '';
     this.titleOf = typeof opts.titleOf === 'function' ? opts.titleOf : () => '';
+    this.isOpenHere = typeof opts.isOpenHere === 'function' ? opts.isOpenHere : () => false;
     this.now = opts.now || Date.now;
     this.last = [];
     this.treeView = null;
@@ -76,7 +83,7 @@ class SessionsView {
   }
 
   async getChildren(element) {
-    if (element) return [];
+    if (element) return element.group ? element.rows : [];
     let list;
     try {
       list = await this.listSessions();
@@ -87,11 +94,22 @@ class SessionsView {
     }
     this.last = (Array.isArray(list) ? list : []).filter((m) => m && m.id)
       .sort((a, b) => lastActive(b) - lastActive(a));
-    return this.last;
+    const here = (m) => { try { return this.isOpenHere(m.id) === true; } catch (_) { return false; } };
+    const open = this.last.filter(here);
+    const other = this.last.filter((m) => !here(m));
+    if (!open.length || !other.length) return this.last;
+    return [{ group: 'open', label: GROUPS.open, rows: open }, { group: 'other', label: GROUPS.other, rows: other }];
   }
 
   getTreeItem(meta) {
     const vscode = this.vscode;
+    if (meta && meta.group) {
+      const g = new vscode.TreeItem(meta.label, vscode.TreeItemCollapsibleState.Expanded);
+      g.id = `group:${meta.group}`;
+      g.description = String(meta.rows.length);
+      g.contextValue = CONTEXT_GROUP;
+      return g;
+    }
     const status = this.statusOf(meta) || 'idle';
     const title = meta.title || 'Untitled conversation';
     const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
@@ -206,4 +224,6 @@ module.exports = {
   OPEN_COMMAND,
   CONTEXT_IDLE,
   CONTEXT_BUSY,
+  CONTEXT_GROUP,
+  GROUPS,
 };

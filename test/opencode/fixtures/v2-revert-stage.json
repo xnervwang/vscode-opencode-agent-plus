@@ -1,0 +1,22 @@
+{
+  "data": {
+    "messageID": "msg_20dacbf6a0018X6RZP6hV4o0Fe",
+    "snapshot": "ac5193e9a5a995b81d9464b19e2d724b17c6b42d",
+    "files": [
+      {
+        "file": "revert-me.txt",
+        "patch": "diff --git a/revert-me.txt b/revert-me.txt\ndeleted file mode 100644\nindex 28c218c..0000000\n--- a/revert-me.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-v1\n\\ No newline at end of file\n",
+        "additions": 0,
+        "deletions": 1,
+        "status": "deleted"
+      },
+      {
+        "file": "seed.txt",
+        "patch": "diff --git a/seed.txt b/seed.txt\nindex fad34ba..e06b1e2 100644\n--- a/seed.txt\n+++ b/seed.txt\n@@ -1 +1 @@\n-seed2\n\\ No newline at end of file\n+seed\n\\ No newline at end of file\n",
+        "additions": 1,
+        "deletions": 1,
+        "status": "modified"
+      }
+    ]
+  }
+}

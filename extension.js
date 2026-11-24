@@ -19,6 +19,8 @@
  *   src/host/plan-bar.js          the plan bar above each chat page's input box, from Agent Plus's summary
  *   src/host/window-states.js     every window's open conversations, for Agent Plus's listAllConversations()
  *   src/host/reply-file.js        each conversation's latest reply beside its plan, for a steward to read
+ *   src/host/rewind.js            rewinding a conversation to before one of the user's messages (OpenCode 2)
+ *   src/host/reply-images.js      the local images a reply shows, read for the chat page
  *
  * OPENCODE_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -48,11 +50,20 @@ const { createPlanBar } = require('./src/host/plan-bar');
 const { createWindowStates } = require('./src/host/window-states');
 const { createReplyFiles } = require('./src/host/reply-file');
 const workplan = require('./src/workplan');
+const rewinding = require('./src/host/rewind');
+const { loadImage } = require('./src/host/reply-images');
+const hookSettings = require('./src/shared/hook-settings');
+const tokenMode = require('./src/shared/token-mode');
 
 const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
 /* Set once the OpenCode found can rename conversations (2.x); the Rename entries show only then. */
 const CONTEXT_RENAME = `${brand.prefix}.canRename`;
 const ZONE_KEY = `${brand.prefix}.timeZone`;
+/* Set once OpenCode has said it can fork a conversation; the Fork entries show only then. */
+const CONTEXT_FORK = `${brand.prefix}.canFork`;
+/* Whether the chat pages chime, as the footer's button last left it; on until muted, as in Claude Code Plus. */
+const SOUND_KEY = `${brand.prefix}.sound`;
+const REWIND = 'Rewind';
 const TAKE_OVER = 'Take over here';
 const TAKE_ANYWAY = 'Take over anyway';
 const BUSY_TEXT = 'Another VS Code window has this conversation open, or had it open before it lost its connection '
@@ -107,10 +118,18 @@ function activate(context) {
      has started it. */
   let renameKnown = false;
   const noteRename = () => {
+    noteFork();
     if (renameKnown) return;
     renameKnown = true;
     Promise.resolve().then(() => vscode.commands.executeCommand('setContext', CONTEXT_RENAME, backend.canRename())).catch(() => { renameKnown = false; });
   };
+  /* Known once OpenCode has started and said what it offers; asked again until then. */
+  let forkKnown = false;
+  function noteFork() {
+    if (forkKnown || !backend.canFork()) return;
+    forkKnown = true;
+    Promise.resolve(vscode.commands.executeCommand('setContext', CONTEXT_FORK, true)).catch(() => { forkKnown = false; });
+  }
   /* Once a conversation has started OpenCode here its version is known; OpenCode 1 keeps no work plan, which is said
      once. */
   let versionKnown = false;
@@ -177,9 +196,28 @@ function activate(context) {
   });
   subs.push(planBar, vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration(`${brand.prefix}.planBar`)) planBar.settingChanged(); }));
 
-  /* The reader's zone as the last chat page to load reported it. */
+  /* The reader's zone as the last chat page to load reported it; the plugin's time-zone hook reads it from the plans
+     folder (client-time-zone.json). */
   const memo = context.globalState && typeof context.globalState.get === 'function' ? context.globalState : null;
   let timeZone = memo ? String(memo.get(ZONE_KEY, '') || '') : '';
+  const writeZone = (zone) => {
+    if (!zone || vscode.workspace.isTrusted === false) return;
+    try { if (hookSettings.writeClientZone(workplan.planDir(), zone)) log(`the reader's time zone for the plugin: ${zone}`); } catch (e) { log(`writing the time zone failed: ${e.message}`); }
+  };
+  writeZone(timeZone);
+  if (typeof vscode.workspace.onDidGrantWorkspaceTrust === 'function') subs.push(vscode.workspace.onDidGrantWorkspaceTrust(() => writeZone(timeZone)));
+
+  /* The chat pages open in this window, and whether they chime. */
+  const chats = new Set();
+  let soundOn = memo ? memo.get(SOUND_KEY, true) !== false : true;
+  const sound = {
+    on: () => soundOn,
+    set(on) {
+      soundOn = on === true;
+      if (memo) Promise.resolve(memo.update(SOUND_KEY, soundOn)).catch(() => {});
+      for (const c of chats) c.postSound();
+    },
+  };
 
   /* Shared by the chat tabs; they list files only while @ is typed and follow the selection only while open. */
   const files = createFileSearch({ vscode });
@@ -206,7 +244,12 @@ function activate(context) {
         if (zone === timeZone) return;
         timeZone = zone;
         if (memo) Promise.resolve(memo.update(ZONE_KEY, zone)).catch(() => {});
+        writeZone(zone);
       },
+      rewind: backend.canRewind() ? (target) => rewindTo(entry.id, chat, target) : undefined,
+      info: () => infoRows(entry.id),
+      sound,
+      loadImage: (src) => loadImage(src),
       planBar: {
         summary: () => planBar.summaryOf(entry.id),
         onDidChange: (fn) => planBar.follow(entry.id, fn),
@@ -214,6 +257,7 @@ function activate(context) {
       },
       vscode,
     });
+    chats.add(chat);
     for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);
     /* The model a turn runs on (turnStart.modelId), and its context window once OpenCode has learned it, which is
        after the model's first call. */
@@ -226,8 +270,56 @@ function activate(context) {
       if (ev && ev.type === 'turnStart' && typeof ev.modelId === 'string' && ev.modelId) follow(ev.modelId);
       if (ev && ev.type === 'turnEnd') models.list().then(() => follow(conv.modelName), () => {});
     });
-    panel.onDidDispose(() => off());
+    panel.onDidDispose(() => { off(); chats.delete(chat); });
     return chat;
+  }
+
+  /*
+   * Rewinds conversation `id` to before the user message `target` names (src/host/rewind.js): OpenCode puts the files
+   * back and lists them, the user confirms, and the page is drawn again from what OpenCode then has. Cancelling puts the
+   * files back as they were.
+   */
+  const rewindsRunning = new Set();
+  async function rewindTo(id, chat, target) {
+    const e = manager.get(id);
+    if (!e || rewindsRunning.has(id)) return false;
+    rewindsRunning.add(id);
+    try {
+      const mid = rewinding.messageOf(target, target.messageId ? [] : await backend.userMessages(id));
+      if (!mid) throw new Error('This message could not be found in what OpenCode keeps of the conversation, so nothing was rewound.');
+      const staged = await backend.rewindStage(id, mid);
+      log(`rewind of ${id} to before ${mid} staged: ${staged.files.length} files, tracked ${staged.tracked}`);
+      const ask = rewinding.confirmation(staged);
+      const pick = await Promise.resolve(vscode.window.showWarningMessage(ask.message, { modal: true, detail: ask.detail }, REWIND)).catch(() => undefined);
+      if (pick !== REWIND) {
+        await backend.rewindClear(id);
+        log(`rewind of ${id} cancelled; the files are as they were`);
+        return false;
+      }
+      await backend.rewindCommit(id);
+      const events = await e.conversation.reload();
+      chat.replaceHistory(historyFor(events).events, target.text);
+      log(`rewound ${id} to before ${mid}`);
+      return true;
+    } finally {
+      rewindsRunning.delete(id);
+    }
+  }
+
+  /* What the info box of conversation `id`'s page lists. */
+  async function infoRows(id) {
+    const e = manager.get(id);
+    const info = backend.info();
+    let db = '';
+    try { db = (await backend.dataPaths()).db || 'not named by OpenCode'; } catch (err) { db = `unknown: ${(err && err.message) || err}`; }
+    const version = info && info.version ? info.version.text || `${info.version.major}.${info.version.minor}.${info.version.patch}` : '';
+    return [
+      { label: 'Session', value: id },
+      { label: 'Folder', value: e ? e.cwd : '' },
+      { label: 'OpenCode', value: info ? `${version || 'version unknown'}, acp process ${info.pid}` : 'not running in this window' },
+      { label: 'Session database', value: db },
+      { label: 'Token mode', value: tokenMode.labelOf(tokenMode.modeNow(vscode)) || '' },
+    ];
   }
 
   /*
@@ -275,6 +367,16 @@ function activate(context) {
   }
 
   const activeTab = () => { const g = vscode.window.tabGroups.activeTabGroup; return g ? g.activeTab : undefined; };
+  /* The conversation a command was run on: a row of the list, an id, a chat tab's URI, the chat page's own context
+     menu (its argument names the webview), or the chat tab in front. */
+  const conversationOf = (arg) => {
+    if (typeof arg === 'string') return arg;
+    if (arg instanceof vscode.Uri) return ap.sessionOfUri(arg);
+    if (arg && typeof arg.id === 'string' && !arg.group) return arg.id;
+    if (arg !== undefined && !(arg && arg.webview === ap.VIEW_TYPE)) return '';
+    const tab = activeTab();
+    return ap.isChatTab(tab) ? ap.sessionOfUri(tab.input.uri) : '';
+  };
   const chatTabs = (id) => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
     .filter((t) => ap.isChatTab(t) && ap.sessionOfUri(t.input.uri) === id);
 
@@ -345,6 +447,7 @@ function activate(context) {
       return ap.isChatTab(tab) ? ap.sessionOfUri(tab.input.uri) : '';
     },
     titleOf: (id) => { const s = manager.snapshot(id); return s ? s.title : ''; },
+    isOpenHere: (id) => manager.has(id),
     vscode,
   });
   subs.push(sessionsView.register(), sessionsView);
@@ -355,6 +458,19 @@ function activate(context) {
       const id = typeof arg === 'string' ? arg : arg && arg.id;
       return id ? openSession(id) : false;
     }),
+    vscode.commands.registerCommand(`${brand.prefix}.forkConversation`, async (arg) => {
+      const id = conversationOf(arg);
+      if (!id) return false;
+      let f;
+      try { f = await backend.forkSession(id); } catch (e) { fail('The conversation could not be forked', e); return false; }
+      folders.set(f.id, f.cwd);
+      log(`forked ${id} as ${f.id}`);
+      return openSession(f.id);
+    }),
+    vscode.commands.registerCommand(`${brand.prefix}.showMcpServers`, () => showMcp()),
+    vscode.commands.registerCommand(`${brand.prefix}.diffAllowOnce`, (arg) => answerDiff(arg, 'allowOnce')),
+    vscode.commands.registerCommand(`${brand.prefix}.diffAllowInProject`, (arg) => answerDiff(arg, 'allowSession')),
+    vscode.commands.registerCommand(`${brand.prefix}.diffDeny`, (arg) => answerDiff(arg, 'deny')),
     vscode.commands.registerCommand(`${brand.prefix}.chooseModel`, () => models.pick().catch((e) => fail('The models could not be listed', e))),
     vscode.commands.registerCommand(`${brand.prefix}.setBedrockApiKey`, () => settings.setApiKey()),
     vscode.commands.registerCommand(`${brand.prefix}.clearBedrockApiKey`, () => settings.clearApiKey()),
@@ -368,6 +484,33 @@ function activate(context) {
       } catch (e) { return fail('OpenCode could not be asked', e); }
     }),
   );
+
+  /* `opencode mcp list` in an output channel of its own; servers are added and removed in OpenCode's configuration. */
+  let mcpChannel = null;
+  async function showMcp() {
+    if (!mcpChannel) { mcpChannel = vscode.window.createOutputChannel(`${brand.displayName}: MCP Servers`); subs.push(mcpChannel); }
+    let text;
+    try { text = await backend.mcpList(); } catch (e) { text = `opencode mcp list failed: ${(e && e.message) || e}`; }
+    mcpChannel.clear();
+    mcpChannel.appendLine(`$ opencode mcp list (${new Date().toLocaleString()})`);
+    mcpChannel.appendLine(text || '(no output)');
+    mcpChannel.appendLine('');
+    mcpChannel.appendLine('Add a server with `opencode mcp add` in a terminal, or in OpenCode\'s configuration file.');
+    mcpChannel.show(true);
+    return text;
+  }
+
+  /* The title bar of a permission request's diff answers that request, then closes the diff. */
+  async function answerDiff(arg, decision) {
+    const { answerFromDiff } = require('./src/ui/chat-panel');
+    let uri = arg instanceof vscode.Uri ? arg : null;
+    if (!uri) { const tab = activeTab(); const input = tab && tab.input; uri = input && (input.modified || input.uri) || null; }
+    if (!uri || !answerFromDiff(uri, decision)) { tell('That permission request has already been answered.'); return false; }
+    const key = uri.toString();
+    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input && t.input.modified && t.input.modified.toString() === key);
+    if (tabs.length) await Promise.resolve(vscode.window.tabGroups.close(tabs)).catch(() => {});
+    return true;
+  }
 
   /* Agent Plus. Without it, or refused by it, everything above works the same. */
   let logo;
@@ -418,7 +561,8 @@ function activate(context) {
     return { test: { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
       source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready, windowFile: windows.file,
       send: (id, text) => manager.send(id, text), snapshot: (id) => manager.snapshot(id), replyFile: (id) => replies.fileOf(id),
-      told: () => told.slice(), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }) } };
+      told: () => told.slice(), sound: () => soundOn, infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
+      zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }) } };
   }
   return undefined;
 }

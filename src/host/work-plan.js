@@ -8,10 +8,12 @@
  * (src/workplan), what OpenCode starts with for them, the Python they run on, the settings they read from the plans
  * folder, and what the user is told when one of these is missing.
  *
- *   config.json   { enabled, brief } from Agent Plus's token mode (src/shared/token-mode.js): Interface turns both off,
- *                 Essential keeps the plan without the brief, All keeps both, and in Custom opencodePlus.workPlan and
- *                 opencodePlus.conversationBrief decide. Written at activation and on every change of those settings; the
- *                 plugin reads it at each user message, so a change applies from the next one.
+ *   config.json   { enabled, brief, tellTimeZone, replyImages } from Agent Plus's token mode (src/shared/token-mode.js):
+ *                 Interface turns them off (the plugin is not loaded at all), Essential keeps the plan and the time-zone
+ *                 note without the brief, All keeps all three, and in Custom opencodePlus.workPlan,
+ *                 opencodePlus.conversationBrief and opencodePlus.tellOpenCodeYourTimeZone decide. replyImages is on outside
+ *                 Interface: the chat page draws the local images a reply links. Written at activation and on every change of those
+ *                 settings; the plugin reads it at each user message, so a change applies from the next one.
  *   launcher.json the Python found (src/shared/python-runtime.js). With none, the plugin adds nothing, and a row above
  *                 the plan says so; on Windows python.org's build is offered once per machine (src/shared/python-offer.js).
  *   OpenCode 1    keeps no plan: told once per workspace and OpenCode version when its version is first known (a reload
@@ -28,7 +30,9 @@ const hookSettings = require('../shared/hook-settings');
 const runtime = require('../shared/python-runtime');
 const pythonOffer = require('../shared/python-offer');
 
-const KEYS = Object.freeze({ workPlan: `${brand.prefix}.workPlan`, conversationBrief: `${brand.prefix}.conversationBrief` });
+/* By the token mode's feature id. */
+const KEYS = Object.freeze({ workPlan: `${brand.prefix}.workPlan`, conversationBrief: `${brand.prefix}.conversationBrief`,
+  timeZone: `${brand.prefix}.tellOpenCodeYourTimeZone` });
 const DOWNLOAD = `${brand.prefix}.downloadPython`;
 const RETRY = `${brand.prefix}.findPython`;
 const WITHOUT = 'Until then the plugin adds nothing to the conversations and their plans stay empty.';
@@ -65,7 +69,9 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     return vscode.workspace.getConfiguration(section).get(name, true) !== false;
   }
 
-  const values = () => ({ enabled: runs('workPlan'), brief: runs('conversationBrief') });
+  /* The image note follows no setting of its own: off only in Interface, which adds nothing to the context. */
+  const values = () => ({ enabled: runs('workPlan'), brief: runs('conversationBrief'), tellTimeZone: runs('timeZone'),
+    replyImages: !tokenMode.unloadsPlugin(tokenMode.modeNow(vscode)) });
 
   function writeSettings() {
     if (!trusted()) return false;

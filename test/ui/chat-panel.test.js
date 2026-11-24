@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
-const { ChatPanel, DIFF_SCHEME } = require('../../src/ui/chat-panel');
+const { ChatPanel, DIFF_SCHEME, OPEN_DIFFS_KEY } = require('../../src/ui/chat-panel');
 const { createFakeVscode, createFakePanel, Uri } = require('./fake-vscode');
 const { createFakeConversation, demoTurns } = require('./fake-conversation');
 
@@ -87,8 +87,10 @@ test('permission answers, diffs, queueing and stop reach the right place', async
 
   panel.fromPage({ type: 'viewDiff', requestId: 'perm-1' });
   await settle(5);
-  const [cmd, left, right, title] = vscode.rec.commands[0];
+  const [cmd, left, right, title] = vscode.rec.commands.find((c) => c[0] === 'vscode.diff');
   assert.equal(cmd, 'vscode.diff');
+  /* The request is open, so its diff's title bar gets the buttons: its right side is listed for them. */
+  assert.deepEqual(vscode.rec.commands.filter((c) => c[0] === 'setContext').pop(), ['setContext', OPEN_DIFFS_KEY, ['/perm-1/after/sum.js']]);
   assert.equal(left.scheme, DIFF_SCHEME);
   assert.equal(left.path, '/perm-1/before/sum.js');
   assert.equal(right.path, '/perm-1/after/sum.js');

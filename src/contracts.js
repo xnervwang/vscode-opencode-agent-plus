@@ -146,12 +146,15 @@
  * that started it once known, and `event` one text, reasoning, toolCall or toolResult event of its own stream.
  * `permission.subagent` and `toolCall.subagent` name the subagent a request came from. `question` is a form the agent
  * asks the user to fill in (`schema` a JSON Schema object of string, enum, array-of-enum, number, integer and boolean
- * properties), answered with respondQuestion(); `questionSettled` says how.
+ * properties), answered with respondQuestion(); `questionSettled` says how. A replayed userMessage carries `messageId`,
+ * the agent's id of that message (rewinding goes by it); replayed text and reasoning may carry the `at` of their message.
+ * `background` reports work the agent left running after its turn, such as a shell command it moved to the background:
+ * 'running' while its process runs, then 'done'.
  * @typedef {(
  *   { type: 'turnStart', turnId: string, at: number, modelId?: string, effort?: string, unsolicited?: true } |
- *   { type: 'userMessage', text: string, at: number, synthetic?: boolean, attachments?: Attachment[] } |
- *   { type: 'text', delta: string } |
- *   { type: 'reasoning', delta: string } |
+ *   { type: 'userMessage', text: string, at: number, synthetic?: boolean, attachments?: Attachment[], messageId?: string } |
+ *   { type: 'text', delta: string, at?: number } |
+ *   { type: 'reasoning', delta: string, at?: number } |
  *   { type: 'toolCall', id: string, name: string, input: object, at: number, subagent?: { childId: string, title: string } } |
  *   { type: 'toolResult', id: string, content: string, isError: boolean, display?: object, at: number } |
  *   { type: 'permission', requestId: string, request: PermissionRequest, subagent?: { childId: string, title: string } } |
@@ -165,7 +168,8 @@
  *   { type: 'options', options: ConfigOption[] } |
  *   { type: 'commands', commands: Array<{ name: string, description: string }> } |
  *   { type: 'compaction', status: 'running' | 'completed' | 'failed' | 'cancelled', id?: string, summary?: string, error?: string } |
- *   { type: 'subagent', childId: string, title: string, status: 'running' | 'done' | 'stopped' | 'failed', toolId?: string, error?: string, event?: AgentEvent }
+ *   { type: 'subagent', childId: string, title: string, status: 'running' | 'done' | 'stopped' | 'failed', toolId?: string, error?: string, event?: AgentEvent } |
+ *   { type: 'background', id: string, kind: 'shell', title: string, status: 'running' | 'done', pid?: number, at: number }
  * )} AgentEvent
  */
 
@@ -193,6 +197,8 @@
  * offers for this conversation, [] when none, and `setOption` changes one from the next turn on. `commands()` lists its
  * slash commands as last offered, `attachments()` what a message may carry besides text. `respondQuestion` answers a
  * `question` event, false when that request is no longer open; `waitingKind` says what a waiting conversation waits on.
+ * `reload` loads it again from the agent (after a rewind) and resolves with its history; `checkBackground` looks again
+ * whether the work it left in the background still runs.
  * @typedef {{
  *   id: string, cwd: string, title: string, status: 'working' | 'waiting' | 'idle', waitingTool: string,
  *   waitingKind: '' | 'permission' | 'question',
@@ -209,6 +215,8 @@
  *   respondPermission(requestId: string, decision: PermissionDecision): boolean,
  *   respondQuestion(requestId: string, answer: { action: 'accept', content: object } | { action: 'decline' | 'cancel' }): boolean,
  *   history(): Promise<AgentEvent[]>,
+ *   reload(): Promise<AgentEvent[]>,
+ *   checkBackground(): void,
  *   dispose(): void
  * }} Conversation
  */

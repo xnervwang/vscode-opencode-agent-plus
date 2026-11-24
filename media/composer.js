@@ -5,7 +5,9 @@
 'use strict';
 /*
  * What the chat page's input does with `/` and `@`, without the page: which word is being typed, what the lists show
- * for it, and the text once one is picked. The page loads it as window.ChatComposer; the tests require it.
+ * for it, and the text once one is picked; and the page's other decisions that need no page: what Esc does, which chime
+ * a change of state sounds, when the context ring is outlined, how an image in a reply is shown, and the Background
+ * line's summary. The page loads it as window.ChatComposer; the tests require it.
  */
 (function (root, factory) {
   const api = factory();
@@ -73,5 +75,44 @@
     return m ? { mediaType: m[1], data: m[2], bytes: Math.floor(m[2].length * 3 / 4) } : null;
   }
 
-  return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl };
+  /* What Esc does: close the open box or list first, else stop a turn that runs; null for nothing. */
+  function escapeAction({ box = false, menu = false, status = 'idle' } = {}) {
+    if (box) return 'closeBox';
+    if (menu) return 'closeMenu';
+    return status && status !== 'idle' ? 'abort' : null;
+  }
+
+  /* The chime for a change from head `was` to `now` ({ status, pending, waitingFor }): a new request is a permission
+     or a question, a turn going idle is done; null for none, and for the first head a page is given. */
+  function chimeKind(was, now) {
+    if (!was || !now) return null;
+    if ((now.pending || 0) > (was.pending || 0)) return now.waitingFor === 'question' ? 'question' : 'permission';
+    return was.status !== 'idle' && now.status === 'idle' ? 'done' : null;
+  }
+
+  /* Whether the ring is outlined: 15% of the window or less left. */
+  const ringLow = (pct) => typeof pct === 'number' && pct >= 0 && 100 - pct <= 15;
+
+  /* How an image in a reply is shown: 'data' as it is, 'local' read by the extension, 'link' a link to it (a web address
+     is never fetched; a relative path names no folder). */
+  function imageKind(src, localOk) {
+    const s = String(src || '');
+    if (/^data:image\/(?:png|jpeg|gif|webp|svg\+xml)[;,]/i.test(s)) return 'data';
+    if (localOk && /^(?:file:\/\/|\/|[A-Za-z]:[\\/])/.test(s)) return 'local';
+    return 'link';
+  }
+
+  /* The Background line's summary for head().background, or '' when nothing runs. */
+  function backgroundSummary(list) {
+    const items = Array.isArray(list) ? list : [];
+    if (!items.length) return '';
+    const subs = items.filter((b) => b && b.kind === 'subagent').length;
+    const cmds = items.length - subs;
+    const parts = [];
+    if (subs) parts.push(`${subs} subagent${subs === 1 ? '' : 's'}`);
+    if (cmds) parts.push(`${cmds} command${cmds === 1 ? '' : 's'}`);
+    return `Background: ${parts.join(', ')} running`;
+  }
+
+  return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl, escapeAction, chimeKind, ringLow, imageKind, backgroundSummary };
 }));

@@ -105,6 +105,11 @@
       "path": "media/plan-bar.js",
       "from": "shared/page/plan-bar.js",
       "sha256": "d671cb5e0d37ba15303546ff404daf26158a24570b540316232fcad887aaf87a"
+    },
+    {
+      "path": "media/kit.js",
+      "from": "shared/page/kit.js",
+      "sha256": "610e342637df9df91e69525cd787f34c2f2ed380b557363eed9dc513c741820c"
     }
   ]
 }

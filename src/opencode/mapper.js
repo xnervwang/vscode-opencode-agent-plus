@@ -25,6 +25,9 @@
  * `compaction` events, the chunks kept only for a completed update that carries no summary. A replay holds the
  * completed update where the compaction happened; it ends the replayed turn before it.
  *
+ * A replayed user message carries the messageId OpenCode gave it (`messageId` on the userMessage event); a live one has
+ * none, since session/prompt answers with no id.
+ *
  * A user message's images and files come back in a replay as image and resource_link chunks of the same messageId; a
  * file whose text was sent along comes back as part of the text, the way OpenCode wrote it for the model: a line
  * `[<absolute path>:<first line>]` and the text after it. Such parts are taken off the replayed text and named as
@@ -268,6 +271,8 @@ function createMapper({ now = Date.now } = {}) {
     if (!pendingUser && !pendingAttachments.length) return [];
     const split = replaying ? splitSelections(pendingUser) : { text: pendingUser, shown: [] };
     const ev = { type: 'userMessage', text: split.text, at: turn ? turn.startedAt : now() };
+    /* A replayed message names its id, which rewinding to it and its time in the export go by. */
+    if (replaying && lastUserMessage) ev.messageId = lastUserMessage;
     const shown = [...pendingAttachments, ...split.shown];
     if (shown.length) ev.attachments = shown;
     pendingUser = '';
@@ -472,6 +477,8 @@ function createMapper({ now = Date.now } = {}) {
     permission,
     settled,
     end,
+    /* The session's running cost is taken whole from the next usage_update, as for a session just opened. */
+    resetCost() { lastCost = null; },
     replayStart() { replaying = true; replayCount = 0; turn = null; pendingUser = ''; pendingAttachments = []; lastUserMessage = null; noteMessage = null; },
     replayEnd() { const out = endReplayTurn(); replaying = false; return out; },
     get inTurn() { return !!turn; },

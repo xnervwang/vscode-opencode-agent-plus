@@ -1,0 +1,194 @@
+{
+  "info": {
+    "id": "ses_df253107effes96gJ1V26vgNKO",
+    "fork": {
+      "sessionID": "ses_df2534a3cffeV5DpIbep0DaQLs",
+      "boundary": {
+        "type": "through",
+        "messageID": "msg_20dacef79001lTXbprs8S76lyz"
+      }
+    },
+    "projectID": "global",
+    "model": {
+      "id": "us.xai.grok-4.7",
+      "providerID": "amazon-bedrock",
+      "variant": "default"
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+        "read": 0,
+        "write": 0
+      }
+    },
+    "time": {
+      "created": 1795525767042,
+      "updated": 1795525767046
+    },
+    "title": "OSPREY reminder (fork #1)",
+    "subpath": "../../../../../../../../../../../../work/project",
+    "location": {
+      "directory": "/work/project"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_20dacef820018dYOh5X01rIDvv_1",
+      "time": {
+        "created": 1795525752980
+      },
+      "type": "model-switched",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock"
+      }
+    },
+    {
+      "id": "msg_20dacef820018dYOh5X01rIDvv_5",
+      "time": {
+        "created": 1795525753032
+      },
+      "text": "Remember the word OSPREY. Reply with ok.",
+      "files": [],
+      "type": "user"
+    },
+    {
+      "id": "msg_20dacef820018dYOh5X01rIDvv_6",
+      "time": {
+        "created": 1795525753050,
+        "firstToken": 1795525754584,
+        "streamed": 1795525754692,
+        "completed": 1795525754718
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "I will remember the word \"OSPREY\" and reply with \"ok\".",
+          "time": {
+            "created": 1795525754586,
+            "completed": 1795525754682
+          }
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "created": 1795525754685,
+            "completed": 1795525754686
+          }
+        },
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "snapshot": {
+        "start": "44f54a7a750c081c0ad256b2ff0c14afab1361db",
+        "end": "44f54a7a750c081c0ad256b2ff0c14afab1361db",
+        "files": []
+      },
+      "finish": "stop",
+      "rawFinish": "end_turn",
+      "cost": 0.048411550000000005,
+      "tokens": {
+        "input": 21869,
+        "output": 43,
+        "reasoning": 0,
+        "cache": {
+          "read": 29,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_20dacef820018dYOh5X01rIDvv_16",
+      "time": {
+        "created": 1795525754723
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    },
+    {
+      "id": "msg_20dacef820018dYOh5X01rIDvv_89",
+      "time": {
+        "created": 1795525766085
+      },
+      "text": "What word did I ask you to remember? If none, say none. One word.",
+      "files": [],
+      "type": "user"
+    },
+    {
+      "id": "msg_20dacef820018dYOh5X01rIDvv_90",
+      "time": {
+        "created": 1795525766094,
+        "firstToken": 1795525766915,
+        "streamed": 1795525767005,
+        "completed": 1795525767029
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "The word is OSPREY.",
+          "time": {
+            "created": 1795525766916,
+            "completed": 1795525766998
+          }
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "created": 1795525766999,
+            "completed": 1795525767000
+          }
+        },
+        {
+          "type": "text",
+          "text": "OSPREY"
+        }
+      ],
+      "snapshot": {
+        "start": "44f54a7a750c081c0ad256b2ff0c14afab1361db",
+        "end": "44f54a7a750c081c0ad256b2ff0c14afab1361db",
+        "files": []
+      },
+      "finish": "stop",
+      "rawFinish": "end_turn",
+      "cost": 0.04858755,
+      "tokens": {
+        "input": 21934,
+        "output": 48,
+        "reasoning": 0,
+        "cache": {
+          "read": 29,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_20dacef820018dYOh5X01rIDvv_100",
+      "time": {
+        "created": 1795525767033
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

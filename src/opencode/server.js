@@ -184,9 +184,14 @@ function acpLaunch({ bin, version, env = {}, permissions = true, config = null, 
   return { command: bin, args, env: merged };
 }
 
+/* Subcommands that start no server and refuse `--standalone` (2.4.1: "Unrecognized flag: --standalone in command
+   opencode debug paths"). */
+const LOCAL_SUBCOMMANDS = Object.freeze(['debug paths']);
+
 /* The arguments of an OpenCode subcommand other than `acp` (see the top of this file); 1.x has no `--standalone`. */
 function subcommandArgs(version, args) {
-  return (version && version.major >= 2) ? [...args, '--standalone'] : [...args];
+  const local = LOCAL_SUBCOMMANDS.includes(args.slice(0, 2).join(' '));
+  return (version && version.major >= 2 && !local) ? [...args, '--standalone'] : [...args];
 }
 
 /* The environment of such a subcommand. */
@@ -238,4 +243,5 @@ module.exports = {
   candidates,
   subcommandArgs,
   subcommandEnv,
+  LOCAL_SUBCOMMANDS,
 };

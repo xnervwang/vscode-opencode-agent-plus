@@ -46,7 +46,11 @@ function panel({ viewColumn = 1, active = true } = {}) {
   const p = {
     title: '', viewColumn, active, visible: true, revealed: 0,
     webview: { options: {}, html: '', posted: [], cspSource: 'vscode-resource:', asWebviewUri: (u) => u,
-      postMessage: async (m) => { p.webview.posted.push(m); return true; }, onDidReceiveMessage: () => ({ dispose() {} }) },
+      postMessage: async (m) => { p.webview.posted.push(m); return true; },
+      onDidReceiveMessage: (fn) => { p.heard.add(fn); return { dispose: () => p.heard.delete(fn) }; } },
+    heard: new Set(),
+    /* A message from the page. */
+    fromPage(m) { for (const fn of [...p.heard]) fn(m); },
     onDidChangeViewState: viewState.event,
     onDidDispose: disposed.event,
     reveal(col) { p.revealed++; if (col) p.viewColumn = col; },
@@ -84,7 +88,7 @@ function create() {
         onDidChangeTabs: tabsChanged.event,
         close: async (tabs) => { state.closedTabs.push(...[].concat(tabs)); return true; },
       },
-      createOutputChannel: () => ({ info: (l) => state.log.push(l), appendLine: (l) => state.log.push(l), dispose() {} }),
+      createOutputChannel: (name) => ({ name, info: (l) => state.log.push(l), appendLine: (l) => state.log.push(l), clear() {}, show() { state.shownChannel = name; }, dispose() {} }),
       registerCustomEditorProvider: (viewType, provider, opts) => { state.editors[viewType] = { provider, opts }; return { dispose() {} }; },
       createTreeView: (id, opts) => {
         const shown = new EventEmitter();

@@ -13,10 +13,17 @@
  *               options { options: [{ id, name, value, values: [{ value, name, description? }] }] },
  *               commands { commands: [{ name, description }] }, caps { images, files, selection },
  *               selection { label }, selectionAdded { item }, files { seq, query, items }, questionErrors
- *               { requestId, errors }, planBar { summary }; each carries the extension host's `now`.
+ *               { requestId, errors }, planBar { summary }, sound { shown, on }, info { rows, error? }, image { id, ok,
+ *               dataUrl | reason }, draft { text }; each carries the extension host's `now`.
  * Messages out: ready { tz }, send { text, images?, files?, selections? }, abort, permission, question { requestId, action,
  *               values }, viewDiff, setModel, setOption, reloadModels, copy, openLink, findFiles { query, seq },
- *               addSelection, planBarOpen { part: 'plan' | 'answer' }.
+ *               addSelection, planBarOpen { part: 'plan' | 'answer' }, rewind { itemId }, info, setSound { on },
+ *               image { id, src }, background.
+ *
+ * Esc stops the turn when no list or box is open. A chime (Agent Plus's kit.js, the same three as Claude Code Plus)
+ * sounds when a turn ends, when a permission request comes and when a question does, unless the footer's button has
+ * muted them. A local image in a reply is read by the extension and comes back as a data: URL; one from the web is shown
+ * as a link and never fetched, so an address a reply was given cannot carry anything out.
  */
 (function () {
   const api = acquireVsCodeApi();
@@ -24,6 +31,9 @@
   const md = typeof window.markdownit === 'function'
     ? window.markdownit({ html: false, linkify: true, breaks: true })
     : null;
+  /* markdown-it drops file: addresses; an image link may name a local file by one. Scripts stay out. */
+  if (md) md.validateLink = (url) => !/^\s*(javascript|vbscript):/i.test(url) && (!/^\s*data:/i.test(url) || /^\s*data:image\/(gif|png|jpeg|webp);/i.test(url));
+  const KIT = window.agentPlusKit || null;
 
   const $ = (id) => document.getElementById(id);
   const log = $('log');
@@ -38,6 +48,12 @@
   const noteEl = $('note');
   const selBtn = $('addSelection');
   const modelSel = $('model');
+  const infoBtn = $('infoBtn');
+  const infoBox = $('infoBox');
+  const bgEl = $('background');
+  const bgSum = bgEl.querySelector('summary');
+  const bgList = bgEl.querySelector('.bg-list');
+  const soundBtn = $('sound');
   /* The settings shown next to the model, by the id the conversation's options() gives them. */
   const optionSels = { mode: $('mode'), effort: $('effort') };
   const ring = $('ring');
@@ -59,7 +75,10 @@
   let stick = true;
 
   /* What the next message may carry, and what waits to go with it. */
-  let caps = { images: false, files: false, selection: false };
+  let caps = { images: false, files: false, selection: false, rewind: false, info: false, replyImages: false };
+  let sound = { shown: false, on: false };
+  /* What the last head said, for the chimes: none until the page has been given a whole view. */
+  let heard = null;
   let commands = [];
   let selectionLabel = '';
   const images = [];
@@ -116,6 +135,7 @@
       return;
     }
     target.innerHTML = md.render(text);
+    placeImages(target);
     for (const pre of target.querySelectorAll('pre')) {
       const wrap = el('div', 'code');
       pre.replaceWith(wrap);
@@ -298,6 +318,12 @@
         entry.el = el('div', 'msg user');
         const { meta, time } = metaRow();
         entry.time = time;
+        entry.rewindBtn = el('button', 'rewind secondary', 'Rewind to here');
+        entry.rewindBtn.type = 'button';
+        entry.rewindBtn.title = 'Experimental: go back to before this message. You see what changes and confirm first: this '
+          + 'message and the ones after it leave the conversation, and in a git repository OpenCode puts back the files changed since.';
+        entry.rewindBtn.hidden = true;
+        meta.appendChild(entry.rewindBtn);
         entry.body = el('div', 'bubble');
         entry.att = el('div', 'user-att');
         entry.el.append(meta, entry.body, entry.att);
@@ -415,6 +441,7 @@
     switch (item.kind) {
       case 'user':
         entry.time.textContent = stamp(item.at);
+        showRewind(entry);
         entry.body.textContent = item.text;
         entry.att.replaceChildren(...(item.attachments || []).map((a) => el('span', `att att-${a.kind}`, a.kind === 'image' ? 'Image' : a.kind === 'selection' ? `Selection ${a.name}` : a.name)));
         entry.att.hidden = !(item.attachments && item.attachments.length);
@@ -534,6 +561,56 @@
     if (item.hidden === true) entry.el.hidden = true;
   }
 
+  /* Rewinding is offered on the user's messages while nothing runs. */
+  function showRewind(entry) {
+    if (entry.rewindBtn) entry.rewindBtn.hidden = !(caps.rewind && head && head.status === 'idle');
+  }
+
+  /* ---------- images in replies ---------- */
+
+  const IMG_DATA = /^data:image\/(?:png|jpeg|gif|webp|svg\+xml)[;,]/i;
+  const IMG_WEB = /^https?:\/\//i;
+  /* src -> { state: 'loading' | 'ok' | 'error', url?, reason? }, the newest kept. */
+  const imageCache = new Map();
+  const imageWaiting = new Map();
+  let imageSeq = 0;
+  function drawImage(img, src) {
+    const got = imageCache.get(src);
+    img.classList.toggle('loading', !got || got.state === 'loading');
+    if (got && got.state === 'ok') { img.src = got.url; img.title = src; }
+    if (got && got.state === 'error') {
+      const box = el('span', 'image-missing', `${img.alt ? `${img.alt}: ` : ''}${got.reason} (${src})`);
+      img.replaceWith(box);
+    }
+  }
+  function placeImages(target) {
+    for (const img of [...target.querySelectorAll('img')]) {
+      const raw = img.getAttribute('src') || '';
+      const kind = C.imageKind(raw, caps.replyImages);
+      if (kind === 'data') continue;
+      if (kind === 'link') {
+        const a = el('a', 'image-link', img.alt || raw);
+        a.setAttribute('href', raw);
+        a.title = IMG_WEB.test(raw) ? 'An image on the web is not fetched; click to open it in the browser' : raw;
+        img.replaceWith(a);
+        continue;
+      }
+      let src = raw;
+      try { src = decodeURI(raw); } catch (_) { /* as written */ }
+      img.removeAttribute('src');
+      img.classList.add('reply-image');
+      img.dataset.src = src;
+      if (!imageCache.has(src)) {
+        const id = `img${++imageSeq}`;
+        imageCache.set(src, { state: 'loading' });
+        while (imageCache.size > 80) imageCache.delete(imageCache.keys().next().value);
+        imageWaiting.set(id, src);
+        api.postMessage({ type: 'image', id, src });
+      }
+      drawImage(img, src);
+    }
+  }
+
   function upsert(item) {
     let entry = nodes.get(item.id);
     if (!entry) {
@@ -556,6 +633,8 @@
     const pct = typeof h.contextPct === 'number' ? Math.max(0, Math.min(100, h.contextPct)) : null;
     ringFill.setAttribute('stroke-dasharray', `${pct == null ? 0 : (pct / 100) * RING} ${RING}`);
     ring.classList.toggle('high', pct != null && pct >= 85);
+    /* An outline once 15% of the window or less is left, as Claude Code Plus draws its meter. */
+    ring.classList.toggle('low', C.ringLow(pct));
     ring.classList.toggle('empty', pct == null);
     ringLabel.textContent = pct == null ? '' : `${pct}%`;
     const costLine = h.costText ? `\nCost so far: ${h.costText}` : '';
@@ -576,6 +655,9 @@
       return row;
     }));
 
+    for (const entry of nodes.values()) showRewind(entry);
+    renderBackground(h.background);
+    chimeFor(h);
     renderStatus();
     if (h.status !== 'idle' && !ticker) ticker = setInterval(renderStatus, 1000);
     if (h.status === 'idle' && ticker) {
@@ -583,6 +665,111 @@
       ticker = null;
     }
   }
+
+  /* ---------- chimes ---------- */
+
+  function chimeFor(h) {
+    const now = { status: h.status, pending: h.pending || 0, waitingFor: h.waitingFor };
+    const was = heard;
+    heard = now;
+    const kind = C.chimeKind(was, now);
+    if (!kind || !sound.on || !KIT || typeof KIT.chime !== 'function') return;
+    try { KIT.chime(kind); } catch (_) { /* no audio here */ }
+  }
+  if (KIT && typeof KIT.unlockAudio === 'function') {
+    document.addEventListener('pointerdown', KIT.unlockAudio, true);
+    document.addEventListener('keydown', KIT.unlockAudio, true);
+  }
+  function paintSound() {
+    soundBtn.hidden = !sound.shown;
+    soundBtn.textContent = '\u266A';
+    soundBtn.classList.toggle('muted', !sound.on);
+    soundBtn.title = sound.on ? 'A chime when a turn ends, and when OpenCode waits for you: click to mute'
+      : 'Chimes are muted: click to hear one when a turn ends or OpenCode waits for you';
+    soundBtn.setAttribute('aria-pressed', sound.on ? 'true' : 'false');
+  }
+  soundBtn.addEventListener('click', () => {
+    sound = { ...sound, on: !sound.on };
+    paintSound();
+    api.postMessage({ type: 'setSound', on: sound.on });
+    if (sound.on && KIT && typeof KIT.chime === 'function') { try { KIT.chime('done'); } catch (_) { /* no audio */ } }
+  });
+
+  /* ---------- background work ---------- */
+
+  const KIND_WORDS = { subagent: 'Subagent', shell: 'Command' };
+  function renderBackground(list) {
+    const items = Array.isArray(list) ? list : [];
+    bgEl.hidden = !items.length;
+    if (!items.length) { bgList.replaceChildren(); return; }
+    bgSum.textContent = C.backgroundSummary(items);
+    bgList.replaceChildren(...items.map((b) => {
+      const row = el('div', `bg-row bg-${b.kind}`);
+      row.dataset.item = b.itemId || '';
+      row.title = b.itemId ? 'Show it in the conversation' : '';
+      row.append(el('span', 'bg-kind', KIND_WORDS[b.kind] || b.kind), el('span', 'bg-title', b.title),
+        el('span', 'bg-detail', [b.detail, b.since ? `since ${stamp(b.since)}` : ''].filter(Boolean).join(' · ')));
+      return row;
+    }));
+  }
+  bgEl.addEventListener('toggle', () => { if (bgEl.open) api.postMessage({ type: 'background' }); });
+  bgList.addEventListener('click', (e) => {
+    const row = e.target.closest('.bg-row');
+    const entry = row && row.dataset.item ? nodes.get(row.dataset.item) : null;
+    if (!entry) return;
+    entry.el.scrollIntoView({ block: 'center' });
+    if (entry.childC && entry.childC.details) entry.childC.details.open = true;
+    entry.el.classList.add('flash');
+    setTimeout(() => entry.el.classList.remove('flash'), 1200);
+  });
+
+  /* ---------- the info box ---------- */
+
+  function closeInfo() { infoBox.hidden = true; infoBox.replaceChildren(); }
+  function showInfo(m) {
+    const rows = Array.isArray(m.rows) ? m.rows : [];
+    const box = [el('div', 'info-title', 'About this conversation')];
+    if (m.error) box.push(el('div', 'info-error', m.error));
+    for (const r of rows) {
+      const row = el('button', 'info-row');
+      row.type = 'button';
+      row.title = 'Click to copy';
+      row.dataset.copy = r.value;
+      row.append(el('span', 'info-label', r.label), el('span', 'info-value', r.value || '-'));
+      box.push(row);
+    }
+    const all = el('button', 'secondary info-all', 'Copy all');
+    all.type = 'button';
+    all.dataset.copy = rows.map((r) => `${r.label}: ${r.value}`).join('\n');
+    box.push(all);
+    infoBox.replaceChildren(...box);
+    infoBox.hidden = false;
+  }
+  infoBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!infoBox.hidden) { closeInfo(); return; }
+    api.postMessage({ type: 'info' });
+  });
+  infoBox.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const b = e.target.closest('button[data-copy]');
+    if (!b) return;
+    api.postMessage({ type: 'copy', text: b.dataset.copy });
+    const was = b.classList.contains('info-all') ? b.textContent : null;
+    b.classList.add('copied');
+    if (was) b.textContent = 'Copied';
+    setTimeout(() => { b.classList.remove('copied'); if (was) b.textContent = was; }, 1200);
+  });
+  document.addEventListener('click', () => { if (!infoBox.hidden) closeInfo(); });
+
+  /* Esc closes the open box, and otherwise stops the turn. */
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+    const act = C.escapeAction({ box: !infoBox.hidden, menu: !!menu, status: head ? head.status : 'idle' });
+    if (act === 'closeBox') { e.preventDefault(); closeInfo(); }
+    else if (act === 'closeMenu') { e.preventDefault(); closeMenu(); }
+    else if (act === 'abort') { e.preventDefault(); api.postMessage({ type: 'abort' }); }
+  });
 
   function renderStatus() {
     if (!head || head.status === 'idle') {
@@ -972,7 +1159,12 @@
       return;
     }
     const diff = target.closest('button.diff');
-    if (diff) api.postMessage({ type: 'viewDiff', requestId: diff.dataset.request });
+    if (diff) { api.postMessage({ type: 'viewDiff', requestId: diff.dataset.request }); return; }
+    const rewind = target.closest('button.rewind');
+    if (rewind) {
+      const holder = rewind.closest('[data-id]');
+      if (holder) api.postMessage({ type: 'rewind', itemId: holder.dataset.id });
+    }
   });
 
   /* ---------- scrolling ---------- */
@@ -1011,6 +1203,7 @@
     const m = e.data || {};
     if (typeof m.now === 'number') skew = m.now - Date.now();
     if (m.type === 'reset') {
+      heard = null;
       nodes.clear();
       toRender.clear();
       log.replaceChildren();
@@ -1036,9 +1229,32 @@
       placeholder();
       if (document.activeElement === input) updateMenu();
     } else if (m.type === 'caps') {
-      caps = { images: m.images === true, files: m.files === true, selection: m.selection === true };
+      caps = { images: m.images === true, files: m.files === true, selection: m.selection === true, rewind: m.rewind === true, info: m.info === true, replyImages: m.replyImages === true };
+      infoBtn.hidden = !caps.info;
       placeholder();
       applySelection(selectionLabel);
+      for (const entry of nodes.values()) showRewind(entry);
+    } else if (m.type === 'sound') {
+      sound = { shown: m.shown === true, on: m.on === true };
+      paintSound();
+    } else if (m.type === 'info') {
+      showInfo(m);
+    } else if (m.type === 'image') {
+      const src = imageWaiting.get(m.id);
+      if (!src) return;
+      imageWaiting.delete(m.id);
+      imageCache.set(src, m.ok === true && typeof m.dataUrl === 'string' && IMG_DATA.test(m.dataUrl) ? { state: 'ok', url: m.dataUrl }
+        : { state: 'error', reason: typeof m.reason === 'string' && m.reason ? m.reason : 'The image could not be read.' });
+      const wasAtBottom = stick;
+      for (const img of [...log.querySelectorAll('img.reply-image')]) if (img.dataset.src === src) drawImage(img, src);
+      if (wasAtBottom) scrollEnd();
+    } else if (m.type === 'draft') {
+      if (!input.value.trim() && typeof m.text === 'string') {
+        input.value = m.text;
+        autosize();
+        saveDraft();
+      }
+      input.focus();
     } else if (m.type === 'selection') {
       applySelection(m.label);
     } else if (m.type === 'selectionAdded' && m.item) {

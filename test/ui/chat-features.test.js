@@ -190,7 +190,7 @@ test('the page gets the commands and what a message may carry; files and selecti
   panel.fromPage({ type: 'ready' });
   await settle();
   assert.deepEqual(posted(panel, 'commands')[0].commands.map((c) => c.name), ['compact', 'review']);
-  assert.deepEqual(posted(panel, 'caps').pop(), { type: 'caps', images: true, files: false, selection: false, now: posted(panel, 'caps').pop().now });
+  assert.deepEqual(posted(panel, 'caps').pop(), { type: 'caps', images: true, files: false, selection: false, rewind: false, info: false, replyImages: false, now: posted(panel, 'caps').pop().now });
   conv.fire({ type: 'commands', commands: [{ name: 'init', description: '' }] });
   assert.deepEqual(posted(panel, 'commands').pop().commands, [{ name: 'init', description: '' }]);
   assert.equal(chat.state.items.length, 0, 'a commands event draws nothing in the log');

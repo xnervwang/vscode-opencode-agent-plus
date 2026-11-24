@@ -1,0 +1,118 @@
+{
+  "info": {
+    "id": "ses_df2534a3cffeV5DpIbep0DaQLs",
+    "projectID": "global",
+    "model": {
+      "id": "us.xai.grok-4.7",
+      "providerID": "amazon-bedrock",
+      "variant": "default"
+    },
+    "cost": 0.24703052,
+    "tokens": {
+      "input": 111347,
+      "output": 450,
+      "reasoning": 0,
+      "cache": {
+        "read": 145,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1795525752953,
+      "updated": 1795525765712,
+      "busy": 1795525764044,
+      "idle": 1795525764047
+    },
+    "title": "OSPREY reminder",
+    "subpath": "../../../../../../../../../../../../work/project",
+    "location": {
+      "directory": "/work/project"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_20dacb8940011fMyRayMcVsjKd",
+      "time": {
+        "created": 1795525752980
+      },
+      "type": "model-switched",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock"
+      }
+    },
+    {
+      "id": "msg_20dacb8aa001b0TY7agRN2JAFo",
+      "time": {
+        "created": 1795525753032
+      },
+      "text": "Remember the word OSPREY. Reply with ok.",
+      "files": [],
+      "type": "user"
+    },
+    {
+      "id": "msg_20dacb8d6001tpBilxc71VOZ0P",
+      "time": {
+        "created": 1795525753050,
+        "firstToken": 1795525754584,
+        "streamed": 1795525754692,
+        "completed": 1795525754718
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "I will remember the word \"OSPREY\" and reply with \"ok\".",
+          "time": {
+            "created": 1795525754586,
+            "completed": 1795525754682
+          }
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "created": 1795525754685,
+            "completed": 1795525754686
+          }
+        },
+        {
+          "type": "text",
+          "text": "ok"
+        }
+      ],
+      "snapshot": {
+        "start": "44f54a7a750c081c0ad256b2ff0c14afab1361db",
+        "end": "44f54a7a750c081c0ad256b2ff0c14afab1361db",
+        "files": []
+      },
+      "finish": "stop",
+      "rawFinish": "end_turn",
+      "cost": 0.048411550000000005,
+      "tokens": {
+        "input": 21869,
+        "output": 43,
+        "reasoning": 0,
+        "cache": {
+          "read": 29,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_20dacbf63001qHPTba01WASSJa",
+      "time": {
+        "created": 1795525754723
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

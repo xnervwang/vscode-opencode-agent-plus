@@ -30,20 +30,24 @@ function make({ trusted = true, find, config = {} } = {}) {
 }
 
 test('the token mode decides the switches; in Custom our own settings do', () => {
+  /* The time-zone note is the token mode's timeZone feature: on in Essential and All. The page draws reply images, so
+     that note's switch is always on. */
   const cases = [
-    [{}, { enabled: true, brief: true }],
-    [{ 'agentPlus.tokenMode': 'all' }, { enabled: true, brief: true }],
-    [{ 'agentPlus.tokenMode': 'essential' }, { enabled: true, brief: false }],
-    [{ 'agentPlus.tokenMode': 'interface' }, { enabled: false, brief: false }],
-    [{ 'agentPlus.tokenMode': 'interface', [KEYS.workPlan]: true }, { enabled: false, brief: false }],
-    [{ 'agentPlus.tokenMode': 'custom' }, { enabled: true, brief: true }],
-    [{ 'agentPlus.tokenMode': 'custom', [KEYS.conversationBrief]: false }, { enabled: true, brief: false }],
-    [{ 'agentPlus.tokenMode': 'custom', [KEYS.workPlan]: false }, { enabled: false, brief: true }],
-    [{ 'agentPlus.tokenMode': 'no-such-mode' }, { enabled: true, brief: true }],
+    [{}, { enabled: true, brief: true, tellTimeZone: true }],
+    [{ 'agentPlus.tokenMode': 'all' }, { enabled: true, brief: true, tellTimeZone: true }],
+    [{ 'agentPlus.tokenMode': 'essential' }, { enabled: true, brief: false, tellTimeZone: true }],
+    [{ 'agentPlus.tokenMode': 'interface' }, { enabled: false, brief: false, tellTimeZone: false }],
+    [{ 'agentPlus.tokenMode': 'interface', [KEYS.workPlan]: true, [KEYS.timeZone]: true }, { enabled: false, brief: false, tellTimeZone: false }],
+    [{ 'agentPlus.tokenMode': 'custom' }, { enabled: true, brief: true, tellTimeZone: true }],
+    [{ 'agentPlus.tokenMode': 'custom', [KEYS.conversationBrief]: false }, { enabled: true, brief: false, tellTimeZone: true }],
+    [{ 'agentPlus.tokenMode': 'custom', [KEYS.workPlan]: false }, { enabled: false, brief: true, tellTimeZone: true }],
+    [{ 'agentPlus.tokenMode': 'custom', [KEYS.timeZone]: false }, { enabled: true, brief: true, tellTimeZone: false }],
+    [{ 'agentPlus.tokenMode': 'no-such-mode' }, { enabled: true, brief: true, tellTimeZone: true }],
   ];
+  assert.equal(KEYS.timeZone, 'opencodePlus.tellOpenCodeYourTimeZone');
   for (const [config, want] of cases) {
     const { plan } = make({ config });
-    assert.deepEqual(plan.values(), want, JSON.stringify(config));
+    assert.deepEqual(plan.values(), { ...want, replyImages: config['agentPlus.tokenMode'] !== 'interface' }, JSON.stringify(config));
     assert.equal(plan.brief(), want.enabled && want.brief);
     plan.dispose();
   }
@@ -59,7 +63,7 @@ test('start copies the plugin and scripts, writes config.json with this storage 
   for (const n of ['plan_common.py', 'plan_agent.py', 'inject-work-plan.py', 'nudge-work-plan.py', 'plan-row.py', 'resume-work-plan.py']) {
     assert.ok(fs.existsSync(path.join(dir, 'hooks', n)), n);
   }
-  assert.deepEqual(read(), { enabled: true, brief: true, extensionMarkers: [storage] });
+  assert.deepEqual(read(), { enabled: true, brief: true, tellTimeZone: true, replyImages: true, extensionMarkers: [storage] });
   assert.ok(fs.existsSync(storage), 'the marker folder exists');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'hooks', 'launcher.json'), 'utf8')), { row: ['C:/Py/python.exe'] });
   assert.equal(plan.planNotice(), null);

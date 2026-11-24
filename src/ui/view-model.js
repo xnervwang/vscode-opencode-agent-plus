@@ -19,6 +19,9 @@
  * of its own (kind 'subagent') when no such call is known; only its last CHILD_ENTRIES steps are kept. A question is
  * an item whose `fields` (formFields) the page draws as a form; formContent turns what the user filled in back into
  * the answer's content.
+ *
+ * What still runs in the background - subagents not done yet, and shell commands the agent moved to the background
+ * (`background` events) - goes to the page in head().background, with the item each one is drawn on.
  */
 
 const MAX_SHOWN = 20000;
@@ -48,6 +51,7 @@ function initialState() {
     lastAt: 0,
     compaction: null,
     children: {},
+    background: {},
   };
 }
 
@@ -331,7 +335,7 @@ function childView(c) {
 function onSubagent(s, ev, at) {
   const childId = typeof ev.childId === 'string' ? ev.childId : '';
   if (!childId) return s;
-  const before = s.children[childId] || { childId, title: '', status: 'running', error: '', toolId: '', host: null, entries: [], dropped: 0, last: '' };
+  const before = s.children[childId] || { childId, title: '', status: 'running', error: '', toolId: '', host: null, entries: [], dropped: 0, last: '', since: at };
   let c = {
     ...before,
     title: typeof ev.title === 'string' && ev.title ? ev.title : before.title,
@@ -486,6 +490,7 @@ function reduce(s, ev, now) {
       const qi = queued.findIndex((q) => q.text.trim() === text.trim());
       if (qi >= 0) queued = [...queued.slice(0, qi), ...queued.slice(qi + 1)];
       const item = { kind: 'user', turn: s.turn ? s.turn.id : null, at, text };
+      if (typeof ev.messageId === 'string' && ev.messageId) item.messageId = ev.messageId;
       const shown = attachmentsOf(ev.attachments);
       if (shown.length) item.attachments = shown;
       const r = append({ ...s, queued, lastAt: at }, item);
@@ -574,6 +579,17 @@ function reduce(s, ev, now) {
 
     case 'subagent':
       return onSubagent(s, ev, at);
+
+    case 'background': {
+      const id = typeof ev.id === 'string' ? ev.id : '';
+      if (!id || (ev.status !== 'running' && ev.status !== 'done')) return s;
+      const before = s.background[id];
+      const background = { ...s.background, [id]: { id, kind: ev.kind === 'shell' ? 'shell' : 'other', title: String(ev.title || ''), status: ev.status,
+        since: before ? before.since : at, pid: Number(ev.pid) || 0 } };
+      const keys = Object.keys(background);
+      if (keys.length > 50) for (const k of keys.slice(0, keys.length - 50)) if (background[k].status !== 'running') delete background[k];
+      return { ...s, background };
+    }
 
     case 'permissionSettled': {
       const itemId = s.pending[ev.requestId] ||
@@ -739,6 +755,18 @@ function fromRecords(records, opts = {}) {
 
 /* ---------- what the page gets ---------- */
 
+/* What still runs in the background, oldest first: subagents not done, and commands the agent left running. */
+function backgroundOf(s) {
+  const out = [];
+  for (const c of Object.values(s.children)) {
+    if (c.status === 'running') out.push({ kind: 'subagent', id: c.childId, title: c.title || 'Subagent', since: c.since || 0, detail: c.last || '', itemId: c.host || '' });
+  }
+  for (const b of Object.values(s.background)) {
+    if (b.status === 'running') out.push({ kind: 'shell', id: b.id, title: b.title || 'command', since: b.since || 0, detail: b.pid ? `process ${b.pid}` : '', itemId: toolItemOf(s, b.id) || '' });
+  }
+  return out.sort((a, b) => a.since - b.since);
+}
+
 function head(s) {
   const window = s.model ? s.model.contextWindow || 0 : 0;
   return {
@@ -755,6 +783,7 @@ function head(s) {
     retry: s.retry,
     turnStartedAt: s.turn ? s.turn.startedAt : null,
     pending: Object.keys(s.pending).length,
+    background: backgroundOf(s),
     waitingFor: Object.keys(s.pending).some((k) => (s.items[indexOf(s.pending[k])] || {}).kind === 'question') ? 'question' : 'permission',
   };
 }

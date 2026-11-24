@@ -1,0 +1,408 @@
+{
+  "info": {
+    "id": "ses_df2534a3bffe2Zq2ljHj1Y23t9",
+    "projectID": "fcd3203c358deea1ad965888c12718e020f23a6d",
+    "model": {
+      "id": "us.xai.grok-4.7",
+      "providerID": "amazon-bedrock",
+      "variant": "default"
+    },
+    "cost": 0.24987127000000003,
+    "tokens": {
+      "input": 112407,
+      "output": 539,
+      "reasoning": 0,
+      "cache": {
+        "read": 116,
+        "write": 0
+      }
+    },
+    "outcome": "succeeded",
+    "time": {
+      "created": 1795525752264,
+      "updated": 1795525803060,
+      "busy": 1795525801034,
+      "idle": 1795525803064
+    },
+    "title": "Background sleep command",
+    "subpath": "../../../../../../../../../../../../work/project",
+    "location": {
+      "directory": "/work/project"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg_20dacb5d8001ErF45qHfgZqci6",
+      "time": {
+        "created": 1795525752280
+      },
+      "type": "model-switched",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock"
+      }
+    },
+    {
+      "id": "msg_20dacb5e3001hHkQoB5Ih520q1",
+      "time": {
+        "created": 1795525752890
+      },
+      "text": "Use the shell tool to start the command \"sleep 20; echo bg-done\" in the background, without waiting for it to finish. Then reply with the word started and end your response at once.",
+      "files": [],
+      "type": "user"
+    },
+    {
+      "id": "msg_20dacb84700134WPj02iyNqJFD",
+      "time": {
+        "created": 1795525752908,
+        "firstToken": 1795525754655,
+        "streamed": 1795525754779,
+        "completed": 1795525755079
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "I will run the command in the background using the shell tool.I will reply with \"started\" and end the response immediately.",
+          "time": {
+            "created": 1795525754657,
+            "completed": 1795525754768
+          }
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "created": 1795525754770,
+            "completed": 1795525754771
+          }
+        },
+        {
+          "type": "tool",
+          "id": "call_f08503fa05bf5cb7a81e0fc99ac1d34d",
+          "name": "shell",
+          "executed": false,
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "sleep 20; echo bg-done",
+              "background": true
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Command moved to the background (shell ID: sh_20dacbfa5001n365SLgGuPCp39).\nPID: 79883\nOutput is streaming to: /work/xdg/data/opencode/shell/fcd3203c358deea1ad965888c12718e020f23a6d/sh_20dacbfa5001n365SLgGuPCp39.out"
+              },
+              {
+                "type": "text",
+                "text": "You will be notified automatically when the command finishes. The notification will include the command's output. Unless the user explicitly asks otherwise, DO NOT poll for completion, even if you need the final result to continue. Repeatedly sleeping and reading or searching the output file is polling, not useful work. You may read the current output if it lets you do useful work now, but do not repeatedly check it while waiting for the command to finish. Keep working on anything that does not depend on the result. If you have nothing else to do, end your response; you will be resumed automatically when the command finishes."
+              }
+            ],
+            "metadata": {
+              "status": "running",
+              "truncated": false,
+              "shellID": "sh_20dacbfa5001n365SLgGuPCp39",
+              "pid": 79883
+            }
+          },
+          "time": {
+            "created": 1795525754773,
+            "ran": 1795525754777,
+            "completed": 1795525755076
+          }
+        }
+      ],
+      "finish": "tool-calls",
+      "rawFinish": "tool_use",
+      "cost": 0.048791600000000004,
+      "tokens": {
+        "input": 21929,
+        "output": 83,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_20dacc0d3001nbRSGgckM5zixj",
+      "time": {
+        "created": 1795525755096,
+        "firstToken": 1795525755917,
+        "streamed": 1795525755928,
+        "completed": 1795525755929
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "I will start the background command and reply with \"started\" immediately.",
+          "time": {
+            "created": 1795525755918,
+            "completed": 1795525755920
+          }
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "created": 1795525755922,
+            "completed": 1795525755923
+          }
+        },
+        {
+          "type": "text",
+          "text": "started"
+        }
+      ],
+      "finish": "stop",
+      "rawFinish": "end_turn",
+      "cost": 0.049168350000000006,
+      "tokens": {
+        "input": 22255,
+        "output": 29,
+        "reasoning": 0,
+        "cache": {
+          "read": 29,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_20dacc41e001m3tJuLtGAgTOrj",
+      "time": {
+        "created": 1795525755934
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    },
+    {
+      "id": "msg_20dacc0c3002mBCJ0W6JLKfWwy",
+      "metadata": {
+        "source": "shell",
+        "shellID": "sh_20dacbfa5001n365SLgGuPCp39",
+        "jobID": "sh_20dacbfa5001n365SLgGuPCp39",
+        "state": "completed",
+        "truncated": false,
+        "exit": 0
+      },
+      "time": {
+        "created": 1795525775090
+      },
+      "text": "<background-result kind=\"shell\" id=\"sh_20dacbfa5001n365SLgGuPCp39\" state=\"completed\" command=\"sleep 20; echo bg-done\">\nbg-done\n\n</background-result>",
+      "description": "sleep 20; echo bg-done",
+      "type": "synthetic"
+    },
+    {
+      "id": "msg_20dad0ef7001Drrej51JsHFvTa",
+      "time": {
+        "created": 1795525775100,
+        "firstToken": 1795525775960,
+        "streamed": 1795525777036,
+        "completed": 1795525777038
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "I started the background command and will reply with \"started\" before ending.The background command finished with \"bg-done\". I will acknowledge this notification briefly.",
+          "time": {
+            "created": 1795525775961,
+            "completed": 1795525777026
+          }
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "created": 1795525777029,
+            "completed": 1795525777031
+          }
+        },
+        {
+          "type": "text",
+          "text": "The background command finished and printed `bg-done`."
+        }
+      ],
+      "finish": "stop",
+      "rawFinish": "end_turn",
+      "cost": 0.051007550000000006,
+      "tokens": {
+        "input": 22338,
+        "output": 280,
+        "reasoning": 0,
+        "cache": {
+          "read": 29,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_20dad1692001Vctvi2zs7di4EV",
+      "time": {
+        "created": 1795525777042
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    },
+    {
+      "id": "msg_20dad7443001Ct1Z3hYCEqDRyZ",
+      "time": {
+        "created": 1795525801042
+      },
+      "text": "Use the write tool to create a file named revert-me.txt containing exactly v1. Then reply done.",
+      "files": [],
+      "type": "user"
+    },
+    {
+      "id": "msg_20dad7457001OA2GaCLqpfOVtw",
+      "time": {
+        "created": 1795525801052,
+        "firstToken": 1795525801925,
+        "streamed": 1795525802037,
+        "completed": 1795525802045
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "I will create revert-me.txt with the content \"v1\" and reply \"done\".",
+          "time": {
+            "created": 1795525801927,
+            "completed": 1795525802025
+          }
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "created": 1795525802027,
+            "completed": 1795525802028
+          }
+        },
+        {
+          "type": "tool",
+          "id": "call_0f70a75213255382b8c942a16dea5a60",
+          "name": "write",
+          "executed": false,
+          "state": {
+            "status": "completed",
+            "input": {
+              "path": "/work/project/revert-me.txt",
+              "content": "v1"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Created file successfully: revert-me.txt"
+              }
+            ],
+            "metadata": {
+              "truncated": false
+            }
+          },
+          "time": {
+            "created": 1795525802029,
+            "ran": 1795525802033,
+            "completed": 1795525802044
+          }
+        }
+      ],
+      "finish": "tool-calls",
+      "rawFinish": "tool_use",
+      "cost": 0.050556550000000006,
+      "tokens": {
+        "input": 22643,
+        "output": 110,
+        "reasoning": 0,
+        "cache": {
+          "read": 29,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_20dad7848001Wu0vOUOJ1mlKZw",
+      "time": {
+        "created": 1795525802061,
+        "firstToken": 1795525802967,
+        "streamed": 1795525803059,
+        "completed": 1795525803060
+      },
+      "type": "assistant",
+      "agent": "build",
+      "model": {
+        "id": "us.xai.grok-4.7",
+        "providerID": "amazon-bedrock",
+        "variant": "default"
+      },
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "I will create revert-me.txt with the content v1 and reply done.",
+          "time": {
+            "created": 1795525802968,
+            "completed": 1795525803051
+          }
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "time": {
+            "created": 1795525803054,
+            "completed": 1795525803055
+          }
+        },
+        {
+          "type": "text",
+          "text": "done"
+        }
+      ],
+      "finish": "stop",
+      "rawFinish": "end_turn",
+      "cost": 0.050290350000000004,
+      "tokens": {
+        "input": 22765,
+        "output": 29,
+        "reasoning": 0,
+        "cache": {
+          "read": 29,
+          "write": 0
+        }
+      }
+    },
+    {
+      "id": "msg_20dad7c38001GzAAA8Hr8h6L4O",
+      "time": {
+        "created": 1795525803064
+      },
+      "type": "idle",
+      "outcome": "succeeded"
+    }
+  ]
+}

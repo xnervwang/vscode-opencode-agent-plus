@@ -35,6 +35,8 @@ function createOpenCode() {
       id: saved.id, cwd: saved.cwd, title: saved.title, status: 'idle', waitingTool: '', lastUserAt: saved.lastUserAt, lastReplyAt: saved.lastReplyAt,
       respondPermission: (rid, d) => c.respond(rid, d),
       history: async () => saved.events,
+      reload: async () => (read().sessions[saved.id] || saved).events,
+      checkBackground: () => {},
       getModel: () => model,
       setModel: (m) => { model = typeof m === 'string' ? m : m.id; const db = read(); if (db.sessions[saved.id]) { db.sessions[saved.id].model = model; write(db); } },
     });
@@ -96,6 +98,22 @@ function createOpenCode() {
       if (c) { c.title = String(title); c.emit({ type: 'title', title: String(title) }); }
       changed(id);
     },
+    canFork: () => true,
+    async forkSession(id) {
+      const db = read();
+      const from = db.sessions[id];
+      if (!from) throw new Error(`no session ${id}`);
+      const now = Date.now();
+      const s = { ...from, id: `ses_${crypto.randomBytes(8).toString('hex')}`, title: from.title ? `${from.title} (fork)` : '', lastActiveAt: now, events: from.events.slice() };
+      db.sessions[s.id] = s;
+      write(db);
+      changed(s.id);
+      return { id: s.id, cwd: s.cwd };
+    },
+    canRewind: () => false,
+    info: () => ({ path: '/fake/opencode', version: { major: 2, minor: 0, patch: 0, text: '2.0.0-fake' }, pid: process.pid, agent: { name: 'fake' } }),
+    dataPaths: async () => ({ db: file }),
+    mcpList: async () => 'No MCP servers configured (the fake backend has none)',
     async deleteSession(id) { const c = live.get(id); if (c) c.dispose(); const db = read(); delete db.sessions[id]; write(db); changed(id); },
     listModels: () => MODELS,
     defaultModel: () => MODELS[0],

@@ -93,6 +93,8 @@ function withModelChoice(inner, deps) {
     },
     respondPermission(requestId, decision) { return facade.respond(requestId, decision); },
     history: () => (typeof inner.history === 'function' ? inner.history() : []),
+    reload: () => (typeof inner.reload === 'function' ? Promise.resolve().then(() => inner.reload()) : Promise.reject(new Error('This agent cannot load a conversation again.'))),
+    checkBackground: pass('checkBackground'),
     dispose() {
       unsubscribe();
       listeners.clear();

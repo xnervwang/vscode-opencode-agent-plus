@@ -1,0 +1,9 @@
+home       /home/user
+data       /work/xdg/data/opencode
+bin        /work/xdg/cache/opencode/bin
+log        /work/xdg/data/opencode/log
+repos      /work/xdg/data/opencode/repos
+cache      /work/xdg/cache/opencode
+config     /work/xdg/config/opencode
+state      /work/xdg/state/opencode
+tmp        /tmp/opencode

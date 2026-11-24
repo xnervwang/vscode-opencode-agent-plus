@@ -178,7 +178,10 @@ test('prompt keeps inject-work-plan.py\'s text in the message metadata, wrapped 
   const [run] = env.runs();
   assert.equal(run.name, 'inject-work-plan.py');
   assert.deepEqual(run.args, [env.plans]);
-  assert.deepEqual(run.payload, { hook_event_name: 'UserPromptSubmit', session_id: SID, turn_id: 'msg_1', prompt: 'do the thing', cwd: '/work/repo' });
+  const { transcript_path: record, ...given } = run.payload;
+  assert.deepEqual(given, { hook_event_name: 'UserPromptSubmit', session_id: SID, turn_id: 'msg_1', prompt: 'do the thing', cwd: '/work/repo', in_panel: true });
+  assert.ok(path.isAbsolute(record) && !fs.existsSync(record), 'a turn record made for the call, gone after it');
+  assert.equal(run.record, '', 'with no usage seen yet it is empty');
   assert.equal(run.tools, 'tools');
   await stop();
 });
@@ -328,7 +331,9 @@ test('after session.compaction.ended, resume-work-plan.py runs and the next prom
   f.events.push({ type: 'session.compaction.ended', data: { sessionID: SID } });
   await until(() => env.runs().some((r) => r.name === 'resume-work-plan.py'));
   const run = env.runs().find((r) => r.name === 'resume-work-plan.py');
-  assert.deepEqual(run.payload, { hook_event_name: 'SessionStart', source: 'compact', session_id: SID });
+  const { transcript_path: record, ...given } = run.payload;
+  assert.deepEqual(given, { hook_event_name: 'SessionStart', source: 'compact', session_id: SID, in_panel: true });
+  assert.ok(path.isAbsolute(record));
   assert.deepEqual(run.args, [env.plans]);
   await new Promise((r) => setTimeout(r, 50));
   const ev = prompt(SID, 'msg_9', 'next');
@@ -462,4 +467,88 @@ test('the plugin is one CommonJS file that requires only Node\'s own modules', (
   const required = [...text.matchAll(/require\('([^']+)'\)/g)].map((m) => m[1]);
   assert.deepEqual(required.sort(), ['child_process', 'fs', 'os', 'path']);
   assert.equal(plugin.id, 'agent-work-plan');
+});
+
+/* The time-zone and reply-image notes, stand-ins like the others. */
+const NOTE_SCRIPTS = {
+  'tell-time-zone.py': `${RECORDER}
+function main(p) { console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: p.hook_event_name, additionalContext: 'ZONE ' + p.hook_event_name } })); }`,
+  'tell-reply-images.py': `${RECORDER}
+function main(p) { if (!p.in_panel) return; console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: p.hook_event_name, additionalContext: 'IMAGES' } })); }`,
+};
+/* run-hooks.py's stand-in: one process for all the scripts it is named, answering each in its { texts } shape. */
+const RUNNER_STANDIN = `${RECORDER}
+function main(p, args) {
+  const texts = {};
+  for (const n of args.slice(1)) texts[n] = n === 'inject-work-plan.py' ? 'PLAN ' + p.turn_id : n === 'tell-time-zone.py' ? 'ZONE' : n === 'resume-work-plan.py' ? 'RESUME' : '';
+  console.log(JSON.stringify({ texts }));
+}`;
+
+test('the notes go with every user message, with the plan or without it, and read the last usage from a turn record', async () => {
+  const env = makeEnv();
+  for (const [name, text] of Object.entries(NOTE_SCRIPTS)) fs.writeFileSync(path.join(env.hooks, name), text);
+  env.config({ enabled: true, tellTimeZone: true, replyImages: true });
+  const f = fakeCtx();
+  const stop = await plugin.setup(f.ctx);
+  const first = prompt(SID, 'msg_0', 'warm up');
+  await f.hooks.prompt(first);
+  await until(() => env.runs().length >= 3);
+  /* Usage is kept for a conversation once it has had a message. */
+  f.events.push({ type: 'session.usage.updated', data: { sessionID: SID, tokens: { input: 1200, cache: { read: 300, write: 0 } } } });
+  await new Promise((r) => setTimeout(r, 80));
+  const ev = prompt(SID, 'msg_1', 'go');
+  await f.hooks.prompt(ev);
+  assert.equal(ev.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_1\n\nZONE UserPromptSubmit\n\nIMAGES\n</system-update>`);
+  const zone = env.runs().filter((r) => r.name === 'tell-time-zone.py').pop();
+  assert.equal(zone.payload.in_panel, true);
+  assert.match(zone.record, /"type":"usage"/);
+  env.config({ enabled: false, tellTimeZone: true, replyImages: true });
+  const off = prompt(SID, 'msg_2', 'again');
+  await f.hooks.prompt(off);
+  assert.equal(off.metadata.agentWorkPlan, '<system-update>\nZONE UserPromptSubmit\n\nIMAGES\n</system-update>', 'the plan off, the notes stay');
+  /* All three off, as in Interface: no Python is started. */
+  env.config({ enabled: false, tellTimeZone: false, replyImages: false });
+  const runs = env.runs().length;
+  const none = prompt(SID, 'msg_3', 'quiet');
+  await f.hooks.prompt(none);
+  assert.deepEqual(none.metadata, { source: 'x' });
+  assert.equal(env.runs().length, runs);
+  /* Not written, the time zone is on and the images off, as plan_common.py has it. */
+  fs.rmSync(path.join(env.plans, 'config.json'));
+  const bare = prompt(SID, 'msg_4', 'bare');
+  await f.hooks.prompt(bare);
+  assert.equal(bare.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_4\n\nZONE UserPromptSubmit\n</system-update>`);
+  await stop();
+});
+
+test('with run-hooks.py there, one Python process answers for the plan and the notes', async () => {
+  const env = makeEnv();
+  env.config({ enabled: true, tellTimeZone: true, replyImages: true });
+  fs.writeFileSync(path.join(env.hooks, 'run-hooks.py'), RUNNER_STANDIN);
+  const f = fakeCtx();
+  const stop = await plugin.setup(f.ctx);
+  const ev = prompt(SID, 'msg_1', 'go');
+  await f.hooks.prompt(ev);
+  assert.equal(ev.metadata.agentWorkPlan, '<system-update>\nPLAN msg_1\n\nZONE\n</system-update>');
+  const runs = env.runs();
+  assert.deepEqual(runs.map((r) => r.name), ['run-hooks.py']);
+  assert.deepEqual(runs[0].args, [env.plans, 'inject-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py']);
+  await stop();
+});
+
+test('after a compaction the notes are said again, and kept apart from the plan, which a plan turned off drops', async () => {
+  const env = makeEnv();
+  for (const [name, text] of Object.entries(NOTE_SCRIPTS)) fs.writeFileSync(path.join(env.hooks, name), text);
+  env.config({ enabled: true, tellTimeZone: true, replyImages: true });
+  const f = fakeCtx();
+  const stop = await plugin.setup(f.ctx);
+  f.events.push({ type: 'session.compaction.ended', data: { sessionID: SID } });
+  await until(() => env.runs().filter((r) => r.payload && r.payload.hook_event_name === 'SessionStart').length >= 3);
+  /* A stand-in logs as it runs, before the plugin has taken in what it printed. */
+  await new Promise((r) => setTimeout(r, 100));
+  env.config({ enabled: false, tellTimeZone: true, replyImages: true });
+  const ev = prompt(SID, 'msg_9', 'next');
+  await f.hooks.prompt(ev);
+  assert.equal(ev.metadata.agentWorkPlan, '<system-update>\nZONE SessionStart\n\nIMAGES\n\nZONE UserPromptSubmit\n\nIMAGES\n</system-update>');
+  await stop();
 });

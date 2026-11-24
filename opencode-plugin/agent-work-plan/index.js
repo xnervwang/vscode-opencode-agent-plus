@@ -12,11 +12,13 @@
  * run as Claude Code runs its hooks: the plans folder as the first argument, the event as JSON on standard input.
  * Without Python or those scripts nothing is injected and the tools say why.
  *
- *   prompt       inject-work-plan.py's text for this turn, kept in the user message's metadata
+ *   prompt       inject-work-plan.py's text for this turn, with tell-time-zone.py's and tell-reply-images.py's (which
+ *                run whether or not the plan is on: their own settings in config.json say), kept in the user message's
+ *                metadata; run-hooks.py runs the three in one Python process
  *   context      every user message's kept text put back on every request, so the request prefix never changes
  *   compaction   the same, plus the plan file, in the summary request
  *   tools        set_row, add_row, set_summary, set_status, each one run of plan-row.py
- *   events       session.compaction.ended runs resume-work-plan.py; session.usage.updated is recorded;
+ *   events       session.compaction.ended runs resume-work-plan.py and the two notes again; session.usage.updated is recorded;
  *                session.execution.succeeded runs nudge-work-plan.py and keeps what it says as a synthetic message
  *
  * Environment: OPENCODE_PLUS_HOOKS_DIR (the scripts), OPENCODE_PLUS_HOME (plans are in its plans/, ~/.opencode-plus by default),
@@ -40,6 +42,10 @@ const PLAN_IN_SUMMARY_CHARS = 6000;
 const INPUT_CHARS = 4000;
 const MAX_SESSIONS = 64;
 const EVENTS = ['session.compaction.ended', 'session.usage.updated', 'session.execution.succeeded'];
+/* Runs several scripts on one event in one Python process; without it each runs in its own. */
+const RUNNER = 'run-hooks.py';
+/* Said on a user message and after a compaction besides the plan, each by its own setting. */
+const NOTES = ['tell-time-zone.py', 'tell-reply-images.py'];
 
 const home = () => process.env.OPENCODE_PLUS_HOME || path.join(os.homedir(), '.opencode-plus');
 const plansDir = () => path.join(home(), 'plans');
@@ -63,6 +69,17 @@ function enabled() {
   const markers = Array.isArray(given.extensionMarkers) ? given.extensionMarkers.filter((m) => typeof m === 'string' && path.isAbsolute(m)) : [];
   if (markers.length && !markers.some((m) => { try { return fs.statSync(m).isDirectory(); } catch (_) { return false; } })) return false;
   return typeof given.enabled === 'boolean' ? given.enabled : true;
+}
+
+/* Which of the notes config.json leaves on, read the way plan_common.settings reads it: tellTimeZone on and
+   replyImages off when not written, both off once the extension is uninstalled everywhere. */
+function notesOn() {
+  let given;
+  try { given = JSON.parse(fs.readFileSync(path.join(plansDir(), 'config.json'), 'utf8')); } catch (_) { return [NOTES[0]]; }
+  if (!given || typeof given !== 'object') return [NOTES[0]];
+  const markers = Array.isArray(given.extensionMarkers) ? given.extensionMarkers.filter((m) => typeof m === 'string' && path.isAbsolute(m)) : [];
+  if (markers.length && !markers.some((m) => { try { return fs.statSync(m).isDirectory(); } catch (_) { return false; } })) return [];
+  return NOTES.filter((n) => (n === NOTES[0] ? given.tellTimeZone !== false : given.replyImages === true));
 }
 
 /* How Python is started: launcher.json beside the scripts (written by the extension where python3 is not the name),
@@ -122,6 +139,31 @@ async function hookText(script, payload) {
     log('hook', { script, unparsed: r.stdout.slice(0, 200) });
     return '';
   }
+}
+
+/* Each of `scripts`' additionalContext for `payload`: { name: text }. */
+async function hookTexts(scripts, payload) {
+  const dir = hooksDir();
+  if (dir && fs.existsSync(path.join(dir, RUNNER))) {
+    const r = await runScript(RUNNER, [plansDir(), ...scripts], JSON.stringify(payload));
+    let texts = null;
+    if (!r.missing && r.code === 0) {
+      try { const v = JSON.parse(r.stdout); if (v && v.texts && typeof v.texts === 'object') texts = v.texts; } catch (_) { /* below */ }
+    }
+    if (texts) {
+      const out = {};
+      for (const name of scripts) {
+        out[name] = typeof texts[name] === 'string' ? texts[name] : '';
+        log('hook', { script: name, chars: out[name].length, via: RUNNER });
+      }
+      return out;
+    }
+    log('hook', { script: RUNNER, missing: r.missing, code: r.code, stderr: r.stderr && r.stderr.slice(-400) });
+    if (r.missing) return Object.fromEntries(scripts.map((n) => [n, '']));
+  }
+  const out = {};
+  for (const name of scripts) out[name] = await hookText(name, payload);
+  return out;
 }
 
 /* OpenCode's harness prompt tells the model that a system-update block is from the harness, not from the user. */
@@ -200,7 +242,7 @@ function sessions() {
   return {
     get(id) {
       let s = map.get(id);
-      if (s) { map.delete(id); } else { s = { turnId: '', resume: '', nudgedTurn: '', model: null, usage: null }; }
+      if (s) { map.delete(id); } else { s = { turnId: '', resume: '', resumeNotes: '', nudgedTurn: '', model: null, usage: null }; }
       map.set(id, s);
       while (map.size > MAX_SESSIONS) map.delete(map.keys().next().value);
       return s;
@@ -291,6 +333,9 @@ async function withRecord(lines, fn) {
   }
 }
 
+/* A turn record of the last usage alone, for the notes that read the context's size. */
+const usageLines = (s) => (s && s.usage ? [JSON.stringify({ type: 'usage', timestamp: stamp(s.usage.at, true), tokens: s.usage.tokens, ...(s.usage.window ? { window: s.usage.window } : {}) })] : []);
+
 const usageFields = (s) => (s && s.usage ? { context_tokens: s.usage.tokens, ...(s.usage.window ? { context_window: s.usage.window } : {}) } : {});
 
 async function setup(ctx) {
@@ -337,14 +382,24 @@ async function setup(ctx) {
     const said = ev.prompt && typeof ev.prompt.text === 'string' ? ev.prompt.text : '';
     s.turnId = String(ev.messageID || `${sessionID}-${Date.now()}`);
     const pending = s.resume;
+    const notesAfter = s.resumeNotes;
     s.resume = '';
-    if (!enabled()) return;
-    const text = await hookText('inject-work-plan.py', {
+    s.resumeNotes = '';
+    const on = enabled();
+    const scripts = [...(on ? ['inject-work-plan.py'] : []), ...notesOn()];
+    /* Nothing on: no Python at all. */
+    if (!scripts.length) {
+      if (notesAfter) ev.metadata = { ...(ev.metadata || {}), [META_KEY]: wrap(notesAfter) };
+      log('prompt', { sessionID, turnId: s.turnId, chars: notesAfter.length, resumed: !!pending, plan: on });
+      return;
+    }
+    /* The notes read the context's size from a turn record: here only its last usage. */
+    const texts = await withRecord(usageLines(s), (file) => hookTexts(scripts, {
       hook_event_name: 'UserPromptSubmit', session_id: sessionID, turn_id: s.turnId, prompt: said,
-      cwd: (ctx.location && ctx.location.directory) || '', ...usageFields(s) });
-    const all = [pending, text].filter(Boolean).join('\n\n');
+      cwd: (ctx.location && ctx.location.directory) || '', transcript_path: file, in_panel: true, ...usageFields(s) }));
+    const all = [on ? pending : '', notesAfter, ...scripts.map((n) => texts[n])].filter(Boolean).join('\n\n');
     if (all) ev.metadata = { ...(ev.metadata || {}), [META_KEY]: wrap(all) };
-    log('prompt', { sessionID, turnId: s.turnId, chars: all.length, resumed: !!pending });
+    log('prompt', { sessionID, turnId: s.turnId, chars: all.length, resumed: !!pending, plan: on });
   }));
 
   registrations.push(await ctx.session.hook('context', (ev) => {
@@ -388,9 +443,13 @@ async function setup(ctx) {
   }
 
   async function onCompacted(sessionID) {
-    const text = await hookText('resume-work-plan.py', { hook_event_name: 'SessionStart', source: 'compact', session_id: sessionID });
-    if (text) state.get(sessionID).resume = text;
-    log('compacted', { sessionID, chars: text.length });
+    const s = state.get(sessionID);
+    const scripts = ['resume-work-plan.py', ...notesOn()];
+    const texts = await withRecord(usageLines(s), (file) => hookTexts(scripts, { hook_event_name: 'SessionStart', source: 'compact',
+      session_id: sessionID, transcript_path: file, in_panel: true }));
+    s.resume = texts['resume-work-plan.py'] || '';
+    s.resumeNotes = NOTES.map((n) => texts[n] || '').filter(Boolean).join('\n\n');
+    log('compacted', { sessionID, chars: s.resume.length + s.resumeNotes.length });
   }
 
   async function onUsage(sessionID, tokens) {
