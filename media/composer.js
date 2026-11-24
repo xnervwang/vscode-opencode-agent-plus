@@ -7,8 +7,8 @@
  * What the chat page's input does with `/` and `@`, without the page: which word is being typed, what the lists show
  * for it, and the text once one is picked; and the page's other decisions that need no page: what Esc does, which chime
  * a change of state sounds, when the context ring is outlined, how an image in a reply is shown, the Background
- * line's summary, the rows of the outline of the user's messages, which items the subagent filter hides, and where a
- * reply names another conversation by its id. The page loads it as window.ChatComposer; the tests require it.
+ * line's summary, the rows of the outline of the user's messages, and which items the subagent filter hides. The page
+ * loads it as window.ChatComposer; the tests require it.
  */
 (function (root, factory) {
   const api = factory();
@@ -147,25 +147,6 @@
     return '';
   }
 
-  /* Where `text` names one of the conversations `ids` (a Map or Set keyed by session id) by its whole id:
-     [{ start, end, id }]. agentPlusKit finds ids of the UUID form; this is for the others, such as OpenCode's
-     ses_… ids. An id that is part of a path or a file name (next to a slash, or before an extension) names that. */
-  function idRanges(text, ids) {
-    const s = String(text || '');
-    const out = [];
-    if (!s || !ids || !ids.size) return out;
-    const re = /[A-Za-z0-9_-]{8,200}/g;
-    let m;
-    while ((m = re.exec(s))) {
-      if (!ids.has(m[0])) continue;
-      const end = m.index + m[0].length;
-      const before = s.charAt(m.index - 1), after = s.substr(end, 2);
-      if (before === '/' || before === '\\' || /^[/\\]/.test(after) || /^\.[0-9A-Za-z*]/.test(after)) continue;
-      out.push({ start: m.index, end, id: m[0] });
-    }
-    return out;
-  }
-
   return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl, escapeAction, chimeKind, ringLow, imageKind, backgroundSummary,
-    outlineRows, subagentShare, idRanges };
+    outlineRows, subagentShare };
 }));

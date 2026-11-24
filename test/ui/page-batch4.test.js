@@ -58,39 +58,63 @@ test('the subagent filter hides what subagents did, folds their progress, and ke
   }
 });
 
-test('an OpenCode session id in a reply is found whole, and not inside a path or a file name', () => {
-  const ids = new Map([['ses_df2751c45ffeo343ehNzaBtgRH', {}], ['ses_other00000000000000000', {}]]);
-  const t = 'See ses_df2751c45ffeo343ehNzaBtgRH. Also `ses_other00000000000000000`, not /x/ses_df2751c45ffeo343ehNzaBtgRH or ses_df2751c45ffeo343ehNzaBtgRH.json or ses_df2751c45ffeo343ehNzaBtgRHx.';
-  const found = C.idRanges(t, ids);
-  assert.deepEqual(found.map((r) => [r.id, t.slice(r.start, r.end)]), [
-    ['ses_df2751c45ffeo343ehNzaBtgRH', 'ses_df2751c45ffeo343ehNzaBtgRH'],
-    ['ses_other00000000000000000', 'ses_other00000000000000000'],
+const SELF = { sourceId: 'opencode-plus', sessionId: 'ses_selfselfselfselfselfself' };
+const opencodeRow = (sessionId, title = '', lastActiveAt = 1) => ({ sourceId: 'opencode-plus', label: 'OpenCode Plus', sessionId, title, lastActiveAt });
+
+test("Agent Plus's kit finds an OpenCode session id in a reply whole and as written, not inside a path or a file name", () => {
+  const ix = kit.mentionIndex([opencodeRow('ses_df2751c45ffeo343ehNzaBtgRH'), opencodeRow('ses_other00000000000000000')], SELF);
+  const t = 'See ses_df2751c45ffeo343ehNzaBtgRH. Also `ses_other00000000000000000`, not /x/ses_df2751c45ffeo343ehNzaBtgRH or ses_df2751c45ffeo343ehNzaBtgRH.json or ses_df2751c45ffeo343ehNzaBtgRHx or ses_df2751c45ffeo343ehnzabtgrh.';
+  assert.deepEqual(kit.mentions(t, ix).map((r) => [r.kind, r.sessionId, t.slice(r.start, r.end)]), [
+    ['id', 'ses_df2751c45ffeo343ehNzaBtgRH', 'ses_df2751c45ffeo343ehNzaBtgRH'],
+    ['id', 'ses_other00000000000000000', 'ses_other00000000000000000'],
   ]);
-  assert.deepEqual(C.idRanges(t, new Map()), []);
-  assert.deepEqual(C.idRanges('', ids), []);
+  assert.deepEqual(kit.mentions(t, kit.mentionIndex([], SELF)), []);
+  assert.deepEqual(kit.mentions('', ix), []);
 });
 
-test("Agent Plus's kit finds OpenCode conversations by title; their ids are left to the page, and the page's own is never linked", () => {
+test("Agent Plus's kit finds OpenCode conversations by title and by id, and never the page's own", () => {
   const known = [
-    { sourceId: 'opencode-plus', label: 'OpenCode Plus', sessionId: 'ses_aaaaaaaaaaaaaaaaaaaaaaaaaa', title: 'Fix the flaky upload test', lastActiveAt: 1 },
+    opencodeRow('ses_aaaaaaaaaaaaaaaaaaaaaaaaaa', 'Fix the flaky upload test', 1),
     { sourceId: 'claude-code', label: 'Claude Code', sessionId: '0f9e8d7c-1111-4222-8333-444455556666', title: '整理测试清单', lastActiveAt: 2 },
-    { sourceId: 'opencode-plus', label: 'OpenCode Plus', sessionId: 'ses_selfselfselfselfselfself', title: 'This one', lastActiveAt: 3 },
+    opencodeRow(SELF.sessionId, 'This one', 3),
   ];
-  const ix = kit.mentionIndex(known, { sourceId: 'opencode-plus', sessionId: 'ses_selfselfselfselfselfself' });
-  const text = 'As in Fix the flaky upload test and 「整理测试清单」 (0f9e8d7c-1111-4222-8333-444455556666); see ses_aaaaaaaaaaaaaaaaaaaaaaaaaa; 「This one」 is here.';
+  const ix = kit.mentionIndex(known, SELF);
+  const text = 'As in Fix the flaky upload test and 「整理测试清单」 (0f9e8d7c-1111-4222-8333-444455556666); see ses_aaaaaaaaaaaaaaaaaaaaaaaaaa; 「This one」 is here, ses_selfselfselfselfselfself.';
   const got = kit.mentions(text, ix).map((r) => [r.kind, r.sessionId]);
-  assert.deepEqual(got, [['title', 'ses_aaaaaaaaaaaaaaaaaaaaaaaaaa'], ['quoted', '0f9e8d7c-1111-4222-8333-444455556666'], ['id', '0f9e8d7c-1111-4222-8333-444455556666']]);
+  assert.deepEqual(got, [['title', 'ses_aaaaaaaaaaaaaaaaaaaaaaaaaa'], ['quoted', '0f9e8d7c-1111-4222-8333-444455556666'],
+    ['id', '0f9e8d7c-1111-4222-8333-444455556666'], ['id', 'ses_aaaaaaaaaaaaaaaaaaaaaaaaaa']]);
+  assert.ok(kit.mentionIndex([known[2]], SELF).size === 0, 'a list of only the page itself names nothing');
   assert.match(kit.mentionTip({ ...known[0], others: [] }, 61000), /OpenCode Plus conversation ses_aaaa, active 1m ago/);
+});
+
+test("Agent Plus's kit links an OpenCode session id in a reply's text and inline code, not in a code block or a link", () => {
+  /* The page walks its DOM with linkMentions; the HAST walk follows the same rules and needs no DOM here. */
+  const ID = 'ses_df2751c45ffeo343ehNzaBtgRH';
+  const ix = kit.mentionIndex([opencodeRow(ID)], SELF);
+  const txt = (value) => ({ type: 'text', value });
+  const node = (tagName, children, properties = {}) => ({ type: 'element', tagName, properties, children });
+  const root = node('div', [
+    node('p', [txt(`see ${ID} and `), node('code', [txt(ID)])]),
+    node('pre', [node('code', [txt(ID)])]),
+    node('p', [node('a', [txt(ID)], { href: 'https://example.com/' })]),
+  ]);
+  const made = kit.linkMentionsTree(root, ix, (r, text) => node('a', [txt(text)], { className: ['conv-link'], session: r.sessionId }));
+  assert.equal(made, 2);
+  const shape = (n) => (n.type === 'text' ? n.value : `${n.tagName}${n.properties.session ? `:${n.properties.session}` : ''}[${n.children.map(shape).join('')}]`);
+  assert.deepEqual(root.children.map(shape), [
+    `p[see a:${ID}[${ID}] and code[a:${ID}[${ID}]]]`,
+    `pre[code[${ID}]]`,
+    `p[a[${ID}]]`,
+  ]);
 });
 
 test('the page links conversations as it renders a reply, opens one through the extension, and keeps the outline and the filter in its state', () => {
   assert.match(PAGE, /placeImages\(target\);\n\s*linkConversations\(target\);/, 'every rendered reply');
   assert.match(PAGE, /KIT\.linkMentions\(target, convIx/);
-  assert.match(PAGE, /C\.idRanges\(s, convIds\)/);
+  assert.match(PAGE, /KIT\.mentionIndex\(list, /, "the kit is given every conversation of the list, OpenCode's included");
   assert.match(PAGE, /closest\('a\.conv-link'\)[\s\S]{0,200}type: 'openConversation', sourceId/);
   assert.match(PAGE, /keep\(\{ outline: outlineOpen \}\)/);
   assert.match(PAGE, /keep\(\{ hideSubagents: hideSubs \}\)/);
-  assert.match(PAGE, /closest\('pre, a'\)/, 'ids in code blocks and links stay as they are');
   const css = fs.readFileSync(path.join(ROOT, 'media', 'chat.css'), 'utf8');
   assert.match(css, /body\.hide-subagents \.sub-hide \{\s*display: none;/);
   assert.match(css, /body\.hide-subagents \.sub-fold \.child \{\s*display: none;/);

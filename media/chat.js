@@ -26,10 +26,10 @@
  * muted them. A local image in a reply is read by the extension and comes back as a data: URL; one from the web is shown
  * as a link and never fetched, so an address a reply was given cannot carry anything out.
  *
- * Another conversation a reply names, by its title or its id, becomes a link that opens it (agentPlusKit's mentions for
- * titles and UUIDs, ChatComposer.idRanges for OpenCode's own ids). The Outline button shows a column of the user's
- * messages and the compaction points beside the log; a click scrolls to one. The Subagents button hides what subagents
- * did and folds their progress, leaving a request of theirs that still waits. Both choices live in the page's state.
+ * Another conversation a reply names, by its title or its id, becomes a link that opens it (agentPlusKit's mentions).
+ * The Outline button shows a column of the user's messages and the compaction points beside the log; a click scrolls
+ * to one. The Subagents button hides what subagents did and folds their progress, leaving a request of theirs that
+ * still waits. Both choices live in the page's state.
  */
 (function () {
   const api = acquireVsCodeApi();
@@ -100,10 +100,9 @@
   let fileSeq = 0;
   let fileTimer = 0;
   let noteTimer = 0;
-  /* The conversations a reply may name: agentPlusKit's index of them, and the ones agentPlusKit cannot find by id. */
+  /* The conversations a reply may name, as agentPlusKit's index of them. */
   let convIx = null;
   let convRev = -1;
-  const convIds = new Map();
   /* The outline and the subagent filter, as the user last left them in this page; the outline starts open on a wide
      page. */
   const kept = api.getState() || {};
@@ -660,34 +659,12 @@
     if (KIT && KIT.MENTION_ATTR) a.setAttribute(KIT.MENTION_ATTR, `${r.sourceId}:${r.sessionId}`);
     return a;
   }
-  /* Ids agentPlusKit does not look for, in text outside code blocks and links. */
-  function linkIds(root) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const texts = [];
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.parentElement && !n.parentElement.closest('pre, a')) texts.push(n);
-    for (const n of texts) {
-      const s = n.nodeValue;
-      const ranges = C.idRanges(s, convIds);
-      if (!ranges.length) continue;
-      const parts = [];
-      let from = 0;
-      for (const r of ranges) {
-        if (r.start > from) parts.push(document.createTextNode(s.slice(from, r.start)));
-        parts.push(convLink({ ...convIds.get(r.id), others: [] }, r.id));
-        from = r.end;
-      }
-      if (from < s.length) parts.push(document.createTextNode(s.slice(from)));
-      n.replaceWith(...parts);
-    }
-  }
   function linkConversations(target) {
     if (!convIx) return;
     if (KIT && typeof KIT.linkMentions === 'function') {
       try { KIT.linkMentions(target, convIx, (r, text) => convLink(r, text)); } catch (_) { /* the reply as written */ }
     }
-    if (convIds.size) linkIds(target);
   }
-  const UUID_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   function applyConversations(m) {
     const rev = Number(m.rev) || 0;
     const list = Array.isArray(m.list) ? m.list : [];
@@ -695,14 +672,8 @@
     const key = `${rev}\n${self.sessionId || ''}`;
     if (key === convRev) return;
     convRev = key;
-    convIds.clear();
-    for (const c of list) {
-      if (!c || typeof c.sessionId !== 'string' || !c.sessionId || UUID_ID.test(c.sessionId)) continue;
-      if (c.sessionId === self.sessionId && (!self.sourceId || c.sourceId === self.sourceId)) continue;
-      convIds.set(c.sessionId, c);
-    }
     convIx = KIT && typeof KIT.mentionIndex === 'function' && list.length ? KIT.mentionIndex(list, { sourceId: self.sourceId, sessionId: self.sessionId, title: head ? head.title : '' }) : null;
-    if (convIx && !convIx.size && !convIds.size) convIx = null;
+    if (convIx && !convIx.size) convIx = null;
     for (const e of nodes.values()) if (e.item && (e.item.kind === 'text' || e.item.kind === 'reasoning') && e.text) scheduleRender(e);
   }
 
