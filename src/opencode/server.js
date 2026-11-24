@@ -111,8 +111,9 @@ function findOpenCode(opts = {}) {
   throw new OpenCodeError('notFound', `OpenCode was not found. ${INSTALL_HINT}`);
 }
 
-/* Default rules: ask before edits, commands, web fetches and paths outside the project; no question tool (ACP has no
- * way to answer it). Written once per config dialect: 1.x reads `permission`, 2.x reads `permissions`. */
+/* Default rules: ask before edits, commands, web fetches and paths outside the project. 2.x asks its question tool's
+ * questions as elicitation/create forms, which the chat page answers; 1.x has no way to ask them over ACP, so the tool
+ * is off there. Written once per config dialect: 1.x reads `permission`, 2.x reads `permissions`. */
 function permissionConfig(major) {
   if (major >= 2) {
     return {
@@ -121,7 +122,6 @@ function permissionConfig(major) {
         { action: 'shell', resource: '*', effect: 'ask' },
         { action: 'webfetch', resource: '*', effect: 'ask' },
         { action: 'external_directory', resource: '*', effect: 'ask' },
-        { action: 'question', resource: '*', effect: 'deny' },
       ],
     };
   }

@@ -14,9 +14,16 @@
  * Besides AgentEvents the reducer takes two actions of the panel's own:
  *   { type: 'ui.model', model }   the model now in use (ModelInfo, or { id, contextWindow } when not in the list)
  *   { type: 'ui.queued', text }   a message sent while a turn runs; it leaves the queue when its userMessage arrives
+ *
+ * A subagent's progress is drawn on the tool card of the call that started it (`child` of that item), or on a card
+ * of its own (kind 'subagent') when no such call is known; only its last CHILD_ENTRIES steps are kept. A question is
+ * an item whose `fields` (formFields) the page draws as a form; formContent turns what the user filled in back into
+ * the answer's content.
  */
 
 const MAX_SHOWN = 20000;
+const CHILD_ENTRIES = 60;
+const CHILD_TEXT = 4000;
 /* Such a turn starts when a background task finishes, or when a subagent running in the background asks for permission. */
 const UNSOLICITED_NOTE = 'OpenCode went on without a message from you, for a background task (a subagent or a command).';
 const REGION_PREFIX = /^(us|eu|apac|ap|ca|jp|au|us-gov|global)\./;
@@ -39,6 +46,8 @@ function initialState() {
     qseq: 0,
     retry: null,
     lastAt: 0,
+    compaction: null,
+    children: {},
   };
 }
 
@@ -105,6 +114,11 @@ function oneLine(s, max = 200) {
 function summarizeInput(name, input) {
   if (!input || typeof input !== 'object') return '';
   if (typeof input.command === 'string') return oneLine(input.command);
+  /* OpenCode's question tool: the questions it asks. */
+  if (Array.isArray(input.questions)) {
+    const asked = input.questions.map((q) => q && (q.question || q.header)).filter((q) => typeof q === 'string' && q);
+    if (asked.length) return oneLine(asked.join(' · '));
+  }
   const where = input.path || input.file_path || input.cwd;
   if (typeof input.pattern === 'string') return oneLine(where ? `${input.pattern}  in ${where}` : input.pattern);
   if (typeof where === 'string') {
@@ -264,6 +278,188 @@ function endTurn(s, ev, at) {
   return settle({ ...s, turn: null, retry: null, lastAt: at });
 }
 
+function attachmentsOf(list) {
+  return (Array.isArray(list) ? list : []).filter((a) => a && typeof a.kind === 'string')
+    .map((a) => ({ kind: a.kind, name: String(a.name || a.kind) }));
+}
+
+function subagentOf(ev) {
+  const a = ev && ev.subagent;
+  return a && typeof a.childId === 'string' ? { childId: a.childId, title: String(a.title || '') } : null;
+}
+
+/* ---------- subagents ---------- */
+
+function childStep(c, e) {
+  let entries = c.entries.slice();
+  const last = entries[entries.length - 1];
+  if ((e.type === 'text' || e.type === 'reasoning') && e.delta) {
+    const kind = e.type;
+    if (last && last.kind === kind) entries[entries.length - 1] = { ...last, text: clip(last.text + e.delta, CHILD_TEXT) };
+    else entries.push({ kind, text: clip(e.delta, CHILD_TEXT) });
+  } else if (e.type === 'toolCall') {
+    entries.push({ kind: 'tool', id: e.id, name: e.name || 'tool', summary: summarizeInput(e.name, e.input), state: 'running', result: '' });
+  } else if (e.type === 'toolResult') {
+    const i = entries.map((x) => x.kind === 'tool' && x.id === e.id).lastIndexOf(true);
+    const patch = { state: e.isError ? 'error' : 'done', result: clip(e.content, CHILD_TEXT) };
+    if (i >= 0) entries[i] = { ...entries[i], ...patch };
+    else entries.push({ kind: 'tool', id: e.id, name: 'tool', summary: '', ...patch });
+  } else {
+    return c;
+  }
+  let dropped = c.dropped;
+  if (entries.length > CHILD_ENTRIES) { dropped += entries.length - CHILD_ENTRIES; entries = entries.slice(-CHILD_ENTRIES); }
+  const end = entries[entries.length - 1];
+  const lastLine = end.kind === 'tool' ? `${end.name}${end.summary ? ` ${end.summary}` : ''}`
+    : String(end.text).split('\n').filter((l) => l.trim()).pop() || '';
+  return { ...c, entries, dropped, last: oneLine(lastLine, 160) };
+}
+
+function toolItemOf(s, toolId) {
+  if (!toolId) return null;
+  const id = s.turn && s.turn.tools[toolId];
+  if (id) return id;
+  const found = [...s.items].reverse().find((it) => it.kind === 'tool' && it.toolId === toolId);
+  return found ? found.id : null;
+}
+
+/* What the page draws of a subagent. */
+function childView(c) {
+  return { childId: c.childId, title: c.title, status: c.status, error: c.error, entries: c.entries, dropped: c.dropped, last: c.last };
+}
+
+function onSubagent(s, ev, at) {
+  const childId = typeof ev.childId === 'string' ? ev.childId : '';
+  if (!childId) return s;
+  const before = s.children[childId] || { childId, title: '', status: 'running', error: '', toolId: '', host: null, entries: [], dropped: 0, last: '' };
+  let c = {
+    ...before,
+    title: typeof ev.title === 'string' && ev.title ? ev.title : before.title,
+    status: ['running', 'done', 'stopped', 'failed'].includes(ev.status) ? ev.status : before.status,
+    error: typeof ev.error === 'string' ? ev.error : before.error,
+  };
+  if (ev.event && typeof ev.event === 'object') c = childStep(c, ev.event);
+  if (typeof ev.toolId === 'string' && ev.toolId) c.toolId = ev.toolId;
+  let host = c.host;
+  const hostItem = host ? s.items[indexOf(host)] : null;
+  const toolHost = toolItemOf(s, c.toolId);
+  /* Moves to the call that started it once known; a card of its own stays where it was drawn. */
+  if (toolHost && toolHost !== host && (!hostItem || hostItem.kind === 'tool')) {
+    if (hostItem) s = replace(s, host, { child: null });
+    host = toolHost;
+  }
+  if (!host) {
+    const r = append(s, { kind: 'subagent', turn: s.turn ? s.turn.id : null, at, ...childView(c) });
+    s = r.s;
+    host = r.id;
+  } else {
+    const item = s.items[indexOf(host)];
+    s = replace(s, host, item && item.kind === 'tool' ? { child: childView(c) } : childView(c));
+  }
+  c.host = host;
+  return { ...s, children: { ...s.children, [childId]: c }, lastAt: at };
+}
+
+/* ---------- forms ---------- */
+
+function optionsOf(list) {
+  return (Array.isArray(list) ? list : []).filter((o) => o && (typeof o.const === 'string' || typeof o.const === 'number'))
+    .map((o) => ({ value: String(o.const), label: String(o.title || o.const), description: typeof o.description === 'string' ? o.description : '' }));
+}
+
+/*
+ * The fields of a form from the JSON Schema object an agent asks with: text, choice (one of), multi (any of), boolean,
+ * number and integer. A string property `<key>_custom` next to a choice or multi `<key>` is that field's own-answer
+ * box (`otherKey`), the way OpenCode's question tool asks.
+ */
+function formFields(schema) {
+  const props = schema && typeof schema === 'object' && schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+  const required = new Set(Array.isArray(schema && schema.required) ? schema.required : []);
+  const fields = [];
+  for (const [key, p] of Object.entries(props)) {
+    if (!p || typeof p !== 'object') continue;
+    const base = {
+      key,
+      title: String(p.title || key),
+      description: typeof p.description === 'string' ? p.description : '',
+      required: required.has(key),
+    };
+    if (p.default !== undefined) base.default = p.default;
+    if (p.type === 'array') {
+      const items = p.items || {};
+      const options = items.anyOf || items.oneOf ? optionsOf(items.anyOf || items.oneOf) : optionsOf((items.enum || []).map((v) => ({ const: v })));
+      fields.push({ ...base, type: 'multi', options, minItems: Number(p.minItems) || 0, maxItems: Number(p.maxItems) || 0 });
+    } else if (p.type === 'boolean') {
+      fields.push({ ...base, type: 'boolean' });
+    } else if (p.type === 'number' || p.type === 'integer') {
+      const f = { ...base, type: p.type };
+      if (typeof p.minimum === 'number') f.minimum = p.minimum;
+      if (typeof p.maximum === 'number') f.maximum = p.maximum;
+      fields.push(f);
+    } else if (Array.isArray(p.oneOf) || Array.isArray(p.anyOf) || Array.isArray(p.enum)) {
+      const options = p.enum ? optionsOf(p.enum.map((v, i) => ({ const: v, title: Array.isArray(p.enumNames) ? p.enumNames[i] : v }))) : optionsOf(p.oneOf || p.anyOf);
+      fields.push({ ...base, type: 'choice', options });
+    } else {
+      const f = { ...base, type: 'text' };
+      if (typeof p.maxLength === 'number') f.maxLength = p.maxLength;
+      if (typeof p.minLength === 'number') f.minLength = p.minLength;
+      fields.push(f);
+    }
+  }
+  for (const f of fields) {
+    if (f.type !== 'text' || !f.key.endsWith('_custom')) continue;
+    const owner = fields.find((g) => g.key === f.key.slice(0, -'_custom'.length) && (g.type === 'choice' || g.type === 'multi'));
+    if (owner) { owner.otherKey = f.key; owner.otherLabel = f.description || 'Your own answer'; f.otherOf = owner.key; }
+  }
+  return fields.filter((f) => !f.otherOf);
+}
+
+/*
+ * The answer's content from what the page filled in: values[key] is a string, an array of strings (multi) or a
+ * boolean; values[otherKey] the own-answer text. Returns { content, errors }: errors say what to fix, in words.
+ */
+function formContent(fields, values) {
+  const v = values && typeof values === 'object' ? values : {};
+  const content = {};
+  const errors = [];
+  for (const f of Array.isArray(fields) ? fields : []) {
+    const raw = v[f.key];
+    const other = f.otherKey && typeof v[f.otherKey] === 'string' ? v[f.otherKey].trim() : '';
+    if (other) content[f.otherKey] = other;
+    let answered = !!other;
+    if (f.type === 'choice') {
+      const pick = typeof raw === 'string' && f.options.some((o) => o.value === raw) ? raw : '';
+      if (pick) { content[f.key] = pick; answered = true; }
+    } else if (f.type === 'multi') {
+      const picks = (Array.isArray(raw) ? raw : []).map(String).filter((x) => f.options.some((o) => o.value === x));
+      if (picks.length) { content[f.key] = picks; answered = true; }
+      const n = picks.length + (other ? 1 : 0);
+      if (f.maxItems && n > f.maxItems) errors.push(`${f.title}: pick at most ${f.maxItems}.`);
+      if (f.minItems && n && n < f.minItems) errors.push(`${f.title}: pick at least ${f.minItems}.`);
+    } else if (f.type === 'boolean') {
+      content[f.key] = raw === true || raw === 'true';
+      answered = true;
+    } else if (f.type === 'number' || f.type === 'integer') {
+      const text = raw == null ? '' : String(raw).trim();
+      if (text) {
+        const n = Number(text);
+        if (!Number.isFinite(n) || (f.type === 'integer' && !Number.isInteger(n))) errors.push(`${f.title}: enter ${f.type === 'integer' ? 'a whole number' : 'a number'}.`);
+        else if (typeof f.minimum === 'number' && n < f.minimum) errors.push(`${f.title}: at least ${f.minimum}.`);
+        else if (typeof f.maximum === 'number' && n > f.maximum) errors.push(`${f.title}: at most ${f.maximum}.`);
+        else { content[f.key] = n; answered = true; }
+      }
+    } else {
+      const text = typeof raw === 'string' ? raw : '';
+      if (text.trim()) {
+        if (f.maxLength && text.length > f.maxLength) errors.push(`${f.title}: at most ${f.maxLength} characters.`);
+        else { content[f.key] = text; answered = true; }
+      }
+    }
+    if (f.required && !answered && !errors.some((e) => e.startsWith(`${f.title}:`))) errors.push(`${f.title}: needs an answer.`);
+  }
+  return { content, errors };
+}
+
 /* ---------- the reducer ---------- */
 
 function reduce(s, ev, now) {
@@ -289,7 +485,10 @@ function reduce(s, ev, now) {
       let queued = s.queued;
       const qi = queued.findIndex((q) => q.text.trim() === text.trim());
       if (qi >= 0) queued = [...queued.slice(0, qi), ...queued.slice(qi + 1)];
-      const r = append({ ...s, queued, lastAt: at }, { kind: 'user', turn: s.turn ? s.turn.id : null, at, text });
+      const item = { kind: 'user', turn: s.turn ? s.turn.id : null, at, text };
+      const shown = attachmentsOf(ev.attachments);
+      if (shown.length) item.attachments = shown;
+      const r = append({ ...s, queued, lastAt: at }, item);
       return r.s;
     }
 
@@ -305,6 +504,7 @@ function reduce(s, ev, now) {
         kind: 'tool', turn: s.turn.id, at, toolId: ev.id, name: ev.name || 'tool',
         summary: summarizeInput(ev.name, ev.input), input: inputText(ev.input),
         state: 'running', result: '', doneAt: null,
+        ...(subagentOf(ev) ? { subagent: subagentOf(ev) } : {}),
       });
       return { ...r.s, retry: null, lastAt: at, turn: { ...r.s.turn, tools: { ...r.s.turn.tools, [ev.id]: r.id } } };
     }
@@ -332,11 +532,48 @@ function reduce(s, ev, now) {
       const r = append(s, {
         kind: 'permission', turn: s.turn.id, at, requestId: ev.requestId,
         request: { ...rest, hasDiff: !!(diff && typeof diff === 'object') }, decision: null,
+        ...(subagentOf(ev) ? { subagent: subagentOf(ev) } : {}),
       });
       s = { ...r.s, pending: { ...r.s.pending, [ev.requestId]: r.id } };
       if (diff && typeof diff === 'object') s = rememberDiff(s, ev.requestId, diff);
       return settle(s);
     }
+
+    case 'question': {
+      s = ensureTurn(s, at);
+      const r = append(s, {
+        kind: 'question', turn: s.turn.id, at, requestId: String(ev.requestId || ''), message: String(ev.message || ''),
+        fields: formFields(ev.schema), decision: null,
+        ...(subagentOf(ev) ? { subagent: subagentOf(ev) } : {}),
+      });
+      return settle({ ...r.s, pending: { ...r.s.pending, [ev.requestId]: r.id } });
+    }
+
+    case 'questionSettled': {
+      const itemId = s.pending[ev.requestId] ||
+        ([...s.items].reverse().find((it) => it.kind === 'question' && it.requestId === ev.requestId) || {}).id;
+      if (!itemId) return s;
+      const pending = { ...s.pending };
+      delete pending[ev.requestId];
+      return settle({ ...replace(s, itemId, { decision: ev.action === 'accept' ? 'answered' : 'dismissed' }), pending });
+    }
+
+    case 'compaction': {
+      const status = ['running', 'completed', 'failed', 'cancelled'].includes(ev.status) ? ev.status : '';
+      if (!status) return s;
+      const open = s.compaction && s.items[indexOf(s.compaction)];
+      const patch = { status, at, summary: typeof ev.summary === 'string' ? clip(ev.summary) : '', error: typeof ev.error === 'string' ? ev.error : '' };
+      if (open && open.status === 'running') {
+        s = replace(s, s.compaction, status === 'running' ? {} : patch);
+      } else {
+        const r = append(s, { kind: 'compaction', turn: s.turn ? s.turn.id : null, ...patch });
+        s = { ...r.s, compaction: r.id };
+      }
+      return { ...s, compaction: status === 'running' ? s.compaction : null, lastAt: at };
+    }
+
+    case 'subagent':
+      return onSubagent(s, ev, at);
 
     case 'permissionSettled': {
       const itemId = s.pending[ev.requestId] ||
@@ -518,6 +755,7 @@ function head(s) {
     retry: s.retry,
     turnStartedAt: s.turn ? s.turn.startedAt : null,
     pending: Object.keys(s.pending).length,
+    waitingFor: Object.keys(s.pending).some((k) => (s.items[indexOf(s.pending[k])] || {}).kind === 'question') ? 'question' : 'permission',
   };
 }
 
@@ -549,4 +787,6 @@ module.exports = {
   figuresText,
   summarizeInput,
   errorText,
+  formFields,
+  formContent,
 };

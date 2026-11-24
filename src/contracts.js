@@ -139,22 +139,46 @@
  * finished), which has no userMessage. `usage.contextWindow` is that model's context window when the agent reports it,
  * so the share in use can be shown before the model list knows the window. `retry` says the agent will try the model
  * again in `waitMs`; attempt 0 says that try has started. `options` carries the conversation's settings anew whenever
- * they change.
+ * they change, and `commands` the slash commands the agent offers (a message `/<name> args` runs one).
+ * `userMessage.attachments` names what was sent with the text. `compaction` reports the agent compacting the
+ * conversation: 'running', then 'completed' with the summary it wrote, or 'failed' / 'cancelled'. `subagent` reports a
+ * subagent of this conversation: its session `childId`, its title and status, `toolId` the call of this conversation
+ * that started it once known, and `event` one text, reasoning, toolCall or toolResult event of its own stream.
+ * `permission.subagent` and `toolCall.subagent` name the subagent a request came from. `question` is a form the agent
+ * asks the user to fill in (`schema` a JSON Schema object of string, enum, array-of-enum, number, integer and boolean
+ * properties), answered with respondQuestion(); `questionSettled` says how.
  * @typedef {(
  *   { type: 'turnStart', turnId: string, at: number, modelId?: string, effort?: string, unsolicited?: true } |
- *   { type: 'userMessage', text: string, at: number, synthetic?: boolean } |
+ *   { type: 'userMessage', text: string, at: number, synthetic?: boolean, attachments?: Attachment[] } |
  *   { type: 'text', delta: string } |
  *   { type: 'reasoning', delta: string } |
- *   { type: 'toolCall', id: string, name: string, input: object, at: number } |
+ *   { type: 'toolCall', id: string, name: string, input: object, at: number, subagent?: { childId: string, title: string } } |
  *   { type: 'toolResult', id: string, content: string, isError: boolean, display?: object, at: number } |
- *   { type: 'permission', requestId: string, request: PermissionRequest } |
+ *   { type: 'permission', requestId: string, request: PermissionRequest, subagent?: { childId: string, title: string } } |
  *   { type: 'permissionSettled', requestId: string, decision: PermissionDecision } |
+ *   { type: 'question', requestId: string, message: string, schema: object, toolId?: string, subagent?: { childId: string, title: string } } |
+ *   { type: 'questionSettled', requestId: string, action: 'accept' | 'decline' | 'cancel' } |
  *   { type: 'usage', input: number, output: number, cacheRead?: number, cacheWrite?: number, contextUsed: number, contextWindow?: number, costUsd?: number } |
  *   { type: 'turnEnd', turnId: string, reason: StopReason | 'aborted' | 'error', at: number, error?: ProviderError } |
  *   { type: 'title', title: string } |
  *   { type: 'retry', attempt: number, waitMs?: number, error?: ProviderError, at: number } |
- *   { type: 'options', options: ConfigOption[] }
+ *   { type: 'options', options: ConfigOption[] } |
+ *   { type: 'commands', commands: Array<{ name: string, description: string }> } |
+ *   { type: 'compaction', status: 'running' | 'completed' | 'failed' | 'cancelled', id?: string, summary?: string, error?: string } |
+ *   { type: 'subagent', childId: string, title: string, status: 'running' | 'done' | 'stopped' | 'failed', toolId?: string, error?: string, event?: AgentEvent }
  * )} AgentEvent
+ */
+
+/**
+ * Something sent along with a message's text, as the chat page names it: an image, a file the agent reads itself, or a
+ * selection sent with its text.
+ * @typedef {{ kind: 'image' | 'file' | 'selection', name: string, path?: string }} Attachment
+ */
+
+/**
+ * A file to send with a message: `path` is absolute on the machine the agent runs on. With `text`, it is a selection
+ * of lines `startLine` to `endLine` (1-based) sent with that text; without, the agent reads the file itself.
+ * @typedef {{ path: string, name?: string, mimeType?: string, text?: string, startLine?: number, endLine?: number }} FileRef
  */
 
 /**
@@ -165,19 +189,25 @@
 /**
  * A conversation as the agent core hands it to the UI (src/opencode/index.js makes them; src/host/backend.js lists
  * what the host relies on). `send` resolves with the turnEnd of its message's turn and never rejects; a message sent
- * while a turn runs waits for it. `options()` lists the settings the agent offers for this conversation, [] when none,
- * and `setOption` changes one from the next turn on.
+ * while a turn runs waits for it; `extra` may also be the images array alone. `options()` lists the settings the agent
+ * offers for this conversation, [] when none, and `setOption` changes one from the next turn on. `commands()` lists its
+ * slash commands as last offered, `attachments()` what a message may carry besides text. `respondQuestion` answers a
+ * `question` event, false when that request is no longer open; `waitingKind` says what a waiting conversation waits on.
  * @typedef {{
  *   id: string, cwd: string, title: string, status: 'working' | 'waiting' | 'idle', waitingTool: string,
+ *   waitingKind: '' | 'permission' | 'question',
  *   lastUserAt: number, lastReplyAt: number,
  *   on(listener: (ev: AgentEvent) => void): () => void,
- *   send(text: string, images?: Array<{ mediaType: string, data: string }>): Promise<AgentEvent | null>,
+ *   send(text: string, extra?: { images?: Array<{ mediaType: string, data: string, name?: string }>, files?: FileRef[] }): Promise<AgentEvent | null>,
  *   abort(): void,
  *   setModel(model: ModelInfo | string): Promise<void>,
  *   getModel(): string,
  *   options(): ConfigOption[],
  *   setOption(id: string, value: string): Promise<void>,
+ *   commands(): Array<{ name: string, description: string }>,
+ *   attachments(): { images: boolean, files: boolean, selection: boolean },
  *   respondPermission(requestId: string, decision: PermissionDecision): boolean,
+ *   respondQuestion(requestId: string, answer: { action: 'accept', content: object } | { action: 'decline' | 'cancel' }): boolean,
  *   history(): Promise<AgentEvent[]>,
  *   dispose(): void
  * }} Conversation

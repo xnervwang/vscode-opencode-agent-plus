@@ -12,17 +12,18 @@
  *   createSession(cwd, opts)     Promise of the new session object
  *   renameSession(id, title)     Promise; OpenCode over ACP refuses it
  *   deleteSession(id)            Promise
- *   session(id, { cwd })         Promise of the session object: id, cwd, title, status, waitingTool, lastUserAt,
- *                                lastReplyAt, on(listener) of AgentEvents, send(text, images?), abort(), setModel(model),
- *                                getModel(), options(), setOption(id, value), respondPermission(requestId, decision),
- *                                history(), dispose()
+ *   session(id, { cwd })         Promise of the session object: id, cwd, title, status, waitingTool, waitingKind,
+ *                                lastUserAt, lastReplyAt, on(listener) of AgentEvents, send(text, { images, files }?),
+ *                                abort(), setModel(model), getModel(), options(), setOption(id, value), commands(),
+ *                                attachments(), respondPermission(requestId, decision), respondQuestion(requestId,
+ *                                answer), history(), dispose()
  *   isChild(id)                  whether a session is a subagent's; false until the module is loaded
  *   listModels(), defaultModel() Promise<ModelInfo[]>, Promise<ModelInfo | string | null>
  *   bedrockStatus(), restart(settings), detect()   passed through
  *   dispose()                    Promise
  *
  * SessionInfo (normInfo): { id, title, cwd, createdAt, lastActiveAt, status: 'working' | 'waiting' | 'idle',
- * waitingFor?: { tool }, lastUserAt, lastReplyAt }, times in epoch milliseconds. The module is required on first use,
+ * waitingFor?: { kind, tool }, lastUserAt, lastReplyAt }, times in epoch milliseconds. The module is required on first use,
  * not at activation; `options` go to its factory (createOpenCode) as they are.
  */
 const num = (v) => {
@@ -46,7 +47,7 @@ function normInfo(s) {
   };
   const tool = (s.waitingFor && s.waitingFor.tool) || s.waitingTool || '';
   if (s.open === true) out.open = true;
-  if (out.status === 'waiting') out.waitingFor = { tool: String(tool) };
+  if (out.status === 'waiting') out.waitingFor = s.waitingFor && s.waitingFor.kind === 'question' ? { kind: 'question', tool: '' } : { kind: 'permission', tool: String(tool) };
   return out;
 }
 

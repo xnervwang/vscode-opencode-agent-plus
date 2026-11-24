@@ -51,6 +51,7 @@ function withModelChoice(inner, deps) {
     get title() { return inner.title; },
     get status() { return inner.status; },
     get waitingTool() { return inner.waitingTool; },
+    get waitingKind() { return inner.waitingKind || ''; },
     get lastUserAt() { return inner.lastUserAt; },
     get lastReplyAt() { return inner.lastReplyAt; },
     get model() { return chosen; },
@@ -66,19 +67,22 @@ function withModelChoice(inner, deps) {
       off.dispose = off;
       return off;
     },
-    async send(text, images) {
+    async send(text, extra) {
       let ok;
       try { ok = await ensureModel(); } catch (e) {
         deps.tell(`The message was not sent: the models could not be listed (${(e && e.message) || e}).`);
         return undefined;
       }
       if (!ok) { deps.tell('The message was not sent: choose a model first.'); return undefined; }
-      return inner.send(text, images);
+      return inner.send(text, extra);
     },
     abort: pass('abort'),
     setModel,
     getModel: () => facade.modelName,
     options: () => (typeof inner.options === 'function' ? inner.options() : []),
+    commands: () => (typeof inner.commands === 'function' ? inner.commands() : []),
+    attachments: () => (typeof inner.attachments === 'function' ? inner.attachments() : { images: false, files: false, selection: false }),
+    respondQuestion(requestId, answer) { return typeof inner.respondQuestion === 'function' ? inner.respondQuestion(requestId, answer) : false; },
     setOption(optionId, value) {
       if (typeof inner.setOption !== 'function') return Promise.reject(new Error('This agent has no settings for a conversation.'));
       return Promise.resolve().then(() => inner.setOption(optionId, value));

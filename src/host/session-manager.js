@@ -61,6 +61,11 @@ function stateOfInfo(info) {
   if (s === 'waiting') return 'waiting';
   return 'stopped';
 }
+const kindOfInfo = (info) => {
+  if (!info || stateOfInfo(info) !== 'waiting') return '';
+  const w = info.waitingFor;
+  return (w && w.kind === 'question') || info.waitingKind === 'question' ? 'question' : 'permission';
+};
 const toolOfInfo = (info) => {
   if (!info) return '';
   const w = info.waitingFor;
@@ -98,8 +103,14 @@ function createSessionManager(deps) {
       lastUserAt: e.lastUserAt,
       lastReplyAt: e.lastReplyAt,
     };
-    if (e.state === 'waiting') out.waitingFor = { kind: 'permission', tool: e.waitingTool || '' };
+    if (e.state === 'waiting') out.waitingFor = e.waitingKind === 'question' ? { kind: 'question' } : { kind: 'permission', tool: e.waitingTool || '' };
     return out;
+  }
+
+  /* What the conversation waits on once a request is answered: the newest one still open. */
+  function stillAsking(e) {
+    const last = [...e.asking.values()].pop();
+    if (last) { e.waitingTool = last.tool; e.waitingKind = last.kind; } else if (e.state === 'waiting') { e.state = 'working'; e.waitingTool = ''; e.waitingKind = ''; }
   }
 
   function onEvent(e, ev) {
@@ -114,20 +125,25 @@ function createSessionManager(deps) {
         if (!e.title && typeof ev.text === 'string' && ev.text.trim()) e.title = ev.text.trim().split('\n')[0].slice(0, 80);
         break;
       case 'permission':
-        e.asking.set(ev.requestId, (ev.request && ev.request.tool) || '');
-        e.state = 'waiting'; e.waitingTool = (ev.request && ev.request.tool) || ''; break;
+        e.asking.set(ev.requestId, { tool: (ev.request && ev.request.tool) || '', kind: 'permission' });
+        e.state = 'waiting'; e.waitingTool = (ev.request && ev.request.tool) || ''; e.waitingKind = 'permission'; break;
+      case 'question':
+        e.asking.set(ev.requestId, { tool: 'question', kind: 'question' });
+        e.state = 'waiting'; e.waitingTool = 'question'; e.waitingKind = 'question'; break;
       case 'permissionSettled':
+      case 'questionSettled':
         e.asking.delete(ev.requestId);
-        if (e.asking.size) { e.waitingTool = [...e.asking.values()].pop(); } else if (e.state === 'waiting') { e.state = 'working'; e.waitingTool = ''; }
+        stillAsking(e);
         break;
       case 'turnEnd':
-        e.asking.clear(); e.waitingTool = '';
+        e.asking.clear(); e.waitingTool = ''; e.waitingKind = '';
         e.state = 'stopped'; e.lastActiveAt = at;
         if (ev.reason !== 'aborted') { e.lastReplyAt = at; e.unseen = !looking(e.id); }
         break;
       case 'title':
         if (typeof ev.title === 'string' && ev.title.trim()) e.title = ev.title.trim(); break;
       case 'options':
+      case 'commands':
         return;
       default:
         e.lastActiveAt = now();
@@ -148,7 +164,7 @@ function createSessionManager(deps) {
       if (!info) throw new Error('there is no such conversation');
       const e = {
         id, conversation, cwd: String(info.cwd || ''), panels: new Set(), asking: new Map(),
-        state: stateOfInfo(info), waitingTool: toolOfInfo(info), unseen: false,
+        state: stateOfInfo(info), waitingTool: toolOfInfo(info), waitingKind: kindOfInfo(info), unseen: false,
         title: typeof info.title === 'string' ? info.title : '',
         lastUserAt: num(info.lastUserAt), lastReplyAt: num(info.lastReplyAt),
         lastActiveAt: num(info.lastActiveAt) || num(info.createdAt) || now(),

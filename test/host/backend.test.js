@@ -9,7 +9,8 @@ const { createBackend, normInfo } = require('../../src/host/backend');
 
 test('session info is read into one shape', () => {
   assert.deepStrictEqual(normInfo({ id: 'ses_1', title: 'T', directory: '/w', createdAt: 5, updatedAt: '1970-01-01T00:00:01.000Z', status: 'waiting', waitingTool: 'bash', lastUserAt: 2, lastReplyAt: 3 }),
-    { id: 'ses_1', title: 'T', cwd: '/w', createdAt: 5, lastActiveAt: 1000, status: 'waiting', lastUserAt: 2, lastReplyAt: 3, waitingFor: { tool: 'bash' } });
+    { id: 'ses_1', title: 'T', cwd: '/w', createdAt: 5, lastActiveAt: 1000, status: 'waiting', lastUserAt: 2, lastReplyAt: 3, waitingFor: { kind: 'permission', tool: 'bash' } });
+  assert.deepStrictEqual(normInfo({ id: 'ses_3', status: 'waiting', waitingFor: { kind: 'question' } }).waitingFor, { kind: 'question', tool: '' }, 'waiting on an answer to a question');
   assert.deepStrictEqual(normInfo({ sessionId: 'ses_2', status: 'busy' }), { id: 'ses_2', title: '', cwd: '', createdAt: 0, lastActiveAt: 0, status: 'idle', lastUserAt: 0, lastReplyAt: 0 });
   assert.strictEqual(normInfo({ title: 'no id' }), null);
   assert.strictEqual(normInfo(null), null);

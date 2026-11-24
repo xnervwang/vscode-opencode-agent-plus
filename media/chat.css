@@ -450,7 +450,324 @@ details.reasoning .md {
 }
 #input::placeholder {
   color: var(--vscode-input-placeholderForeground);
+  white-space: nowrap;
 }
+#composer #addSelection {
+  flex: none;
+  max-width: 30%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- the / and @ lists, and what goes with the next message ---------- */
+
+#menu {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 4px;
+  border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border));
+  border-radius: 4px;
+  background: var(--vscode-editorSuggestWidget-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-foreground));
+}
+.menu-item {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 3px 8px;
+  cursor: pointer;
+  min-width: 0;
+}
+.menu-item.active {
+  background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-editorSuggestWidget-selectedForeground, var(--vscode-list-activeSelectionForeground));
+}
+.menu-name {
+  flex: none;
+  font-family: var(--vscode-editor-font-family);
+  font-weight: 600;
+}
+.menu-desc, .menu-empty {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+}
+.menu-item.active .menu-desc {
+  color: inherit;
+  opacity: 0.85;
+}
+.menu-empty {
+  padding: 3px 8px;
+}
+#attachments:empty {
+  display: none;
+}
+#attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.att-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 2px 4px 2px 2px;
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background);
+}
+.att-chip img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+.att-selection {
+  padding-left: 4px;
+}
+.att-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.9em;
+}
+.att-remove {
+  padding: 0 6px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+}
+.att-remove:hover {
+  color: var(--vscode-foreground);
+}
+#note {
+  margin-bottom: 4px;
+  font-size: 0.9em;
+  color: var(--vscode-editorWarning-foreground);
+}
+.user-att:empty {
+  display: none;
+}
+.user-att {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.att {
+  font-size: 0.85em;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+/* ---------- subagents ---------- */
+
+.from-sub {
+  font-size: 0.85em;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+.from-sub::before {
+  content: '↳ ';
+}
+.child {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--vscode-progressBar-background);
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 0 3px 3px 0;
+}
+.child.state-done {
+  border-left-color: var(--vscode-charts-green);
+}
+.child.state-failed, .child.state-stopped {
+  border-left-color: var(--vscode-inputValidation-errorBorder);
+}
+.child-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+.child-label {
+  flex: none;
+  font-size: 0.85em;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+.child-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.child-state {
+  flex: none;
+  font-size: 0.85em;
+  color: var(--vscode-descriptionForeground);
+}
+.child.state-running .child-state {
+  color: var(--vscode-progressBar-background);
+}
+.child-last {
+  margin-top: 2px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.child-list {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.child-text, .child-reasoning {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.95em;
+}
+.child-reasoning, .child-more {
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+}
+.child-tool summary {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+.tool.subagent {
+  padding: 2px 6px;
+}
+
+/* ---------- questions ---------- */
+
+.question {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background);
+}
+.question.settled {
+  border-color: var(--vscode-panel-border, var(--vscode-widget-border));
+  background: transparent;
+}
+.q-form {
+  margin: 6px 0 0;
+}
+.q-field {
+  margin: 0 0 8px;
+  padding: 0;
+  border: none;
+}
+.q-field legend {
+  padding: 0;
+  font-weight: 600;
+}
+.q-desc, .q-hint {
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+}
+.q-desc {
+  margin-bottom: 2px;
+}
+.q-option {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 2px 0;
+  cursor: pointer;
+}
+.q-hint::before {
+  content: '· ';
+}
+.q-other, .q-text {
+  margin-top: 4px;
+  width: min(100%, 360px);
+  box-sizing: border-box;
+  padding: 3px 6px;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+  border-radius: 3px;
+}
+.q-errors:empty {
+  display: none;
+}
+.q-errors {
+  font-size: 0.9em;
+  color: var(--vscode-errorForeground);
+}
+.perm-result.decision-dismissed {
+  color: var(--vscode-errorForeground);
+}
+.question.settled .q-option input:checked + span {
+  font-weight: 600;
+}
+.question.settled .q-option input:not(:checked), .question.settled .q-option input:not(:checked) + span,
+.question.settled .q-option input:not(:checked) ~ .q-hint, .question.settled .q-other, .question.settled .q-text {
+  opacity: 0.55;
+}
+.q-option input {
+  margin: 0;
+  accent-color: var(--vscode-button-background);
+}
+
+/* ---------- compaction ---------- */
+
+.compaction {
+  margin: 14px 0;
+}
+.compaction-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+.compaction-line::before, .compaction-line::after {
+  content: '';
+  flex: 1 1 auto;
+  border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
+}
+.compaction.status-running .compaction-label {
+  color: var(--vscode-progressBar-background);
+}
+.compaction.status-failed .compaction-label {
+  color: var(--vscode-errorForeground);
+}
+.compaction-summary {
+  margin-top: 4px;
+  font-size: 0.95em;
+}
+.compaction-summary summary {
+  cursor: pointer;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+.compaction-summary .md {
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--vscode-panel-border, var(--vscode-widget-border));
+}
+
 [hidden] {
   display: none !important;
 }

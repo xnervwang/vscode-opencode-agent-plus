@@ -19,7 +19,18 @@
  *
  * OpenCode 2.x reports a retry it has scheduled as a session_info_update whose _meta["opencode/retry"] holds the next
  * attempt, and clears it with null when that attempt starts; they become `retry` events, attempt 0 for the clearing.
+ *
+ * With the client capability session.compaction, 2.x reports compacting as compaction_update (in_progress, then
+ * completed with the summary, failed or cancelled) and streams the summary in compaction_summary_chunk; these become
+ * `compaction` events, the chunks kept only for a completed update that carries no summary. A replay holds the
+ * completed update where the compaction happened; it ends the replayed turn before it.
+ *
+ * A user message's images and files come back in a replay as image and resource_link chunks of the same messageId; a
+ * file whose text was sent along comes back as part of the text, the way OpenCode wrote it for the model: a line
+ * `[<absolute path>:<first line>]` and the text after it. Such parts are taken off the replayed text and named as
+ * selections again.
  */
+const { fileURLToPath } = require('url');
 
 const STOP = Object.freeze({
   end_turn: 'endTurn',
@@ -166,6 +177,45 @@ function modelsFromConfig(configOptions, contextWindows = {}) {
   return { models, current: typeof opt.currentValue === 'string' ? opt.currentValue : '' };
 }
 
+const COMPACTION = Object.freeze({ in_progress: 'running', completed: 'completed', failed: 'failed', cancelled: 'cancelled' });
+
+function blocksText(blocks) {
+  if (!Array.isArray(blocks)) return '';
+  return blocks.map((b) => (b && b.type === 'text' && typeof b.text === 'string' ? b.text : '')).join('');
+}
+
+/* The path a file:// URI names, or '' for any other URI. */
+function pathOfUri(uri) {
+  if (typeof uri !== 'string' || !uri.startsWith('file://')) return '';
+  try { return fileURLToPath(uri.replace(/#.*$/, '')); } catch (_) { return ''; }
+}
+
+/* A user message's attachment as the chat page names it, from a replayed chunk. */
+/* OpenCode's lines for a selection sent with its text (2.4.1, `Wh()`): "\n[<absolute path>:<line>]\n<text>". */
+const SELECTION_PART = /\n\[((?:[A-Za-z]:)?[\\/][^\]\n]*?)(?::(\d+))?\]\n/g;
+
+/* The replayed text without the selections OpenCode wrote into it, and the selections. */
+function splitSelections(text) {
+  const t = String(text || '');
+  const found = [...t.matchAll(SELECTION_PART)];
+  if (!found.length) return { text: t, shown: [] };
+  const shown = found.map((m) => {
+    const name = m[1].split(/[\\/]/).pop();
+    return { kind: 'selection', name: m[2] ? `${name}:${m[2]}` : name, path: m[1] };
+  });
+  return { text: t.slice(0, found[0].index), shown };
+}
+
+function attachmentOf(content) {
+  if (!content || typeof content !== 'object') return null;
+  if (content.type === 'image') return { kind: 'image', name: 'image' };
+  if (content.type === 'resource_link' && typeof content.uri === 'string') {
+    const p = pathOfUri(content.uri);
+    return { kind: 'file', name: String(content.name || (p ? p.split(/[\\/]/).pop() : content.uri)), path: p };
+  }
+  return null;
+}
+
 /* AgentEvent retry from the value of _meta["opencode/retry"]: { attempt, nextRetryAt, error: { message, status } }. */
 function retryEvent(r, at) {
   if (!r || typeof r !== 'object') return { type: 'retry', attempt: 0, at };
@@ -182,12 +232,14 @@ function createMapper({ now = Date.now } = {}) {
   let replaying = false;
   let replayCount = 0;
   let pendingUser = '';
+  let pendingAttachments = [];
   let lastUserMessage = null;
   let noteMessage = null;
   let lastCost = null;
   let lastUsed = 0;
   let contextWindow = 0;
   const tools = new Map();
+  const summaries = new Map();
 
   function turnStart(turnId, t, modelId, effort) {
     turn = { id: turnId, startedAt: t, agentOutput: false };
@@ -197,9 +249,12 @@ function createMapper({ now = Date.now } = {}) {
     return start;
   }
 
-  function begin(turnId, text, at, modelId, effort) {
+  /* `attachments`: what went with the text, [{ kind: 'image' | 'file' | 'selection', name, path? }]. */
+  function begin(turnId, text, at, modelId, effort, attachments) {
     const t = at || now();
-    return [turnStart(turnId, t, modelId, effort), { type: 'userMessage', text: String(text || ''), at: t }];
+    const msg = { type: 'userMessage', text: String(text || ''), at: t };
+    if (Array.isArray(attachments) && attachments.length) msg.attachments = attachments;
+    return [turnStart(turnId, t, modelId, effort), msg];
   }
 
   /* A turn OpenCode began without a prompt (a subagent or a background shell it waited for finished): no user message. */
@@ -210,9 +265,13 @@ function createMapper({ now = Date.now } = {}) {
   }
 
   function flushUser() {
-    if (!pendingUser) return [];
-    const ev = { type: 'userMessage', text: pendingUser, at: turn ? turn.startedAt : now() };
+    if (!pendingUser && !pendingAttachments.length) return [];
+    const split = replaying ? splitSelections(pendingUser) : { text: pendingUser, shown: [] };
+    const ev = { type: 'userMessage', text: split.text, at: turn ? turn.startedAt : now() };
+    const shown = [...pendingAttachments, ...split.shown];
+    if (shown.length) ev.attachments = shown;
     pendingUser = '';
+    pendingAttachments = [];
     return [ev];
   }
 
@@ -245,6 +304,9 @@ function createMapper({ now = Date.now } = {}) {
     if (status === 'completed') {
       t.done = true;
       const display = { title: typeof u.title === 'string' ? u.title : '', kind: t.kind || '' };
+      /* A subagent tool names the session the subagent runs in. */
+      const meta = u.rawOutput && u.rawOutput.metadata;
+      if (meta && typeof meta.sessionID === 'string' && meta.sessionID) display.childId = meta.sessionID;
       const text = contentText(u.content) || (u.rawOutput && typeof u.rawOutput.output === 'string' ? u.rawOutput.output : '');
       out.push({ type: 'toolResult', id, content: text, isError: false, display, at: now() });
     } else if (status === 'failed') {
@@ -276,6 +338,8 @@ function createMapper({ now = Date.now } = {}) {
           return out;
         }
         if (!replaying) return out;
+        const attachment = attachmentOf(u.content);
+        if (!text && !attachment) return out;
         const mid = typeof u.messageId === 'string' ? u.messageId : null;
         const next = mid ? mid !== lastUserMessage : !!(turn && turn.agentOutput);
         if (turn && next) out.push(...endReplayTurn());
@@ -287,6 +351,30 @@ function createMapper({ now = Date.now } = {}) {
         }
         lastUserMessage = mid;
         pendingUser += text;
+        if (attachment) pendingAttachments.push(attachment);
+        return out;
+      }
+      case 'compaction_update': {
+        const status = COMPACTION[u.status];
+        if (!status) return out;
+        const cid = typeof u.compactionId === 'string' ? u.compactionId : '';
+        if (replaying && status === 'completed') out.push(...endReplayTurn());
+        else out.push(...flushUser());
+        const ev = { type: 'compaction', status };
+        if (cid) ev.id = cid;
+        if (status === 'completed') {
+          const summary = blocksText(u.summary) || summaries.get(cid) || '';
+          if (summary) ev.summary = summary;
+        }
+        if (status === 'failed' && typeof u.error === 'string' && u.error) ev.error = u.error;
+        if (status !== 'running') summaries.delete(cid);
+        out.push(ev);
+        return out;
+      }
+      case 'compaction_summary_chunk': {
+        const cid = typeof u.compactionId === 'string' ? u.compactionId : '';
+        const text = u.content && u.content.type === 'text' ? String(u.content.text || '') : '';
+        if (text) summaries.set(cid, (summaries.get(cid) || '') + text);
         return out;
       }
       case 'agent_message_chunk':
@@ -384,14 +472,16 @@ function createMapper({ now = Date.now } = {}) {
     permission,
     settled,
     end,
-    replayStart() { replaying = true; replayCount = 0; turn = null; pendingUser = ''; lastUserMessage = null; noteMessage = null; },
+    replayStart() { replaying = true; replayCount = 0; turn = null; pendingUser = ''; pendingAttachments = []; lastUserMessage = null; noteMessage = null; },
     replayEnd() { const out = endReplayTurn(); replaying = false; return out; },
     get inTurn() { return !!turn; },
     get turnId() { return turn ? turn.id : null; },
     get contextWindow() { return contextWindow; },
     get contextUsed() { return lastUsed; },
     toolName(id) { const t = tools.get(id); return t ? t.name : ''; },
+    /* The tool calls seen so far, newest last: [{ id, name, input }]. */
+    toolCalls() { return [...tools].map(([id, t]) => ({ id, name: t.name, input: t.input })); },
   };
 }
 
-module.exports = { createMapper, permissionRequest, toolNameOf, modelsFromConfig, toProviderError, normalizeTitle, contentText, retryEvent, STOP, RETRY_META };
+module.exports = { createMapper, permissionRequest, toolNameOf, modelsFromConfig, toProviderError, normalizeTitle, contentText, retryEvent, pathOfUri, STOP, RETRY_META };

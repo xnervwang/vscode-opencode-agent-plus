@@ -58,7 +58,7 @@ function toConversation(s) {
   if (s.lastReplyAt > 0) out.lastReplyAt = s.lastReplyAt;
   if (out.activity === 'waiting') {
     const tool = s.waitingFor && typeof s.waitingFor.tool === 'string' ? s.waitingFor.tool.slice(0, 80) : '';
-    out.waitingFor = tool ? { kind: 'permission', tool } : { kind: 'permission' };
+    out.waitingFor = s.waitingFor && s.waitingFor.kind === 'question' ? { kind: 'question' } : tool ? { kind: 'permission', tool } : { kind: 'permission' };
   }
   return out;
 }

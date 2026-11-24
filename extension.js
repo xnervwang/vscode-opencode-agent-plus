@@ -14,6 +14,8 @@
  *   src/host/models.js            the models OpenCode offers, and the picker
  *   src/host/agentplus-source.js  the conversations as a source of Agent Plus
  *   src/host/work-plan.js         the work plan plugin OpenCode loads, its Python, and the token mode's switches for it
+ *   src/host/file-search.js       the workspace files the chat page's @ list offers
+ *   src/host/selection.js         the editor selection the chat page can send along
  *
  * OPENCODE_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -35,6 +37,8 @@ const { ChatEditorProvider } = require('./src/host/chat-editor');
 const { logoFiles } = require('./src/host/logo');
 const ap = require('./src/host/agentplus-source');
 const { createWorkPlan } = require('./src/host/work-plan');
+const { createFileSearch } = require('./src/host/file-search');
+const { createSelectionTracker } = require('./src/host/selection');
 const workplan = require('./src/workplan');
 
 const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
@@ -141,6 +145,11 @@ function activate(context) {
   });
   subs.push(manager);
 
+  /* Shared by the chat tabs; they list files only while @ is typed and follow the selection only while open. */
+  const files = createFileSearch({ vscode });
+  const selection = createSelectionTracker({ vscode });
+  subs.push(selection);
+
   function show(panel, entry) {
     const { ChatPanel } = require('./src/ui/chat-panel');
     const conv = entry.conversation;
@@ -155,6 +164,8 @@ function activate(context) {
       history: conv.saved ? conv.saved.records : [],
       model: conv.model || infoOf(conv.modelName),
       modelInfo: (providerId, modelId) => models.cached(providerId ? `${providerId}/${modelId}` : modelId) || models.cached(modelId),
+      findFiles: (vscode.workspace.workspaceFolders || []).some((f) => f.uri.scheme === 'file') ? (query) => files.search(query) : undefined,
+      selection,
       vscode,
     });
     for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);

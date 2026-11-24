@@ -22,9 +22,16 @@
  * once nothing more has come for a while (see OWN_QUIET_MS).
  *
  * The mode and effort config options are offered as options() / setOption() when OpenCode lists them.
+ *
+ * What else OpenCode offers comes in as it offers it, not by version: the slash commands of available_commands_update
+ * (commands()), images and embedded files as promptCapabilities say (attachments()), compaction updates once the client
+ * declares session.compaction, a subagent's progress (child_update) and questions its question tool asks as
+ * elicitation/create forms once the client declares elicitation.form (respondQuestion()). Answering such a form with
+ * cancel or decline makes 2.4.1 end the turn as cancelled.
  */
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const childProcess = require('child_process');
 const paths = require('../paths');
 const brand = require('../brand');
@@ -48,6 +55,45 @@ const OWN_QUIET_MS = 20000;
 const OWN_AFTER_TEXT_MS = 4000;
 const KINDS_KEPT = 5000;
 const LOOKUP_ROWS = 200;
+/* Command lists kept for sessions not open yet: 2.4.1 sends one right after answering session/new or session/load. */
+const COMMANDS_KEPT = 50;
+const CHILD_STATUS = Object.freeze({ created: 'running', running: 'running', completed: 'done', interrupted: 'stopped', failed: 'failed' });
+/* What of a subagent's own stream its card shows. */
+const CHILD_EVENTS = new Set(['text', 'reasoning', 'toolCall', 'toolResult']);
+const SUBAGENT_TOOLS = new Set(['subagent', 'task']);
+const MIME = Object.freeze({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', pdf: 'application/pdf' });
+
+function commandList(list) {
+  return (Array.isArray(list) ? list : []).filter((c) => c && typeof c.name === 'string' && c.name)
+    .map((c) => ({ name: c.name, description: typeof c.description === 'string' ? c.description : '' }));
+}
+
+/* The ACP blocks of the files sent with a message, and what the page shows for them. A file with `text` is a selection
+   sent with its text (embedded, when OpenCode takes embedded context; inline text otherwise); one without is a link
+   OpenCode reads itself. */
+function fileBlocks(files, embedded) {
+  const prompt = [];
+  const shown = [];
+  for (const f of Array.isArray(files) ? files : []) {
+    if (!f || typeof f.path !== 'string' || !path.isAbsolute(f.path)) continue;
+    const name = typeof f.name === 'string' && f.name ? f.name : path.basename(f.path);
+    let uri;
+    try { uri = pathToFileURL(f.path).href; } catch (_) { continue; }
+    if (typeof f.text === 'string') {
+      const from = Number(f.startLine) > 0 ? Math.floor(Number(f.startLine)) : 0;
+      const to = Number(f.endLine) > from ? Math.floor(Number(f.endLine)) : from;
+      const label = from ? `${name}:${from}${to > from ? `-${to}` : ''}` : name;
+      if (embedded) prompt.push({ type: 'resource', resource: { uri: from ? `${uri}#L${from}${to > from ? `-L${to}` : ''}` : uri, mimeType: f.mimeType || 'text/plain', text: f.text } });
+      else prompt.push({ type: 'text', text: `[${f.path}${from ? `:${from}` : ''}]\n${f.text}` });
+      shown.push({ kind: 'selection', name: label, path: f.path });
+    } else {
+      const mime = f.mimeType || MIME[path.extname(f.path).slice(1).toLowerCase()];
+      prompt.push({ type: 'resource_link', uri, name, ...(mime ? { mimeType: mime } : {}) });
+      shown.push({ kind: 'file', name, path: f.path });
+    }
+  }
+  return { prompt, shown };
+}
 
 function clientVersion() {
   try { return require('../../package.json').version || '0.0.0'; } catch (_) { return '0.0.0'; }
@@ -120,6 +166,8 @@ function createOpenCode(opts = {}) {
   let permSeq = 0;
   let turnSeq = 0;
   const handles = new Map();
+  const commandsOf = new Map();
+  let promptCaps = {};
   const changed = emitter();
   const fireChanged = (sessionId) => changed.fire({ sessionId });
 
@@ -245,6 +293,12 @@ function createOpenCode(opts = {}) {
       if (!h) return { outcome: { outcome: 'cancelled' } };
       return h.askPermission(params);
     }
+    if (method === 'elicitation/create') {
+      const h = handles.get(params.sessionId);
+      const schema = params.requestedSchema;
+      if (!h || params.mode !== 'form' || !schema || typeof schema !== 'object') return { action: 'decline' };
+      return h.askQuestion(params);
+    }
     throw { code: METHOD_NOT_FOUND, message: `Method not found: ${method}` };
   }
 
@@ -253,14 +307,21 @@ function createOpenCode(opts = {}) {
       const child = params && typeof params.childSessionId === 'string' ? params.childSessionId : '';
       const parent = params ? String(params.parentSessionId || params.rootSessionId || '') : '';
       if (child && parent && !isChild(child)) { noteKinds([[child, parent]]); fireChanged(child); }
-      /* A subagent's permission request draws its tool in the parent; how that tool ends comes only from here. */
       const h = params && (handles.get(params.rootSessionId) || handles.get(params.parentSessionId));
-      if (h && params.type === 'update' && params.update) h.childTool(params.update);
+      if (!h) return;
+      /* A subagent's permission request draws its tool in the parent; how that tool ends comes only from here. */
+      if (params.type === 'update' && params.update) h.childTool(params.update);
+      h.childUpdate(params);
       return;
     }
     if (method !== 'session/update' || !params) return;
     const u = params.update || {};
     if (u.sessionUpdate === 'config_option_update') noteModels(u.configOptions, false);
+    if (u.sessionUpdate === 'available_commands_update' && typeof params.sessionId === 'string') {
+      commandsOf.delete(params.sessionId);
+      commandsOf.set(params.sessionId, commandList(u.availableCommands));
+      while (commandsOf.size > COMMANDS_KEPT) commandsOf.delete(commandsOf.keys().next().value);
+    }
     const h = handles.get(params.sessionId);
     if (h) h.onUpdate(u);
   }
@@ -289,7 +350,13 @@ function createOpenCode(opts = {}) {
     p.ready = conn.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       /* Child updates also keep a subagent's output out of its parent's stream, where 2.x puts it otherwise. */
-      clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, _meta: { [CHILD_UPDATES]: true } },
+      clientCapabilities: {
+        fs: { readTextFile: false, writeTextFile: false },
+        terminal: false,
+        elicitation: { form: {} },
+        session: { compaction: {} },
+        _meta: { [CHILD_UPDATES]: true },
+      },
       clientInfo: { name: brand.packageName, version: clientVersion() },
     }, { timeoutMs: 60000 }).then((r) => {
       if (!r || r.protocolVersion !== PROTOCOL_VERSION) {
@@ -300,6 +367,8 @@ function createOpenCode(opts = {}) {
         agent: r.agentInfo || null,
         capabilities: r.agentCapabilities || {},
       };
+      const pc = p.info.capabilities.promptCapabilities;
+      promptCaps = pc && typeof pc === 'object' ? pc : {};
       const major = (found.version && found.version.major) || 0;
       if (major && cache.major !== major) { cache.major = major; saveCache(); }
       return p;
@@ -325,12 +394,20 @@ function createOpenCode(opts = {}) {
     const subs = new Set();
     const queue = [];
     const asks = new Map();
+    /* Forms OpenCode's question tool is waiting on: requestId -> { resolve }. */
+    const questions = new Map();
+    /* Subagents of this conversation: child session id -> { title, status, mapper, toolId }; and the subagent tool
+       call each was started by, once known. */
+    const children = new Map();
+    const childTool = new Map();
     const h = {
       id,
       cwd,
       title: title || '',
       status: 'idle',
       waitingTool: '',
+      waitingKind: '',
+      commandList: commandsOf.get(id) || [],
       lastUserAt: 0,
       lastReplyAt: 0,
       model: '',
@@ -355,16 +432,26 @@ function createOpenCode(opts = {}) {
         for (const fn of [...subs]) { try { fn(ev); } catch (e) { log(`a listener of ${id} failed: ${(e && e.stack) || e}`); } }
       }
     }
-    function setStatus(status, tool) {
+    function setStatus(status, tool, kind) {
       const waitingTool = status === 'waiting' ? (tool || h.waitingTool) : '';
-      if (h.status === status && h.waitingTool === waitingTool) return;
+      const waitingKind = status === 'waiting' ? (kind || h.waitingKind || 'permission') : '';
+      if (h.status === status && h.waitingTool === waitingTool && h.waitingKind === waitingKind) return;
       h.status = status;
       h.waitingTool = waitingTool;
+      h.waitingKind = waitingKind;
       fireChanged(id);
+    }
+    /* The status once an answer has come: waiting on the newest request still open, else working or idle. */
+    function settleStatus() {
+      const open = [...asks.values(), ...questions.values()].sort((a, b) => a.seq - b.seq).pop();
+      if (open) setStatus('waiting', open.tool, open.kind);
+      else setStatus(h.running || h.own ? 'working' : 'idle');
     }
     function cancelAsks() {
       for (const a of asks.values()) a.resolve({ outcome: { outcome: 'cancelled' } });
       asks.clear();
+      for (const q of questions.values()) q.resolve({ action: 'cancel' });
+      questions.clear();
     }
 
     /* contracts.js ConfigOption[] of the shown options. */
@@ -395,24 +482,32 @@ function createOpenCode(opts = {}) {
       optionsKey = key;
       emit([{ type: 'options', options: opts }]);
     }
-    /* The effort a turn runs with, for the figures under its reply; OpenCode's 'default' is left unsaid. */
+    /* The effort a turn runs with, for the figures under its reply; OpenCode's 'default' is left unsaid. A value chosen
+       here and not yet answered counts: the message that follows goes only after it has been set. */
     function effortNow() {
       const o = h.config.find((x) => x.id === 'effort');
-      const v = o && typeof o.currentValue === 'string' ? o.currentValue : '';
+      const v = h.pendingOptions.has('effort') ? h.pendingOptions.get('effort') : (o && typeof o.currentValue === 'string' ? o.currentValue : '');
       return v && v !== 'default' ? v : '';
     }
     /* A value stays pending until OpenCode has answered, so a config_option_update of an earlier change arriving
-       meanwhile (seen on 2.4.1) does not show the old value again. */
-    async function applyOptions(p) {
-      for (const [k, v] of [...h.pendingOptions]) {
-        let r;
-        try {
-          r = await p.conn.request('session/set_config_option', { sessionId: id, configId: k, value: v });
-        } finally {
-          if (h.pendingOptions.get(k) === v) h.pendingOptions.delete(k);
+       meanwhile (seen on 2.4.1) does not show the old value again. One loop at a time sends them, in the order chosen,
+       and takes in values chosen while it runs. */
+    let applying = null;
+    function applyOptions(p) {
+      if (applying) return applying;
+      applying = (async () => {
+        while (h.pendingOptions.size && !p.conn.closed) {
+          const [k, v] = h.pendingOptions.entries().next().value;
+          let r;
+          try {
+            r = await p.conn.request('session/set_config_option', { sessionId: id, configId: k, value: v });
+          } finally {
+            if (h.pendingOptions.get(k) === v) h.pendingOptions.delete(k);
+          }
+          noteConfig(r && r.configOptions, [[k, v]]);
         }
-        noteConfig(r && r.configOptions, [[k, v]]);
-      }
+      })().finally(() => { applying = null; });
+      return applying;
     }
 
     /* ---------- a turn OpenCode started itself ---------- */
@@ -429,7 +524,7 @@ function createOpenCode(opts = {}) {
       if (!own) return;
       if (own.timer) clearTimeout(own.timer);
       own.timer = null;
-      if (asks.size || own.tools.size || own.retrying) return;
+      if (asks.size || questions.size || own.tools.size || own.retrying) return;
       own.timer = setTimeout(() => { if (h.own === own) ownEnd(); }, own.afterText ? ownAfterTextMs : ownQuietMs);
       if (typeof own.timer.unref === 'function') own.timer.unref();
     }
@@ -453,6 +548,7 @@ function createOpenCode(opts = {}) {
       if (k === 'tool_call') return true;
       if (k === 'tool_call_update') return typeof u.toolCallId === 'string' && !m.toolName(u.toolCallId);
       if (k === 'session_info_update') return !!(u._meta && u._meta[mapper.RETRY_META]);
+      if (k === 'compaction_update') return u.status === 'in_progress';
       return false;
     }
     function ownEnd(error, aborted) {
@@ -464,9 +560,43 @@ function createOpenCode(opts = {}) {
       emit(evs);
       const endEv = evs.find((e) => e.type === 'turnEnd');
       if (endEv && endEv.reason !== 'aborted') h.lastReplyAt = endEv.at;
-      setStatus(asks.size ? 'waiting' : 'idle');
+      settleStatus();
       const p = proc;
       if (p && !p.conn.closed && !error) refreshTitle(p);
+    }
+
+    /* ---------- subagents ---------- */
+
+    function subagentEvent(cid, c) {
+      const ev = { type: 'subagent', childId: cid, title: c.title, status: c.status };
+      if (c.toolId) ev.toolId = c.toolId;
+      return ev;
+    }
+    /* The subagent a tool call id of the form `<child session id>:<call id>` belongs to. */
+    function subagentOf(toolCallId) {
+      const i = typeof toolCallId === 'string' ? toolCallId.indexOf(':') : -1;
+      if (i <= 0) return null;
+      const cid = toolCallId.slice(0, i);
+      const c = children.get(cid);
+      if (!c && !/^ses_/.test(cid)) return null;
+      return { childId: cid, title: c ? c.title : '' };
+    }
+    /* The subagent tool call that started `cid`, named by the call's result once it completes. */
+    function linkChild(cid, toolId) {
+      childTool.set(cid, toolId);
+      const c = children.get(cid);
+      if (!c || c.toolId === toolId) return;
+      c.toolId = toolId;
+      emit([subagentEvent(cid, c)]);
+    }
+    /* Before that, the newest subagent call not yet linked whose description is the subagent's title (OpenCode titles
+       the child session with it), else the newest not yet linked. */
+    function guessTool(cid, title) {
+      const linked = new Set([...children.values()].map((c) => c.toolId).filter(Boolean));
+      const calls = m.toolCalls().filter((t) => SUBAGENT_TOOLS.has(t.name) && !linked.has(t.id)).reverse();
+      const named = calls.find((t) => t.input && t.input.description === title);
+      const pick = named || calls[0];
+      return pick ? pick.id : '';
     }
 
     async function applyModel(p) {
@@ -514,7 +644,7 @@ function createOpenCode(opts = {}) {
       const turnId = `t${now().toString(36)}-${++turnSeq}`;
       h.lastUserAt = now();
       setStatus('working');
-      emit(m.begin(turnId, item.text, h.lastUserAt, h.model || undefined, effortNow() || undefined));
+      emit(m.begin(turnId, item.text, h.lastUserAt, h.model || undefined, effortNow() || undefined, item.attachments));
       let p = null;
       let result;
       let error;
@@ -537,7 +667,7 @@ function createOpenCode(opts = {}) {
       if (endEv && endEv.error && endEv.error.kind === 'auth') lastAuthError = { at: now(), model: h.model, message: endEv.error.message };
       else if (endEv && endEv.reason !== 'error' && h.model.startsWith(`${BEDROCK}/`)) lastAuthError = null;
       h.running = null;
-      setStatus(asks.size ? 'waiting' : 'idle');
+      settleStatus();
       item.done(endEv || null);
       if (p && !error) refreshTitle(p);
     }
@@ -552,15 +682,23 @@ function createOpenCode(opts = {}) {
         subs.add(listener);
         return () => { subs.delete(listener); };
       },
-      /* Resolves with the turnEnd event once this message's turn is over; never rejects. */
-      send(text, images) {
+      /* Resolves with the turnEnd event once this message's turn is over; never rejects. `extra` is { images, files }
+         (an array is taken as the images, the older form). */
+      send(text, extra) {
+        const x = Array.isArray(extra) ? { images: extra } : (extra && typeof extra === 'object' ? extra : {});
         const prompt = [{ type: 'text', text: String(text || '') }];
-        for (const img of Array.isArray(images) ? images : []) {
-          if (img && typeof img.data === 'string') prompt.push({ type: 'image', mimeType: img.mediaType || img.mimeType || 'image/png', data: img.data });
+        const attachments = [];
+        for (const img of Array.isArray(x.images) ? x.images : []) {
+          if (!img || typeof img.data !== 'string' || !img.data) continue;
+          prompt.push({ type: 'image', mimeType: img.mediaType || img.mimeType || 'image/png', data: img.data });
+          attachments.push({ kind: 'image', name: typeof img.name === 'string' && img.name ? img.name : 'image' });
         }
+        const files = fileBlocks(x.files, promptCaps.embeddedContext === true);
+        prompt.push(...files.prompt);
+        attachments.push(...files.shown);
         if (h.disposed) return Promise.resolve(null);
         return new Promise((resolve) => {
-          queue.push({ text: String(text || ''), prompt, done: resolve, aborted: false });
+          queue.push({ text: String(text || ''), prompt, attachments, done: resolve, aborted: false });
           drain();
         });
       },
@@ -590,10 +728,11 @@ function createOpenCode(opts = {}) {
         if (!o) throw new server.OpenCodeError('unsupported', `OpenCode offers no ${optionId} setting for this conversation.`);
         const v = String(value);
         if (!o.options.some((x) => x && x.value === v)) throw new server.OpenCodeError('badRequest', `${v} is not one of the ${optionId} values OpenCode offers.`);
+        h.pendingOptions.delete(optionId);
         h.pendingOptions.set(optionId, v);
+        noteConfig(h.config);
         const p = proc;
         if (p && !p.conn.closed && h.loadedGen === p.gen && !h.running && !h.own) await applyOptions(p);
-        else noteConfig(h.config);
       },
       respondPermission(requestId, decision) {
         const a = asks.get(requestId);
@@ -604,26 +743,69 @@ function createOpenCode(opts = {}) {
         const opt = kinds.map((k) => a.options.find((o) => o && o.kind === k)).find(Boolean);
         a.resolve(opt ? { outcome: { outcome: 'selected', optionId: opt.optionId } } : { outcome: { outcome: 'cancelled' } });
         emit(m.settled(requestId, decision));
-        setStatus(asks.size ? 'waiting' : (h.running || h.own ? 'working' : 'idle'), asks.size ? [...asks.values()].pop().tool : '');
+        settleStatus();
         ownArm();
         return true;
       },
+      /*
+       * Answers a form OpenCode's question tool asked: { action: 'accept', content } with the values by property name,
+       * or { action: 'decline' } / { action: 'cancel' }, after which 2.4.1 ends the turn as cancelled. False when the
+       * request is no longer open.
+       */
+      respondQuestion(requestId, answer) {
+        const q = questions.get(requestId);
+        if (!q) return false;
+        questions.delete(requestId);
+        const action = answer && (answer.action === 'accept' || answer.action === 'decline') ? answer.action : 'cancel';
+        const content = answer && answer.content && typeof answer.content === 'object' && !Array.isArray(answer.content) ? answer.content : {};
+        q.resolve(action === 'accept' ? { action, content } : { action });
+        emit([{ type: 'questionSettled', requestId, action }]);
+        settleStatus();
+        ownArm();
+        return true;
+      },
+      /* The slash commands OpenCode offers this conversation, as it last listed them: [{ name, description }]. */
+      commands() { return h.commandList.slice(); },
+      /* What a message may carry besides text, as OpenCode said when it started. */
+      attachments() { return { images: promptCaps.image === true, files: true, selection: true }; },
       /* The saved conversation as AgentEvents, for the UI to redraw (empty for one created in this window). */
       history() { return Promise.resolve(h.events.slice()); },
-      /* A subagent running in the background asks through its parent, possibly while the parent's turn is over. */
+      /* A subagent running in the background asks through its parent, possibly while the parent's turn is over. Its
+         tool call id starts with the subagent's session id. */
       askPermission(params) {
         return new Promise((resolve) => {
           if (!h.running && !h.own) ownBegin();
           const requestId = `p${++permSeq}`;
           const r = m.permission(requestId, params.toolCall);
-          asks.set(requestId, { resolve, options: Array.isArray(params.options) ? params.options : [], tool: r.tool });
+          const from = subagentOf(params.toolCall && params.toolCall.toolCallId);
+          if (from) for (const ev of r.events) if (ev.type === 'permission' || ev.type === 'toolCall') ev.subagent = from;
+          asks.set(requestId, { resolve, options: Array.isArray(params.options) ? params.options : [], tool: r.tool, kind: 'permission', seq: permSeq });
           ownArm();
-          setStatus('waiting', r.tool);
+          setStatus('waiting', r.tool, 'permission');
           emit(r.events);
+        });
+      },
+      askQuestion(params) {
+        return new Promise((resolve) => {
+          if (!h.running && !h.own) ownBegin();
+          const requestId = `q${++permSeq}`;
+          questions.set(requestId, { resolve, tool: 'question', kind: 'question', seq: permSeq });
+          ownArm();
+          setStatus('waiting', 'question', 'question');
+          const ev = { type: 'question', requestId, message: String(params.message || ''), schema: params.requestedSchema };
+          if (typeof params.toolCallId === 'string' && params.toolCallId) ev.toolId = params.toolCallId;
+          const from = subagentOf(params.toolCallId);
+          if (from) ev.subagent = from;
+          emit([ev]);
         });
       },
       onUpdate(u) {
         if (u && u.sessionUpdate === 'config_option_update') noteConfig(u.configOptions);
+        if (u && u.sessionUpdate === 'available_commands_update') {
+          h.commandList = commandList(u.availableCommands);
+          emit([{ type: 'commands', commands: h.commandList.slice() }]);
+          return;
+        }
         if (h.replay) {
           if (h.replay.mapper) h.replay.events.push(...h.replay.mapper.update(u));
           return;
@@ -631,10 +813,34 @@ function createOpenCode(opts = {}) {
         if (u && !h.running && !h.own && startsOwn(u)) ownBegin();
         emit(m.update(u));
         if (u && h.own) ownNote(u);
+        if (u && u.sessionUpdate === 'tool_call_update' && u.rawOutput && u.rawOutput.metadata) {
+          const cid = u.rawOutput.metadata.sessionID;
+          if (typeof cid === 'string' && cid && typeof u.toolCallId === 'string' && SUBAGENT_TOOLS.has(m.toolName(u.toolCallId))) linkChild(cid, u.toolCallId);
+        }
       },
       takeConfig(configOptions) { noteConfig(configOptions); },
       childTool(u) {
         if (u && (u.sessionUpdate === 'tool_call_update' || u.sessionUpdate === 'tool_call') && typeof u.toolCallId === 'string' && m.toolName(u.toolCallId)) h.onUpdate(u);
+      },
+      /* A subagent's status or one update of its own stream, from opencode/session/child_update. */
+      childUpdate(params) {
+        const cid = typeof params.childSessionId === 'string' ? params.childSessionId : '';
+        if (!cid || h.replay) return;
+        let c = children.get(cid);
+        if (!c) {
+          c = { title: '', status: 'running', mapper: mapper.createMapper({ now }), toolId: '' };
+          children.set(cid, c);
+        }
+        if (typeof params.title === 'string' && params.title) c.title = params.title;
+        if (!c.toolId) c.toolId = childTool.get(cid) || guessTool(cid, c.title);
+        if (params.type === 'status') {
+          c.status = CHILD_STATUS[params.status] || c.status;
+          const ev = subagentEvent(cid, c);
+          if (c.status === 'failed' && params.error) ev.error = typeof params.error === 'string' ? params.error : String(params.error.message || JSON.stringify(params.error));
+          emit([ev]);
+        } else if (params.type === 'update' && params.update) {
+          for (const e of c.mapper.update(params.update)) if (CHILD_EVENTS.has(e.type)) emit([{ ...subagentEvent(cid, c), event: e }]);
+        }
       },
       processGone() {
         cancelAsks();
@@ -668,7 +874,7 @@ function createOpenCode(opts = {}) {
       lastReplyAt: h ? h.lastReplyAt : 0,
       open: !!h,
     };
-    if (h && h.status === 'waiting') out.waitingFor = { kind: 'permission', tool: h.waitingTool };
+    if (h && h.status === 'waiting') out.waitingFor = h.waitingKind === 'question' ? { kind: 'question' } : { kind: 'permission', tool: h.waitingTool };
     return out;
   }
 
@@ -893,4 +1099,4 @@ function createOpenCode(opts = {}) {
   return api;
 }
 
-module.exports = { createOpenCode, modelValue, bedrockHelp, OpenCodeError: server.OpenCodeError };
+module.exports = { createOpenCode, modelValue, bedrockHelp, fileBlocks, OpenCodeError: server.OpenCodeError };

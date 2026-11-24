@@ -14,8 +14,10 @@
  * With OpenCode 2 the page's mode and effort pickers are switched and the next turns checked against what OpenCode
  * recorded, a subagent's session stays out of the list while the turn OpenCode starts when it finishes shows in the page,
  * the model adds a row to the work plan with the plugin's tool, Agent Plus's Work plan view shows it,
- * and with the token mode switched to Interface the next message gets no plan; with OpenCode 1 the notice that the work
- * plan needs OpenCode 2 is shown once. The plugin writes what it does to <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
+ * and with the token mode switched to Interface the next message gets no plan; then a command picked from the / list
+ * compacts the conversation, a pasted image (with Claude Haiku 4.5), a file picked with @ and an editor selection go with
+ * a message, a subagent's progress shows on its card, and the question tool's form is answered in the page. With
+ * OpenCode 1 the notice that the work plan needs OpenCode 2 is shown once, and the new controls show only what it offers. The plugin writes what it does to <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
  *
@@ -44,6 +46,25 @@ const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-b
 const DEPS = flag('--deps');
 const FONTS = flag('--fonts');
 const ID = 'xnervwang.opencode-plus';
+const HAIKU = 'amazon-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0';
+
+/* A PNG of one colour, for the paste step. */
+function solidPng(r, g, b, size = 32) {
+  const zlib = require('zlib');
+  const table = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (buf) => { let c = 0xffffffff; for (const x of buf) c = table[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => {
+    const t = Buffer.from(type, 'ascii');
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const sum = Buffer.alloc(4); sum.writeUInt32BE(crc(Buffer.concat([t, data])));
+    return Buffer.concat([len, t, data, sum]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: size }, () => [r, g, b]).flat())]);
+  const raw = Buffer.concat(Array.from({ length: size }, () => row));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
 
 const need = (name) => require(DEPS ? path.join(DEPS, 'node_modules', name) : name);
 const { open, until, sleep, frameWith } = require('./lib/window');
@@ -111,6 +132,8 @@ async function main() {
   fs.writeFileSync(path.join(p.folder, 'notes.txt'), 'Some notes.\n');
   fs.mkdirSync(path.join(p.folder, 'src'));
   fs.writeFileSync(path.join(p.folder, 'src', 'sum.js'), 'module.exports = (a, b) => a + b;\n');
+  fs.writeFileSync(path.join(p.folder, 'codeword.txt'), 'The code word is KIWI-93.\n');
+  fs.writeFileSync(path.join(p.folder, 'colours.txt'), 'Colours of the week.\nThe colour of the day is MAGENTA.\nThat is all.\n');
   console.log(`temporary root ${root}; results in ${OUT}`);
 
   const vsix = path.join(root, 'opencode-plus.vsix');
@@ -173,7 +196,9 @@ async function main() {
       const el = await page.$(part);
       if (el) { image = path.join(shots, `${name}.png`); await el.screenshot({ path: image }); }
     }
-    const size = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    /* The size of `image`, from its PNG header. */
+    const head = fs.readFileSync(image);
+    const size = { width: head.readUInt32BE(16), height: head.readUInt32BE(20) };
     steps.push({ name, features: features || [name], expect, unchanged, image: path.basename(image), full: path.basename(full),
       previous: previous ? path.basename(previous) : null, width: size.width, height: size.height, log: [], ...(note ? { note } : {}) });
     previous = full;
@@ -248,14 +273,20 @@ async function main() {
       const figures = () => chat.evaluate(() => document.querySelectorAll('#log .figures').length);
       const status = () => chat.evaluate(() => document.body.dataset.status);
       /* Sends `text` and waits for its turn to end, answering Allow once to every permission request on the way. */
-      const turn = async (text, name) => {
+      const turn = async (text, name, tick) => {
         const before = await figures();
         await chat.fill('#input', text);
         await chat.press('#input', 'Enter');
+        return waitTurn(before, name, tick);
+      };
+      /* Waits for the turn begun after `before` figures lines to end, answering Allow once on the way; `tick` runs at
+         each look. */
+      const waitTurn = async (before, name, tick) => {
         await until(async () => (await status()) !== 'idle' || (await figures()) > before, 60000, 200);
         let approved = 0;
         const end = Date.now() + 300000;
         while (Date.now() < end) {
+          if (tick) await tick();
           /* An answered card keeps its buttons, hidden. */
           let button = null;
           for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) { button = b; break; }
@@ -275,6 +306,12 @@ async function main() {
         }
         return approved;
       };
+      const menuItems = () => chat.evaluate(() => {
+        const m = document.getElementById('menu');
+        return m && !m.hidden ? [...m.querySelectorAll('.menu-item .menu-name')].map((e) => e.textContent) : [];
+      });
+      const lastReply = () => chat.evaluate(() => { const r = [...document.querySelectorAll('#log .msg.reply')].pop(); return r ? r.textContent : ''; });
+      const lastUserChips = () => chat.evaluate(() => { const u = [...document.querySelectorAll('#log .msg.user')].pop(); return u ? [...u.querySelectorAll('.att')].map((e) => e.textContent) : []; });
       if (chat) {
         let approved = await turn('列出工作目录下的文件', '03');
         const tools = await chat.evaluate(() => [...document.querySelectorAll('#log .tool')].map((e) => e.textContent.replace(/\s+/g, ' ').slice(0, 80)));
@@ -289,6 +326,27 @@ async function main() {
         await shot('04-answer', { features: ['answer', 'reply figures'],
           expect: 'The tool card shows its result and the permission card says allowed; the model answer lists the files of the folder (README.md, notes.txt, src); under it a figures line with a duration, ctx, maybe a cost, and the model name grok.',
           part: '#workbench\\.parts\\.editor' });
+
+        if (line === 1) {
+          // 3z. The second batch's controls on OpenCode 1: what it offers shows, and nothing reports an error.
+          await chat.fill('#input', '/');
+          await sleep(1500);
+          const slash = await menuItems();
+          console.log(`  note  OpenCode 1 lists ${slash.length} slash commands: ${JSON.stringify(slash.slice(0, 8))}`);
+          await chat.press('#input', 'Escape');
+          await chat.fill('#input', '@');
+          const at = await until(async () => { const l = await menuItems(); return l.length ? l : null; }, 10000);
+          await chat.press('#input', 'Escape');
+          await chat.fill('#input', '');
+          const page1 = await chat.evaluate(() => ({ placeholder: document.getElementById('input').placeholder, errors: [...document.querySelectorAll('#log .notice.level-error')].map((e) => e.textContent),
+            questions: document.querySelectorAll('#log .question').length, compactions: document.querySelectorAll('#log .compaction').length }));
+          const told1 = ((await ext('return api.test.told();')) || []).filter((t) => /error|fail/i.test(t));
+          check(!!at && at.includes('notes.txt') && !page1.errors.length && !told1.length && !page1.questions && !page1.compactions,
+            'on OpenCode 1 the @ list works, the other new controls show only what it offers, and nothing reports an error', { at, page: page1, told: told1, slash });
+          await shot('04z-v1-controls', { features: ['new controls on OpenCode 1'],
+            expect: 'The chat page as before, the message box empty; its placeholder may add hints such as "@ to add a file"; no error notice, no question form, no compaction line.',
+            part: '#workbench\\.parts\\.editor' });
+        }
 
         if (line >= 2) {
           // 3e. Mode and effort, as OpenCode offers them: picked in the page, they take effect from the next turn. What
@@ -329,14 +387,29 @@ async function main() {
 
           // 3f. A subagent: its session stays out of the list, and the turn OpenCode starts when it finishes shows here.
           const notices = () => chat.evaluate(() => [...document.querySelectorAll('#log .notice')].map((e) => e.textContent));
-          await turn('Use the subagent tool to start one subagent whose task is: use the shell tool to run the command sleep 8, then reply finished. After launching it, end your response at once without waiting.', '04f');
           const activities = new Set();
-          let clicked = 0, wentOn = false;
+          let clicked = 0, wentOn = false, runningShot = false;
+          /* The subagent's request may come before the parent's turn is over, and its whole run with it, so this looks
+             while that turn is awaited too. */
+          const watch = async () => {
+            const c = ((await ext('return api.test.conversations();')) || []).find((x) => x.sessionId === sessionId);
+            /* Only once the parent's own turn is over: what counts is the turn OpenCode starts after it. */
+            if (c && (await figures()) > beforeSub) activities.add(c.activity);
+            if (!runningShot && await chat.$('#log .tool .child.state-running')) {
+              runningShot = true;
+              /* Once it has done something, so the box has a last line to show. */
+              await until(() => chat.evaluate(() => { const l = document.querySelector('#log .tool .child.state-running .child-last'); return !!l && !!l.textContent; }), 5000);
+              await shot('04f0-subagent-running', { features: ['subagent progress'],
+                expect: 'Under the subagent tool card a "Subagent" box with the subagent\'s title, "Running…", and the last thing it did (such as a shell sleep command), maybe with "Its steps (n)"; a permission card for its shell command may be there too, marked "from subagent".',
+                part: '#workbench\\.parts\\.editor' });
+            }
+          };
+          const beforeSub = await figures();
+          await turn('Use the subagent tool to start one subagent whose task is: use the shell tool to run the command sleep 8, then reply finished. After launching it, end your response at once without waiting.', '04f', watch);
           const end = Date.now() + 150000;
           while (Date.now() < end) {
+            await watch();
             for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) { await b.click(); clicked++; await sleep(500); }
-            const c = ((await ext('return api.test.conversations();')) || []).find((x) => x.sessionId === sessionId);
-            if (c) activities.add(c.activity);
             if ((await notices()).some((t) => /went on without a message from you/.test(t)) && (await status()) === 'idle') { wentOn = true; break; }
             await sleep(500);
           }
@@ -348,8 +421,31 @@ async function main() {
           const rowsNow = ((await ext('return api.test.sessions();')) || []).map((r) => r.id);
           check(children.length > 0 && rowsNow.includes(sessionId) && !children.some((k) => rowsNow.includes(k)), "the subagent's session is known as a child and left out of the Conversations list",
             { children, rows: rowsNow });
-          await shot('04f-subagent', { features: ['subagent', 'turn OpenCode started itself'],
-            expect: 'After the subagent request and its short reply (with its figures line), a notice "OpenCode went on without a message from you, for a background task (a subagent or a command).", then the subagent\'s sleep command as a shell card and a permission card (allowed once), and the reply that the subagent has finished, with its figures line.',
+          /* Its steps are drawn when the list is opened (a toggle event), so this looks again until they are there. */
+          const card = await until(() => chat.evaluate(() => {
+            const c = [...document.querySelectorAll('#log .tool .child')].pop();
+            if (!c || !/Done/.test(c.querySelector('.child-state').textContent)) return null;
+            const steps = c.querySelector('.child-steps');
+            if (steps && !steps.open) { steps.open = true; return null; }
+            const tools = [...c.querySelectorAll('.child-list .tool-name')].map((e) => e.textContent);
+            return tools.length ? { title: c.querySelector('.child-title').textContent, state: c.querySelector('.child-state').textContent,
+              steps: c.querySelector('.child-steps summary').textContent, tools } : null;
+          }), 20000);
+          const fromSub = await chat.evaluate(() => [...document.querySelectorAll('#log .permission .from-sub')].filter((e) => !e.hidden).map((e) => e.textContent));
+          check(runningShot && !!card && card.tools.length > 0 && fromSub.length > 0,
+            "the subagent's card showed it running and then done with its steps, and its request said it came from the subagent", { runningShot, card, fromSub });
+          /* Opening the steps makes the log longer above its end, which then lies below the view: two pictures. */
+          await chat.evaluate(() => {
+            const c = [...document.querySelectorAll('#log .tool .child')].pop();
+            const log = document.getElementById('log');
+            if (c) log.scrollTop = c.closest('.tool').offsetTop - log.offsetTop;
+          });
+          await shot('04f-subagent', { features: ['subagent progress'],
+            expect: 'Near the top, the subagent tool card with a "Subagent" box below it: the subagent\'s title, "Done", and "Its steps (n)" opened, listing its steps (a shell sleep command among them). Below it the rest of that turn: possibly a shell card and a permission card (allowed once) marked "from subagent …", and the short reply.',
+            part: '#workbench\\.parts\\.editor' });
+          await chat.evaluate(() => { const log = document.getElementById('log'); log.scrollTop = log.scrollHeight; });
+          await shot('04f2-subagent-reply', { features: ['turn OpenCode started itself'],
+            expect: 'The end of the conversation: the notice "OpenCode went on without a message from you, for a background task (a subagent or a command).", then the reply that the subagent has finished, with its figures line under it; the status line shows no work in progress.',
             part: '#workbench\\.parts\\.editor' });
         }
 
@@ -408,6 +504,130 @@ async function main() {
             expect: 'The chat shows "Reply with only the word three." and the reply "three", with no plan tool card in that turn.',
             part: '#workbench\\.parts\\.editor' });
           await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", undefined, vscode.ConfigurationTarget.Global); return true;').catch(() => {});
+
+          // 3h. An image pasted into the box goes with the message; Claude Haiku 4.5 reads it.
+          await chat.selectOption('#model', HAIKU);
+          const onHaiku = await until(() => chat.evaluate((id) => document.getElementById('model').dataset.current === id, HAIKU), 15000);
+          await chat.evaluate((b64) => {
+            const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+            const dt = new DataTransfer();
+            dt.items.add(new File([bytes], 'square.png', { type: 'image/png' }));
+            const box = document.getElementById('input');
+            box.focus();
+            box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+          }, solidPng(30, 80, 230).toString('base64'));
+          const thumbs = await until(() => chat.evaluate(() => document.querySelectorAll('#attachments .att-image img').length), 10000);
+          check(onHaiku && thumbs === 1, 'with Claude Haiku 4.5 picked, a pasted image shows as a thumbnail above the box', { onHaiku, thumbs });
+          await shot('10-pasted-image', { features: ['pasted image'],
+            expect: 'Above the empty message box a chip with a small blue square thumbnail, the name square.png and a × button; the model picker shows Claude Haiku 4.5.',
+            part: '#workbench\\.parts\\.editor' });
+          await turn('What colour is this image? Answer with one word and do not use any tool.', '10b');
+          const colour = await lastReply();
+          const imgChips = await lastUserChips();
+          check(/blue/i.test(colour) && imgChips.includes('Image'), 'the model answers the colour of the pasted image, and the message shows it had one', { colour, imgChips });
+          await chat.selectOption('#model', MODEL);
+          await until(() => chat.evaluate((id) => document.getElementById('model').dataset.current === id, MODEL), 15000);
+
+          // 3i. @ lists the workspace's files; the one picked goes with the message.
+          await chat.fill('#input', 'What is the code word in @codew');
+          const atList = await until(async () => { const l = await menuItems(); return l.includes('codeword.txt') ? l : null; }, 20000);
+          check(!!atList, 'typing @ lists the workspace files that match', atList || await menuItems());
+          await shot('11-at-menu', { features: ['@ file list'],
+            expect: 'Above the message box, which holds "What is the code word in @codew", a list with codeword.txt (its path beside it) highlighted.',
+            part: '#workbench\\.parts\\.editor' });
+          await chat.press('#input', 'Enter');
+          const withFile = await chat.inputValue('#input');
+          await chat.type('#input', '? Answer with the code word only and do not use any tool.');
+          const beforeFile = await figures();
+          await chat.press('#input', 'Enter');
+          await waitTurn(beforeFile, '11b');
+          const word = await lastReply();
+          const fileChips = await lastUserChips();
+          check(withFile === 'What is the code word in @codeword.txt ' && /KIWI-93/.test(word) && fileChips.includes('codeword.txt'),
+            'picking it puts @codeword.txt in the box, and the model answers from that file', { withFile, word, fileChips });
+
+          // 3j. A selection in an editor: the page offers it, and it goes with the message.
+          const colours = path.join(p.folder, 'colours.txt');
+          await call(`const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(${JSON.stringify(colours)}));
+            const ed = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
+            ed.selection = new vscode.Selection(1, 0, 1, 33); return true;`);
+          const selLabel = await until(() => chat.evaluate(() => { const b = document.getElementById('addSelection'); return b && !b.hidden ? b.textContent : ''; }), 15000);
+          if (selLabel) await chat.click('#addSelection');
+          const selChip = await until(() => chat.evaluate(() => [...document.querySelectorAll('#attachments .att-selection')].map((e) => e.textContent).join(' | ')), 10000);
+          check(/colours\.txt:2/.test(selLabel || '') && /colours\.txt:2/.test(selChip || ''), 'with text selected in an editor the page offers it, and adding it shows it above the box', { selLabel, selChip });
+          await shot('11c-selection', { features: ['selection button'],
+            expect: 'The editor is split: colours.txt on the right with line 2 selected; in the chat, right of the message box, a button "+ colours.txt:2", and above the box a chip "Selection colours.txt:2" with a × button.',
+            part: '#workbench\\.parts\\.editor' });
+          await turn('What colour of the day does the attached selection name? One word, no tools.', '11d');
+          const dayColour = await lastReply();
+          check(/magenta/i.test(dayColour) && (await lastUserChips()).some((c) => /colours\.txt:2/.test(c)), 'the model answers from the selection sent with the message', { dayColour });
+          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputText && t.input.uri.fsPath === ${JSON.stringify(colours)});
+            await vscode.window.tabGroups.close(tabs); return true;`).catch(() => {});
+
+          // 3k. The question tool asks with a form in the page; the answer reaches the model.
+          const beforeQuestion = await figures();
+          await chat.fill('#input', 'Use the question tool to ask me whether I prefer red or blue (two options). Then reply with only the colour I chose.');
+          await chat.press('#input', 'Enter');
+          let form = null;
+          const qEnd = Date.now() + 120000;
+          while (!form && Date.now() < qEnd) {
+            for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) { await b.click(); await sleep(500); }
+            form = await chat.$('#log .question:not(.settled) input[type="radio"]');
+            if (!form) await sleep(500);
+          }
+          const qWaiting = ((await ext('return api.test.conversations();')) || []).find((x) => x.sessionId === sessionId);
+          const listedQ = ((await ext('return api.test.source.listConversations();')) || []).find((x) => x.sessionId === sessionId);
+          check(!!form && !!qWaiting && qWaiting.activity === 'waiting' && !!listedQ && !!listedQ.waitingFor && listedQ.waitingFor.kind === 'question',
+            "the question tool's form shows in the page, and the conversation waits for an answer to a question", { form: !!form, activity: qWaiting && qWaiting.activity, waitingFor: listedQ && listedQ.waitingFor });
+          await shot('12-question', { features: ['question form'],
+            expect: 'A question card with a "Question" badge, the question about red or blue with two round choices (Red, Blue), an own-answer box, and Submit and Cancel buttons; the status line says it waits for an answer to a question.',
+            part: '#workbench\\.parts\\.editor' });
+          if (form) {
+            await chat.evaluate(() => {
+              const card = [...document.querySelectorAll('#log .question:not(.settled)')].pop();
+              const blue = [...card.querySelectorAll('label.q-option')].find((l) => /blue/i.test(l.textContent));
+              if (blue) blue.querySelector('input').click();
+              card.querySelector('.q-submit').click();
+            });
+            await waitTurn(beforeQuestion, '12b');
+          }
+          const chosen = await lastReply();
+          const settledQ = await chat.evaluate(() => { const c = [...document.querySelectorAll('#log .question')].pop(); return c ? c.querySelector('.perm-result').textContent : ''; });
+          check(/blue/i.test(chosen) && /^Answered: .*Blue/i.test(settledQ), 'after Submit the model gets the answer: it replies with the colour chosen, and the card says what was answered', { chosen, settledQ });
+          await shot('12b-answered', { features: ['question answered'],
+            expect: 'Above it the question tool card (its result folded), then the question card, which now reads "Answered: … Blue": Blue\'s choice is checked and in bold, the other choice and the own-answer box are faded, and there are no buttons; below it the reply "Blue" (or "blue"), with a figures line.',
+            part: '#workbench\\.parts\\.editor' });
+
+          /* Last of these: the first message after compacting gets the work plan's note about the plan again, which a
+             model may answer instead of the message. */
+          // 3g. Slash commands: / lists OpenCode's commands; /compact picked from the list and sent compacts.
+          await chat.fill('#input', '/');
+          const listedCmds = await until(async () => { const l = await menuItems(); return l.length ? l : null; }, 15000);
+          check(!!listedCmds && listedCmds.includes('/compact'), 'typing / lists the slash commands OpenCode offers', listedCmds || []);
+          await shot('09-slash-menu', { features: ['slash command list'],
+            expect: 'Above the message box, which holds "/", a list of commands such as /init, /review, /compact, each with a short description; the first is highlighted.',
+            part: '#workbench\\.parts\\.editor' });
+          await chat.type('#input', 'comp');
+          const narrowed = await until(async () => { const l = await menuItems(); return l[0] === '/compact' ? l : null; }, 5000);
+          await chat.press('#input', 'Enter');
+          const typed = await chat.inputValue('#input');
+          check(!!narrowed && typed === '/compact ', 'typing narrows the list, and Enter puts the command in the box', { narrowed, typed });
+          const beforeCompact = await figures();
+          await chat.press('#input', 'Enter');
+          await waitTurn(beforeCompact, '09b');
+          const compaction = await until(() => chat.evaluate(() => {
+            const c = [...document.querySelectorAll('#log .compaction')].pop();
+            return c && c.classList.contains('status-completed') ? { label: c.querySelector('.compaction-label').textContent, summary: !c.querySelector('.compaction-summary').hidden } : null;
+          }), 60000);
+          check(!!compaction && compaction.summary, 'after /compact the page shows the compaction line, with the summary to unfold', compaction);
+          await chat.evaluate(() => {
+            const d = [...document.querySelectorAll('#log .compaction-summary')].pop();
+            const log = document.getElementById('log');
+            if (d) { d.open = true; log.scrollTop = d.closest('.compaction').offsetTop - log.offsetTop; }
+          });
+          await shot('09b-compacted', { features: ['compaction divider'],
+            expect: 'At the top, a horizontal line labelled "Conversation compacted" with a "Summary" below it, unfolded to show the summary OpenCode wrote (headings such as Objective); the figures line of the /compact turn follows the summary, possibly below the visible part.',
+            part: '#workbench\\.parts\\.editor' });
         }
       }
 

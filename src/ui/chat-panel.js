@@ -13,7 +13,10 @@
  * frame.
  *
  * The conversation's settings (its options(): mode, effort) go to the page as they are, in an 'options' message, and
- * again whenever an `options` event says they changed; a conversation without options() shows none.
+ * again whenever an `options` event says they changed; a conversation without options() shows none. Its slash
+ * commands (commands(), `commands` events) and what a message may carry (attachments()) go the same way, as
+ * 'commands' and 'caps'. The page asks for workspace files as @ is typed (`findFiles`) and for the editor's selection
+ * (`selection`); both are the caller's, and without them the page offers neither.
  */
 const path = require('path');
 const fs = require('fs');
@@ -21,6 +24,10 @@ const vm = require('./view-model');
 const { PERMISSION_DECISIONS } = require('../contracts');
 
 const DIFF_SCHEME = 'opencodePlus-diff';
+/* What a message may carry: as many images, each of at most this many bytes once decoded. */
+const MAX_IMAGES = 8;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_FILES = 20;
 const MARKDOWN_IT = ['node_modules', 'markdown-it', 'dist', 'browser'];
 const FLUSH_MS = 16;
 
@@ -68,14 +75,17 @@ class ChatPanel {
    * @param {{
    *   panel: import('vscode').WebviewPanel,
    *   extensionUri: import('vscode').Uri,
-   *   conversation: { on(listener: (ev: object) => void): (Function|{dispose(): void}), send(text: string): unknown,
-   *     abort(): unknown, setModel(model: object): unknown, options?(): object[], setOption?(id: string, value: string): unknown },
+   *   conversation: { on(listener: (ev: object) => void): (Function|{dispose(): void}), send(text: string, extra?: object): unknown,
+   *     abort(): unknown, setModel(model: object): unknown, options?(): object[], setOption?(id: string, value: string): unknown,
+   *     commands?(): object[], attachments?(): object, respondQuestion?(requestId: string, answer: object): unknown },
    *   listModels: () => Promise<object[]>,
    *   respond: (requestId: string, decision: string) => unknown,
    *   history?: object[],
    *   model?: object,
    *   modelInfo?: (providerId: string, modelId: string) => object | null,
    *   onDidChangeState?: (head: object) => void,
+   *   findFiles?: (query: string) => Promise<Array<{ path: string, rel: string, name: string }>>,
+   *   selection?: { describe(): ({ label: string } | null), current(): object | null, onDidChange(fn: () => void): { dispose(): void } },
    *   vscode?: object,
    *   now?: () => number,
    * }} opts
@@ -99,6 +109,9 @@ class ChatPanel {
     this.disposed = false;
     this.lastKey = '';
     this.options = this.readOptions();
+    this.commands = this.read('commands', []);
+    this.findFiles = typeof opts.findFiles === 'function' ? opts.findFiles : null;
+    this.selection = opts.selection || null;
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
     if (opts.model) state = vm.reduce(state, { type: 'ui.model', model: opts.model });
@@ -121,6 +134,7 @@ class ChatPanel {
       })),
       toOff(this.panel.onDidDispose(() => this.dispose())),
     ];
+    if (this.selection) this.subs.push(toOff(this.selection.onDidChange(() => { if (this.ready) this.postSelection(); })));
   }
 
   html(webview, mdDir) {
@@ -151,13 +165,18 @@ class ChatPanel {
 <footer id="bottom">
   <div id="status" hidden></div>
   <div id="queued"></div>
+  <div id="menu" role="listbox" hidden></div>
+  <div id="attachments"></div>
+  <div id="note" hidden></div>
   <form id="composer">
     <textarea id="input" rows="1" placeholder="Ask anything. Enter to send, Shift+Enter for a new line"></textarea>
+    <button id="addSelection" class="secondary" type="button" hidden></button>
     <button id="stop" type="button" title="Stop" hidden>Stop</button>
     <button id="send" type="submit" title="Send">Send</button>
   </form>
 </footer>
 ${md}
+<script src="${media('composer.js')}"></script>
 <script src="${media('chat.js')}"></script>
 </body>
 </html>`;
@@ -169,6 +188,11 @@ ${md}
     if (ev && ev.type === 'options') {
       this.options = Array.isArray(ev.options) ? ev.options : [];
       if (this.ready) this.postOptions();
+      return;
+    }
+    if (ev && ev.type === 'commands') {
+      this.commands = Array.isArray(ev.commands) ? ev.commands : [];
+      if (this.ready) this.postCommands();
       return;
     }
     this.state = vm.reduce(this.state, ev, this.now());
@@ -207,6 +231,9 @@ ${md}
     this.posted = this.state;
     this.post({ type: 'reset', ...vm.toView(this.state) });
     this.postOptions();
+    this.postCommands();
+    this.postCaps();
+    this.postSelection();
     if (this.models || this.modelsError) this.postModels();
     else this.loadModels();
   }
@@ -220,6 +247,64 @@ ${md}
 
   postOptions() {
     this.post({ type: 'options', options: this.options });
+  }
+
+  /* What the conversation's method `name` returns, or `fallback` when it has none or it fails. */
+  read(name, fallback) {
+    try {
+      const v = typeof this.conversation[name] === 'function' ? this.conversation[name]() : fallback;
+      return v == null ? fallback : v;
+    } catch (_) { return fallback; }
+  }
+
+  postCommands() {
+    this.post({ type: 'commands', commands: Array.isArray(this.commands) ? this.commands : [] });
+  }
+
+  /* Files need the caller's search; a selection needs the caller's editor tracking. */
+  postCaps() {
+    const a = this.read('attachments', {});
+    this.post({ type: 'caps', images: a.images === true, files: a.files === true && !!this.findFiles, selection: a.selection === true && !!this.selection });
+  }
+
+  postSelection() {
+    let label = '';
+    try { const d = this.selection && this.selection.describe(); label = d && d.label ? String(d.label) : ''; } catch (_) { /* none */ }
+    this.post({ type: 'selection', label });
+  }
+
+  /* contracts.js send extra from what the page sent: images it pasted, files it picked, selections it added. */
+  extraOf(msg) {
+    const images = (Array.isArray(msg.images) ? msg.images : []).filter((i) => i && typeof i.data === 'string' && /^image\/[\w.+-]+$/.test(String(i.mediaType || ''))
+      && Math.floor(i.data.length * 3 / 4) <= MAX_IMAGE_BYTES).slice(0, MAX_IMAGES).map((i) => ({ mediaType: i.mediaType, data: i.data, name: String(i.name || 'image') }));
+    const files = [];
+    for (const f of Array.isArray(msg.files) ? msg.files : []) {
+      if (f && typeof f.path === 'string' && path.isAbsolute(f.path) && !files.some((x) => x.path === f.path && x.text === undefined)) files.push({ path: f.path, name: String(f.name || path.basename(f.path)) });
+    }
+    for (const f of Array.isArray(msg.selections) ? msg.selections : []) {
+      if (f && typeof f.path === 'string' && path.isAbsolute(f.path) && typeof f.text === 'string') {
+        files.push({ path: f.path, name: String(f.name || path.basename(f.path)), text: f.text, startLine: Number(f.startLine) || 0, endLine: Number(f.endLine) || 0 });
+      }
+    }
+    const out = {};
+    if (images.length) out.images = images;
+    if (files.length) out.files = files.slice(0, MAX_FILES);
+    return out;
+  }
+
+  answerQuestion(msg) {
+    const requestId = String(msg.requestId || '');
+    const item = [...this.state.items].reverse().find((it) => it.kind === 'question' && it.requestId === requestId);
+    if (!item || item.decision || typeof this.conversation.respondQuestion !== 'function') return;
+    let answer = { action: 'cancel' };
+    if (msg.action === 'accept') {
+      const { content, errors } = vm.formContent(item.fields, msg.values);
+      if (errors.length) { this.post({ type: 'questionErrors', requestId, errors }); return; }
+      answer = { action: 'accept', content };
+    }
+    Promise.resolve().then(() => this.conversation.respondQuestion(requestId, answer)).then((ok) => {
+      if (ok === false) this.post({ type: 'questionErrors', requestId, errors: ['The question is no longer open.'] });
+    }, (err) => this.showError(err));
   }
 
   loadModels() {
@@ -255,8 +340,28 @@ ${md}
       case 'send': {
         const text = String(msg.text || '');
         if (!text.trim()) break;
+        const extra = this.extraOf(msg);
         if (this.state.status !== 'idle') this.dispatch({ type: 'ui.queued', text });
-        Promise.resolve().then(() => this.conversation.send(text)).catch((err) => this.showError(err));
+        Promise.resolve().then(() => (Object.keys(extra).length ? this.conversation.send(text, extra) : this.conversation.send(text))).catch((err) => this.showError(err));
+        break;
+      }
+      case 'question':
+        this.answerQuestion(msg);
+        break;
+      case 'findFiles': {
+        const seq = Number(msg.seq) || 0;
+        const query = String(msg.query || '').slice(0, 200);
+        if (!this.findFiles) { this.post({ type: 'files', seq, query, items: [] }); break; }
+        Promise.resolve().then(() => this.findFiles(query)).then(
+          (items) => this.post({ type: 'files', seq, query, items: Array.isArray(items) ? items : [] }),
+          (err) => this.post({ type: 'files', seq, query, items: [], error: (err && err.message) || String(err) }));
+        break;
+      }
+      case 'addSelection': {
+        let item = null;
+        try { item = this.selection ? this.selection.current() : null; } catch (_) { item = null; }
+        if (item) this.post({ type: 'selectionAdded', item });
+        else this.postSelection();
         break;
       }
       case 'abort':
@@ -345,4 +450,4 @@ function toOff(disposable) {
   return () => disposable && disposable.dispose && disposable.dispose();
 }
 
-module.exports = { ChatPanel, DIFF_SCHEME };
+module.exports = { ChatPanel, DIFF_SCHEME, MAX_IMAGE_BYTES, MAX_IMAGES };

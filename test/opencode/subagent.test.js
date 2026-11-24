@@ -89,7 +89,7 @@ test('2.x: the turn OpenCode starts in the parent when its subagent finishes is 
   await until(() => events.some((e) => e.type === 'turnEnd'));
   const all = events.splice(0);
   const own = all.slice(all.findIndex((e) => e.type === 'turnStart'));
-  assert.ok(all.slice(0, all.indexOf(own[0])).every((e) => e.type === 'title'), 'only the title of the turn before comes first');
+  assert.ok(all.slice(0, all.indexOf(own[0])).every((e) => e.type === 'title' || e.type === 'subagent'), "only the title of the turn before and the subagent's progress come first");
   const start = own[0];
   assert.equal(start.type, 'turnStart');
   assert.equal(start.unsolicited, true);
@@ -245,6 +245,37 @@ test('2.x: a setting changed while a turn runs is sent before the next message',
   const methods = agents[0].methods();
   const i = methods.lastIndexOf('session/prompt');
   assert.equal(methods[i - 1], 'session/set_config_option');
+});
+
+test('2.x: an effort picked just before a message is that turn\'s, though OpenCode has not answered it yet', async (t) => {
+  const { oc, agents } = setup(t, 'v2-options.jsonl', V2);
+  const s = await oc.createSession(CWD, { model: GROK });
+  const events = [];
+  s.on((ev) => { events.push(ev); if (ev.type === 'permission') setImmediate(() => s.respondPermission(ev.requestId, 'allowOnce')); });
+  const picked = s.setOption('effort', 'low');
+  assert.equal(s.options().find((o) => o.id === 'effort').value, 'low', 'shown as picked at once');
+  const done = s.send('Use the subagent tool…');
+  const start = events.find((e) => e.type === 'turnStart');
+  assert.equal(start.effort, 'low', 'the turn began before OpenCode answered, and still names the effort');
+  await picked;
+  await done;
+  const methods = agents[0].methods();
+  const sets = agents[0].received.filter((m) => m.method === 'session/set_config_option').map((m) => [m.params.configId, m.params.value]);
+  assert.deepEqual(sets, [['model', GROK], ['effort', 'low']], 'sent once');
+  assert.ok(methods.lastIndexOf('session/set_config_option') < methods.indexOf('session/prompt'), 'set before the message went');
+  const figures = vm.reduceAll(events, vm.initialState(), 1).items.find((it) => it.kind === 'figures');
+  assert.match(figures.text, /grok-4\.7 low$/);
+});
+
+test('2.x: two settings picked at once are each sent once, in the order picked', async (t) => {
+  const { oc, agents } = setup(t, 'v2-options.jsonl', V2);
+  const s = await oc.createSession(CWD, { model: GROK });
+  const a = s.setOption('effort', 'low');
+  const b = s.setOption('mode', 'plan');
+  await Promise.all([a, b]);
+  const sets = agents[0].received.filter((m) => m.method === 'session/set_config_option').map((m) => [m.params.configId, m.params.value]);
+  assert.deepEqual(sets, [['model', GROK], ['effort', 'low'], ['mode', 'plan']]);
+  assert.deepEqual(s.options().map((o) => [o.id, o.value]), [['mode', 'plan'], ['effort', 'low']]);
 });
 
 test('1.x lists mode too: settings follow what OpenCode offers, not its version', async (t) => {
