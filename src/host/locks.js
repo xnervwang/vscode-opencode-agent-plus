@@ -13,7 +13,11 @@
  * folder with fs.watch while it holds any lock, hands the request to onTakeover, releases the lock and answers with
  * <id>.letgo naming the asker. Over Remote-SSH a window whose client went away without closing keeps its extension
  * host running for hours, holding its locks; that host still answers.
+ *
+ * A lock also names the VS Code window of its holder (`window`, from windowToken), so that a window reloaded while
+ * its old extension host lives on (ownWindow) can take its conversations back without asking.
  */
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -33,7 +37,22 @@ function processAlive(pid) {
 
 const bootTime = () => Date.now() - os.uptime() * 1000;
 
-function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bootTime, now = Date.now, watch = fs.watch, log } = {}) {
+/*
+ * A name for this VS Code window that outlasts its reloads, kept in `memo` (the extension's workspaceState) under
+ * `key`; '' without one. vscode.env.sessionId changes on every reload. A workspace's state belongs to the client's
+ * profile, which opens a workspace in one window at a time, so another host with the same name is this window's own.
+ */
+function windowToken(memo, key) {
+  if (!memo || typeof memo.get !== 'function') return '';
+  let token = '';
+  try { token = memo.get(key, ''); } catch (_) { token = ''; }
+  if (typeof token === 'string' && /^[0-9a-f-]{36}$/.test(token)) return token;
+  token = crypto.randomUUID();
+  try { Promise.resolve(memo.update(key, token)).catch(() => {}); } catch (_) { /* a new name next time */ }
+  return token;
+}
+
+function createLocks({ dir, pid = process.pid, window = '', alive = processAlive, booted = bootTime, now = Date.now, watch = fs.watch, log } = {}) {
   if (!dir) throw new Error('createLocks needs a dir');
   const note = (line) => { try { if (log) log(line); } catch (_) { /* not logged */ } };
   const held = new Set();
@@ -103,7 +122,7 @@ function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bo
   function acquire(id, { force = false } = {}) {
     fs.mkdirSync(dir, { recursive: true });
     const tmp = path.join(dir, `.${id}.${pid}.${now()}.tmp`);
-    fs.writeFileSync(tmp, JSON.stringify({ pid, at: now(), host: os.hostname() }));
+    fs.writeFileSync(tmp, JSON.stringify({ pid, at: now(), host: os.hostname(), ...(window ? { window } : {}) }));
     try {
       for (let i = 0; i < 3; i++) {
         try {
@@ -129,6 +148,13 @@ function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bo
   function holder(id) {
     const rec = read(id);
     return othersLive(rec) ? rec.pid : 0;
+  }
+
+  /* Another live process holds the lock for this same window: the extension host it had before it was reloaded. */
+  function ownWindow(id) {
+    if (!window) return false;
+    const rec = read(id);
+    return othersLive(rec) && rec.window === window && rec.host === os.hostname();
   }
 
   function release(id) {
@@ -182,6 +208,7 @@ function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bo
   return {
     acquire,
     holder,
+    ownWindow,
     release,
     releaseAll,
     requestTakeover,
@@ -193,4 +220,4 @@ function createLocks({ dir, pid = process.pid, alive = processAlive, booted = bo
   };
 }
 
-module.exports = { createLocks, processAlive, BOOT_SLACK_MS, TAKEOVER_WAIT_MS };
+module.exports = { createLocks, processAlive, windowToken, BOOT_SLACK_MS, TAKEOVER_WAIT_MS };

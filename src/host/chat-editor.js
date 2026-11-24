@@ -14,6 +14,7 @@ const { sessionOfUri } = require('./agentplus-source');
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const BUSY_PAGE = 'Another VS Code window has this conversation open, or had it open before it lost its connection. '
   + 'Choose "Take over here" in the notification to continue it in this window.';
+const TAKING_BACK_PAGE = 'Opening the conversation this window had open before it reloaded…';
 const page = (text) => `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none';"></head>
 <body><p>${esc(text)}</p></body></html>`;
@@ -26,6 +27,8 @@ const page = (text) => `<!DOCTYPE html><html><head><meta charset="utf-8">
  *   focus(sessionId)         the panel came to the front
  *   busy(sessionId, pid)     another window runs it: offer to take it over; resolves true when this window may now
  *                            open it, and the tab then shows it
+ *   ownWindow(sessionId)     optional: the holder is this window's own host from before a reload, which busy takes
+ *                            back without asking
  *   label(snapshot)          optional: the tab's title for the conversation's snapshot (its title with an envelope
  *                            while a reply is unread); the title alone otherwise
  *   iconFor(activity)        optional: the tab's icon for 'working', 'waiting' or 'stopped' ({ light, dark } Uris),
@@ -47,7 +50,9 @@ class ChatEditorProvider {
     if (!id) { panel.webview.html = page('This tab does not name a conversation.'); return; }
     let r = await manager.open(id);
     if (!gone && !r.ok && r.pid && this.deps.busy) {
-      panel.webview.html = page(BUSY_PAGE);
+      let own = false;
+      try { own = !!(this.deps.ownWindow && this.deps.ownWindow(id)); } catch (_) { own = false; }
+      panel.webview.html = page(own ? TAKING_BACK_PAGE : BUSY_PAGE);
       let taken = false;
       try { taken = (await this.deps.busy(id, r.pid)) === true; } catch (_) { /* told nothing */ }
       if (taken && !gone) r = await manager.open(id);

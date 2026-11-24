@@ -13,6 +13,7 @@ const cp = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const workplan = require('../../src/workplan');
 
 const HOOKS = path.join(__dirname, '..', '..', 'opencode-plugin', 'agent-work-plan', 'hooks');
 const SID = 'ses_df3c28ab2ffe0TYFbXAnoBpqy6';
@@ -28,16 +29,21 @@ function run(plans, names, payload, env = {}) {
 
 test('one Python process answers for the plan, the time zone and the reply images', { skip: !python && 'no python3' }, (t) => {
   const plans = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-runhooks-'));
-  t.after(() => fs.rmSync(plans, { recursive: true, force: true }));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-runhooks-home-'));
+  t.after(() => { fs.rmSync(plans, { recursive: true, force: true }); fs.rmSync(home, { recursive: true, force: true }); });
   fs.writeFileSync(path.join(plans, 'config.json'), JSON.stringify({ enabled: true, tellTimeZone: true, replyImages: true }));
   fs.writeFileSync(path.join(plans, 'client-time-zone.json'), JSON.stringify({ timeZone: 'America/Los_Angeles' }));
   const payload = { hook_event_name: 'UserPromptSubmit', session_id: SID, turn_id: 'msg_1', prompt: 'hi', cwd: '/w', in_panel: true };
-  const texts = run(plans, ['inject-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py', 'no-such.py', '../plan-row.py'], payload);
+  const texts = run(plans, ['inject-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py', 'no-such.py', '../plan-row.py'], payload,
+    { OPENCODE_PLUS_HOME: home });
   assert.deepEqual(Object.keys(texts), ['inject-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py', 'no-such.py', '../plan-row.py']);
   assert.match(texts['tell-time-zone.py'], /^The user is in America\/Los_Angeles \(P[DS]T, UTC-0[78]:00\)/);
   assert.equal(texts['inject-work-plan.py'], '', 'no plan yet');
-  /* plan_agent.py keeps no folder of a conversation's own for OpenCode, so the image note has nowhere to point. */
-  assert.equal(texts['tell-reply-images.py'], '');
+  /* In the panel the image note names the conversation's own folder under OPENCODE_PLUS_HOME, the one deleting the
+     conversation removes. */
+  assert.ok(texts['tell-reply-images.py'].startsWith('This panel shows images'), texts['tell-reply-images.py']);
+  assert.equal(workplan.scratchDir(SID, home), path.join(home, 'scratch', SID));
+  assert.ok(texts['tell-reply-images.py'].includes(` ${workplan.scratchDir(SID, home)} `), texts['tell-reply-images.py']);
   assert.equal(texts['no-such.py'], '');
   assert.equal(texts['../plan-row.py'], '', 'only the hook scripts are run');
   /* The hook keeps what it said beside the plan, so the next message is not told again. */

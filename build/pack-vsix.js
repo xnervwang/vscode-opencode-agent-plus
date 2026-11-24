@@ -19,7 +19,7 @@ const os = require('os');
 const path = require('path');
 const manifest = require('./make-manifest');
 
-const OWN = ['package.json', 'extension.js', 'README.md', 'src', 'media', 'images', 'opencode-plugin'];
+const OWN = ['package.json', 'extension.js', 'README.md', 'ThirdPartyNotices.txt', 'src', 'media', 'images', 'opencode-plugin'];
 const SKIP_DIRS = new Set(['dist-es', 'dist-types', '.github', 'test', 'tests', '__tests__']);
 const SKIP_FILE = /(\.d\.ts|\.map|\.tsbuildinfo)$|^(CHANGELOG|HISTORY)(\.md)?$/i;
 /* media/chat.js loads markdown-it's self-contained browser build (src/ui/chat-panel.js); nothing requires it. */

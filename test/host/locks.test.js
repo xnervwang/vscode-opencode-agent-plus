@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { createLocks, processAlive } = require('../../src/host/locks');
+const { createLocks, processAlive, windowToken } = require('../../src/host/locks');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'na-locks-'));
 const ID = '3f2b6c1e-0000-4000-8000-000000000001';
@@ -112,6 +112,46 @@ test('the folder is watched only while a lock is held, and old or own requests a
   assert.deepStrictEqual(locks.held(), [ID]);
   locks.release(ID);
   assert.strictEqual(watches[0].closed, true);
+});
+
+test('a lock names its window; ownWindow is true only for another live holder of this same window', () => {
+  const dir = tmp();
+  const W = '0d6f3c1e-1111-4222-8333-444455556666';
+  const old = createLocks({ dir, pid: 111, window: W, alive: () => true });
+  assert.deepStrictEqual(old.acquire(ID), { ok: true });
+  assert.strictEqual(JSON.parse(fs.readFileSync(old.file(ID), 'utf8')).window, W);
+  assert.strictEqual(old.ownWindow(ID), false, 'its own lock is not another holder');
+  const reloaded = createLocks({ dir, pid: 222, window: W, alive: (pid) => pid === 111 });
+  assert.strictEqual(reloaded.ownWindow(ID), true);
+  assert.strictEqual(reloaded.holder(ID), 111, 'it is still a live holder for everything else');
+  assert.strictEqual(createLocks({ dir, pid: 333, window: 'another', alive: () => true }).ownWindow(ID), false, 'another window');
+  assert.strictEqual(createLocks({ dir, pid: 333, alive: () => true }).ownWindow(ID), false, 'a window with no name');
+  assert.strictEqual(createLocks({ dir, pid: 222, window: W, alive: () => false }).ownWindow(ID), false, 'a holder that is gone');
+  const rec = JSON.parse(fs.readFileSync(old.file(ID), 'utf8'));
+  fs.writeFileSync(old.file(ID), JSON.stringify({ ...rec, host: 'another-machine' }));
+  assert.strictEqual(reloaded.ownWindow(ID), false, 'a lock written on another machine');
+  fs.writeFileSync(old.file(ID), JSON.stringify({ pid: 111, at: Date.now() }));
+  assert.strictEqual(reloaded.ownWindow(ID), false, 'a lock that names no window');
+  const unnamed = createLocks({ dir: tmp(), pid: 444, alive: () => true });
+  unnamed.acquire(ID);
+  assert.strictEqual('window' in JSON.parse(fs.readFileSync(unnamed.file(ID), 'utf8')), false);
+});
+
+test('windowToken makes a name once and reads it back; a damaged one is replaced', async () => {
+  const store = new Map();
+  const memo = { get: (k, d) => (store.has(k) ? store.get(k) : d), update: async (k, v) => { store.set(k, v); } };
+  const first = windowToken(memo, 'k');
+  assert.match(first, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  await new Promise((r) => setImmediate(r));
+  assert.strictEqual(store.get('k'), first);
+  assert.strictEqual(windowToken(memo, 'k'), first, 'the same after a reload');
+  store.set('k', '../not a name');
+  const fresh = windowToken(memo, 'k');
+  assert.notStrictEqual(fresh, first);
+  await new Promise((r) => setImmediate(r));
+  assert.strictEqual(store.get('k'), fresh);
+  assert.strictEqual(windowToken(undefined, 'k'), '');
+  assert.strictEqual(windowToken({ get() { throw new Error('x'); }, update() { throw new Error('y'); } }, 'k').length, 36);
 });
 
 test('processAlive', () => {

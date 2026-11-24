@@ -31,6 +31,16 @@ test('history: records pass, events are replayed with the time before them, mess
   assert.deepStrictEqual(historyFor(undefined), { records: [], events: [] });
 });
 
+test('the shipped activity bar icon is drawn in currentColor alone, so the theme copies colour all of it', () => {
+  const svg = fs.readFileSync(path.join(__dirname, '..', '..', 'images', 'sidebar.svg'), 'utf8');
+  const colours = [...svg.matchAll(/(?:fill|stroke|stop-color|color)\s*=\s*"([^"]*)"/g)].map((m) => m[1]).filter((v) => v !== 'none');
+  assert.ok(colours.length > 0);
+  assert.deepStrictEqual([...new Set(colours)], ['currentColor']);
+  assert.doesNotMatch(svg, /style=|<style/, 'no colour hidden in CSS');
+  const dark = logoFiles(path.join(__dirname, '..', '..'), fs.mkdtempSync(path.join(os.tmpdir(), 'na-logo-shipped-'))).dark;
+  assert.doesNotMatch(fs.readFileSync(dark, 'utf8'), /currentColor/);
+});
+
 test("logo: the activity bar icon in each theme's colour, written again only when it changes", () => {
   const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'na-logo-'));
   const store = path.join(ext, 'storage');

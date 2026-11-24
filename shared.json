@@ -1,5 +1,5 @@
 {
-  "core": "4c8e133a66cf46276ec3fa667d7b48a00eb2cdc9",
+  "core": "140867a8623e0a9c75c0b91513a41e08682ae968",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -74,7 +74,7 @@
     {
       "path": "opencode-plugin/agent-work-plan/hooks/tell-reply-images.py",
       "from": "shared/plugin/hooks/tell-reply-images.py",
-      "sha256": "f2a9799555c53cc3f59ec08833eee12c916ac06a31b4ff162ebb23e2e68ae8a6"
+      "sha256": "7cb4444344d4d30d6a7f649cf9c734310e06c085bddf5004ff98c72be91f56c1"
     },
     {
       "path": "opencode-plugin/agent-work-plan/hooks/nudge-work-plan.py",
@@ -89,7 +89,7 @@
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/opencode/plan_agent.py",
-      "sha256": "591d2a378a1f7ccaba8f61f5b15e3a0f17bd695f03c76632273f024a79911bbb"
+      "sha256": "eb09bbcb5e93fe0ca06f6bf8633561990d667fb2ee43ed52578f81aecbca66bc"
     },
     {
       "path": "src/shared/title-marks.js",

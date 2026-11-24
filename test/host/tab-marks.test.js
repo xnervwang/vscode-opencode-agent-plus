@@ -96,8 +96,9 @@ test('tab icons: the logo in each theme colour, a green or red dot for working a
     assert.doesNotMatch(read(files.stopped.dark), /circle cx="19"/);
     assert.match(read(files.working.dark), new RegExp(`fill="${DOTS.working}"`));
     assert.match(read(files.waiting.light), new RegExp(`fill="${DOTS.waiting}"`));
-    assert.match(read(files.waiting.light), /stroke="#424242"/);
-    assert.match(read(files.waiting.dark), /stroke="#c5c5c5"/);
+    /* The logo's own colour, whether the icon is drawn with fills or strokes. */
+    assert.match(read(files.waiting.light), /(fill|stroke)="#424242"/);
+    assert.match(read(files.waiting.dark), /(fill|stroke)="#c5c5c5"/);
     assert.doesNotMatch(read(files.working.dark), /currentColor/);
     for (const f of [files.stopped.light, files.working.dark]) assert.match(path.basename(f), /^tab-(stopped|working)-(light|dark)-[0-9a-f]{10}\.svg$/);
     const before = fs.statSync(files.working.dark).mtimeMs;

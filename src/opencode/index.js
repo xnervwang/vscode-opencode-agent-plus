@@ -46,6 +46,7 @@ const brand = require('../brand');
 const server = require('./server');
 const { createConnection, METHOD_NOT_FOUND, TIMED_OUT } = require('./client');
 const mapper = require('./mapper');
+const quietWrites = require('./quiet-writes');
 const times = require('./times');
 
 const PROTOCOL_VERSION = 1;
@@ -170,6 +171,8 @@ function bedrockHelp(major) {
  *                  paths outside the project ask first)
  *   config         more inline OpenCode configuration, merged over ours: an object, or line => object where line is
  *                  the version line found (1 or 2), whose config keys differ ("plugin" vs "plugins")
+ *   quietFolder    sessionId => a folder, or null: under our permission rules, a write or edit only inside it is
+ *                  allowed once without asking (quiet-writes.js)
  *   root, idleStopMs, now, log
  *   newSessionTimeoutMs  how long session/new may take (60 s)
  *   ownQuietMs, ownAfterTextMs   when a turn OpenCode started itself counts as over (OWN_QUIET_MS, OWN_AFTER_TEXT_MS)
@@ -191,7 +194,8 @@ function createOpenCode(opts = {}) {
   const exportWaitMs = opts.exportWaitMs > 0 ? opts.exportWaitMs : EXPORT_WAIT_MS;
   /* The session capabilities OpenCode last said it has, kept when its process stops. */
   let knownSessionCaps = null;
-  let settings = { binaryPath: opts.binaryPath || '', env: { ...(opts.env || {}) }, permissions: opts.permissions !== false, config: opts.config || null };
+  let settings = { binaryPath: opts.binaryPath || '', env: { ...(opts.env || {}) }, permissions: opts.permissions !== false, config: opts.config || null,
+    quietFolder: typeof opts.quietFolder === 'function' ? opts.quietFolder : null };
 
   let proc = null;
   let gen = 0;
@@ -326,6 +330,12 @@ function createOpenCode(opts = {}) {
     if (method === 'session/request_permission') {
       const h = handles.get(params.sessionId);
       if (!h) return { outcome: { outcome: 'cancelled' } };
+      /* Only under our rules: with OpenCode's own policy left alone, what it asks about is the user's to answer. */
+      const quiet = settings.permissions ? quietWrites.answer(params, settings.quietFolder) : null;
+      if (quiet) {
+        log(`allowed without asking: ${(params.toolCall && params.toolCall.name) || 'a tool'} writing in the conversation's own folder`);
+        return quiet;
+      }
       return h.askPermission(params);
     }
     if (method === 'elicitation/create') {
@@ -1345,6 +1355,7 @@ function createOpenCode(opts = {}) {
         env: next.env !== undefined ? { ...next.env } : settings.env,
         permissions: next.permissions !== undefined ? next.permissions !== false : settings.permissions,
         config: next.config !== undefined ? next.config : settings.config,
+        quietFolder: next.quietFolder !== undefined ? (typeof next.quietFolder === 'function' ? next.quietFolder : null) : settings.quietFolder,
       };
       lastAuthError = null;
       await stopProcess();

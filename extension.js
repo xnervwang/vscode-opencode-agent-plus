@@ -33,7 +33,7 @@ const os = require('os');
 const path = require('path');
 const brand = require('./src/brand');
 const paths = require('./src/paths');
-const { createLocks } = require('./src/host/locks');
+const { createLocks, windowToken } = require('./src/host/locks');
 const { createSessionManager } = require('./src/host/session-manager');
 const { createBackend } = require('./src/host/backend');
 const { createModels } = require('./src/host/models');
@@ -69,6 +69,8 @@ const ZONE_KEY = `${brand.prefix}.timeZone`;
 const CONTEXT_FORK = `${brand.prefix}.canFork`;
 /* Whether the chat pages chime, as the footer's button last left it; on until muted, as in Claude Code Plus. */
 const SOUND_KEY = `${brand.prefix}.sound`;
+/* The name of this window in the locks it takes (src/host/locks.js windowToken). */
+const WINDOW_KEY = `${brand.prefix}.window`;
 const REWIND = 'Rewind';
 const TAKE_OVER = 'Take over here';
 const TAKE_ANYWAY = 'Take over anyway';
@@ -148,7 +150,7 @@ function activate(context) {
     Promise.resolve().then(() => backend.detect()).then((found) => plan.checkVersion(found.version), () => { versionKnown = false; });
   };
   const models = createModels({ vscode, listModels: () => backend.listModels(), defaultModel: () => backend.defaultModel() });
-  const locks = createLocks({ dir: path.join(paths.root(), 'locks'), log });
+  const locks = createLocks({ dir: path.join(paths.root(), 'locks'), window: windowToken(context.workspaceState, WINDOW_KEY), log });
   subs.push(locks);
   /* Sessions this window just made, handed to the chat tab that opens them; folders of listed ones, for openSession. */
   const made = new Map();
@@ -236,7 +238,7 @@ function activate(context) {
     openOwn: async (id, handOff) => {
       const p = manager.panelOf(id);
       if (p) { p.reveal(p.viewColumn); return true; }
-      if (handOff && locks.holder(id)) return false;
+      if (handOff && locks.holder(id) && !locks.ownWindow(id)) return false;
       return openSession(id);
     },
     log,
@@ -353,6 +355,7 @@ function activate(context) {
    * offers to take it anyway. True once this window may open it.
    */
   async function takeOver(id) {
+    if (locks.ownWindow(id)) return takeBack(id);
     const choice = await ask(BUSY_TEXT, TAKE_OVER);
     if (choice !== TAKE_OVER) return false;
     const r = await locks.requestTakeover(id);
@@ -362,6 +365,18 @@ function activate(context) {
     if (force !== TAKE_ANYWAY) return false;
     const lock = locks.acquire(id, { force: true });
     if (!lock.ok) fail('The conversation could not be taken over', lock.error || 'the lock kept changing');
+    return lock.ok;
+  }
+  /*
+   * The extension host this window had before a reload still holds it, as over Remote-SSH when the old connection was
+   * not closed: taken back without asking, and by force when that host does not answer, since no other window has it.
+   */
+  async function takeBack(id) {
+    const r = await locks.requestTakeover(id);
+    log(`taking back ${id} from this window's earlier extension host: ${r}`);
+    if (r !== 'timeout') return true;
+    const lock = locks.acquire(id, { force: true });
+    if (!lock.ok) fail('The conversation could not be taken back', lock.error || 'the lock kept changing');
     return lock.ok;
   }
   /* The holder's side: the conversation stops here and its tabs go, also in a window whose client has gone. */
@@ -435,6 +450,7 @@ function activate(context) {
     show,
     focus: (id) => { if (link) link.focus(id); },
     busy: (id) => takeOver(id),
+    ownWindow: (id) => locks.ownWindow(id),
     label: (s) => marks.withMarks(s.title, { unseen: s.unseen, envelope: envelope.envelope(vscode) }),
     iconFor,
     onDidChangeLook: (fn) => envelope.onEnvelopeChange(vscode, fn),
@@ -456,11 +472,14 @@ function activate(context) {
         for (const r of rows) if (r.cwd) folders.set(r.id, r.cwd);
         return rows.filter((r) => inScope(r.cwd));
       }),
-      /* Its plan goes with it: Agent Plus only reads the plans folder. */
+      /* Its plan and its scratch folder go with it: Agent Plus only reads the plans folder. */
       deleteSession: (id) => backend.deleteSession(id).then(() => {
         recent.remove(id);
         const gone = workplan.removePlan(id);
         if (gone.length) log(`deleted the plan files of ${id}: ${gone.join(', ')}`);
+        try {
+          if (workplan.removeScratch(id)) log(`deleted the scratch folder of ${id}`);
+        } catch (e) { log(`could not delete the scratch folder of ${id}: ${e.message}`); }
       }),
     },
     manager,

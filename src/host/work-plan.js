@@ -158,12 +158,14 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     writeSettings,
     values,
     findPython,
-    /* What OpenCode starts with, added to the settings' own: the plugin's environment and its inline configuration,
-       while the plugin is in place (it is not copied in Restricted Mode, nor when copying failed). */
+    /* What OpenCode starts with, added to the settings' own: the plugin's environment, its inline configuration and
+       the conversation's folder for images, written without asking, while the plugin is in place (it is not copied in
+       Restricted Mode, nor when copying failed). */
     launch(options) {
       const o = options || {};
-      if (!fs.existsSync(path.join(workplan.pluginDir(), 'index.js'))) return { ...o };
-      return { ...o, env: { ...(o.env || {}), ...workplan.pluginEnv() }, config: (line) => workplan.configFor(line) };
+      if (!fs.existsSync(path.join(workplan.pluginDir(), 'index.js'))) return { ...o, quietFolder: null };
+      return { ...o, env: { ...(o.env || {}), ...workplan.pluginEnv() }, config: (line) => workplan.configFor(line),
+        quietFolder: (id) => workplan.scratchDir(id) };
     },
     /* Whether the conversations keep a brief: Agent Plus then shows it when a conversation's row is clicked. */
     brief() { const v = values(); return v.enabled && v.brief; },

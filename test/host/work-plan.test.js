@@ -152,7 +152,7 @@ test('OpenCode 1 is told once per workspace and version, and a row above the pla
 
 test('launch adds the plugin environment and configuration to the settings OpenCode starts with', async () => {
   const { home, plan } = make();
-  assert.deepEqual(plan.launch({ env: { AWS_PROFILE: 'p' } }), { env: { AWS_PROFILE: 'p' } }, 'nothing while the plugin is not in place');
+  assert.deepEqual(plan.launch({ env: { AWS_PROFILE: 'p' } }), { env: { AWS_PROFILE: 'p' }, quietFolder: null }, 'nothing while the plugin is not in place');
   await plan.start();
   const o = plan.launch({ binaryPath: '/x/opencode', permissions: true, env: { AWS_PROFILE: 'p' } });
   assert.equal(o.binaryPath, '/x/opencode');
@@ -161,6 +161,9 @@ test('launch adds the plugin environment and configuration to the settings OpenC
   assert.deepEqual(o.config(2).plugins, [workplan.pluginDir(home)]);
   assert.ok(o.config(2).permissions.some((r) => r.action === 'read' && r.resource === `${path.join(home, 'plans')}/*`));
   assert.match(o.config(1).plugin[0], /^file:\/\/.*\/agent-work-plan\/index\.js$/);
+  /* Writes into a conversation's own image folder go without asking (src/opencode/quiet-writes.js). */
+  assert.equal(o.quietFolder('ses_df3c28ab2ffe0TYFbXAnoBpqy6'), path.join(home, 'scratch', 'ses_df3c28ab2ffe0TYFbXAnoBpqy6'));
+  assert.equal(o.quietFolder('../x'), null);
   assert.deepEqual(plan.launch(undefined).env, { OPENCODE_PLUS_HOOKS_DIR: workplan.scriptsDir(home), OPENCODE_PLUS_HOME: home });
   plan.dispose();
 });

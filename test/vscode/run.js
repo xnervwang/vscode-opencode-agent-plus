@@ -24,7 +24,8 @@
  * repository so OpenCode can restore files), a reply shows a local image, a shell command moved to the background shows
  * on the Background line until it ends, Esc stops a turn, the info box and the MCP list show, and a fork opens from the
  * tab's menu while the Conversations view splits into its two groups. After the reload a replayed message keeps the time
- * it was sent. With OpenCode 1 the notice that the work plan needs OpenCode 2 is shown
+ * it was sent. The icons are shot in the activity bar in both themes, in the Extensions view, and on Agent Plus's rows
+ * once a second source is registered (Agent Plus draws a source's logo only then). With OpenCode 1 the notice that the work plan needs OpenCode 2 is shown
  * once, the new controls show only what it offers, and its tab offers no Rename but Fork. The plugin writes what it does to
  * <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
@@ -421,8 +422,35 @@ async function main() {
       && fs.existsSync(path.join(plansDir, 'config.json')), 20000);
     check(inPlace, "the work plan plugin, its scripts and config.json are in place in the extension's folder");
     await shot('01-activity-bar', { features: ['activity bar icon', 'Conversations view'],
-      expect: 'The activity bar on the far left has the OpenCode Plus icon (a speech bubble with three dots) selected; the side bar shows the OpenCode Plus container with a Conversations view (its header may read "OpenCode Plus: Convers…"), empty or with a hint.',
+      expect: 'The activity bar on the far left has the OpenCode Plus icon (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour) selected; the side bar shows the OpenCode Plus container with a Conversations view (its header may read "OpenCode Plus: Convers…"), empty or with a hint.',
       part: '#workbench\\.parts\\.sidebar' });
+    /* VS Code puts a progress badge over a container's icon while one of its views loads; the close-ups wait it out. */
+    const barQuiet = () => until(() => page.evaluate(() => {
+      const seen = (e) => !!e && e.offsetParent !== null;
+      return ![...document.querySelectorAll('.activitybar .badge.progress-badge')].some(seen)
+        && ![...document.querySelectorAll('#workbench\\.parts\\.sidebar .monaco-progress-container.active')].some(seen);
+    }), 30000);
+    await barQuiet();
+    await shot('01a-activity-bar-icon-dark', { features: ['activity bar icon'],
+      expect: 'A close-up of the activity bar in the dark theme. Among the icons is the OpenCode Plus one, the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour, drawn in the same light grey as the other icons (brighter, as the selected one), about their size, sharp and centred in its slot, not cut off or blurred.',
+      part: '#workbench\\.parts\\.activitybar' });
+
+    // 1b. The extension's own icon in the Extensions view.
+    await call('await vscode.commands.executeCommand("workbench.view.extensions"); await vscode.commands.executeCommand("workbench.extensions.search", "@installed OpenCode Plus"); return true;');
+    const extIcon = await until(() => page.evaluate(() => {
+      for (const row of document.querySelectorAll('.extensions-viewlet .monaco-list-row')) {
+        if (!/OpenCode Plus/.test(row.textContent)) continue;
+        const img = row.querySelector('img.icon');
+        return img && img.complete && img.naturalWidth > 0 ? { width: img.naturalWidth, height: img.naturalHeight } : null;
+      }
+      return null;
+    }), 30000);
+    check(!!extIcon && extIcon.width === 256 && extIcon.height === 256, 'the Extensions view lists OpenCode Plus with its 256 by 256 icon', extIcon);
+    await page.mouse.move(800, 600);
+    await shot('01b-extensions-view-icon', { features: ['extension icon'],
+      expect: 'The Extensions view in the side bar, searched for "@installed OpenCode Plus", lists OpenCode Plus with its icon at the left of the row: a rounded indigo square with a white document outline holding three list rows (the first with a green tick), and a white circle at its left edge holding the OpenCode mark (an upright rectangular frame whose lower inner half is fainter). The icon is sharp, not stretched or cut off, and its rounded corners show the side bar behind them.',
+      part: '#workbench\\.parts\\.sidebar' });
+    await call('await vscode.commands.executeCommand("workbench.extensions.search", ""); await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
 
     // 2. A new conversation opens a chat tab.
     const before = Date.now();
@@ -1351,6 +1379,37 @@ async function main() {
     await shot('05-agent-plus', { features: ['Agent Plus conversations'],
       expect: 'The panel at the bottom shows Agent Plus\'s Conversations view, which lists this conversation by its title (possibly cut short) with no activity dot, since it has stopped.',
       part: '#workbench\\.parts\\.panel' });
+
+    // 4b. With a second source registered, Agent Plus draws this source's logo on its rows, in each theme.
+    const second = await call(`const ap = vscode.extensions.getExtension('xnervwang.agent-plus').exports.agentPlus;
+      const r = ap.registerSource({ protocol: 1, id: 'look-second', label: 'Second source', listConversations: async () => [] });
+      global.__lookSecond = r.registration; return r.accepted;`);
+    const logoShown = () => until(() => page.evaluate(() => {
+      const panel = document.getElementById('workbench.parts.panel');
+      return !!panel && [...panel.querySelectorAll('.monaco-list-row *')].some((e) => /conversation-icons/.test(e.style.backgroundImage || ''));
+    }), 30000);
+    check(second === true && await logoShown(), "with a second source registered, Agent Plus's rows of this source show the OpenCode Plus logo", { second });
+    await page.mouse.move(800, 300);
+    await shot('05b-agent-plus-logo-dark', { features: ['Agent Plus logo'],
+      expect: 'Agent Plus\'s Conversations view in the dark theme: this conversation\'s row starts with the OpenCode Plus logo, the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour, in light grey, readable against the dark panel, about the size of a tree icon, with no activity dot since the conversation has stopped.',
+      part: '#workbench\\.parts\\.panel' });
+    const setTheme = async (theme, cls) => {
+      await call('await vscode.workspace.getConfiguration().update("workbench.colorTheme", arg, vscode.ConfigurationTarget.Global); return true;', theme);
+      return until(() => page.evaluate((c) => document.querySelector('.monaco-workbench').classList.contains(c), cls), 20000);
+    };
+    check(await setTheme('Default Light Modern', 'vs'), 'the window switches to the light theme');
+    await logoShown();
+    await page.mouse.move(800, 300);
+    await shot('05c-agent-plus-logo-light', { features: ['Agent Plus logo'],
+      expect: 'The same Conversations view in the light theme: the row\'s OpenCode Plus logo is now dark grey on the light panel (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour), readable, with no dot.',
+      unchanged: 'The rows and their titles, apart from the colours of the theme.',
+      part: '#workbench\\.parts\\.panel' });
+    await barQuiet();
+    await shot('05d-activity-bar-icon-light', { features: ['activity bar icon'],
+      expect: 'A close-up of the activity bar in the light theme. The OpenCode Plus icon (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour) is drawn in the same dark grey as the other icons, about their size, sharp and readable against the light bar.',
+      part: '#workbench\\.parts\\.activitybar' });
+    check(await setTheme('Default Dark Modern', 'vs-dark'), 'the window switches back to the dark theme');
+    await call('if (global.__lookSecond) global.__lookSecond.dispose(); global.__lookSecond = null; return true;');
     await call('await vscode.commands.executeCommand("workbench.action.closePanel"); return true;').catch(() => {});
 
     // 5. The Conversations view lists it. (Clicking the icon of the container already shown would hide the side bar.)

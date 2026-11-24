@@ -167,6 +167,26 @@ function removePlan(sessionId, dir = planDir()) {
 }
 
 /*
+ * The folder the shared hooks name for one conversation's images (plan_agent.py scratch_dir: <root>/scratch/<id>), or
+ * null for an id of another shape. Nothing creates it here; the model does when it first saves an image.
+ */
+function scratchDir(sessionId, root = paths.root()) {
+  return typeof sessionId === 'string' && SESSION_ID.test(sessionId) ? path.join(root, 'scratch', sessionId) : null;
+}
+
+/*
+ * When the user deletes a conversation: its scratch folder and everything in it, which nothing else clears. A symbolic
+ * link there is removed, not followed. Returns whether there was something to remove.
+ */
+function removeScratch(sessionId, root = paths.root()) {
+  const dir = scratchDir(sessionId, root);
+  if (!dir) return false;
+  try { fs.lstatSync(dir); } catch (_) { return false; }
+  fs.rmSync(dir, { recursive: true, force: true });
+  return true;
+}
+
+/*
  * Tells the plugin which Python to start, in launcher.json beside the scripts: `python` is what
  * src/shared/python-runtime.js findPython gave. Its full path is written, since OpenCode starts it without a shell.
  * Returns whether the file changed.
@@ -191,6 +211,8 @@ module.exports = {
   planPath,
   writeLauncher,
   removePlan,
+  scratchDir,
+  removeScratch,
   SIDE_SUFFIXES,
   OWN_SUFFIXES,
 };

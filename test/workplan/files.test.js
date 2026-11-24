@@ -41,6 +41,36 @@ test('removePlan touches nothing for an id that is not OpenCode\'s shape', () =>
   assert.deepEqual(fs.readdirSync(dir).sort(), ['..json', 'config.json']);
 });
 
+test('scratchDir is <root>/scratch/<id>, and removeScratch takes that folder only', () => {
+  const root = tmp();
+  assert.equal(workplan.scratchDir(SID, root), path.join(root, 'scratch', SID));
+  for (const id of ['', '.', '..', '../x', `${SID}/../x`, 'ses_../../x', '3f2b6c1e-0000-4000-8000-00000000000a', undefined, null]) {
+    assert.equal(workplan.scratchDir(id, root), null);
+    assert.equal(workplan.removeScratch(id, root), false);
+  }
+  assert.equal(workplan.removeScratch(SID, root), false, 'no folder yet');
+  for (const id of [SID, OTHER]) {
+    fs.mkdirSync(path.join(root, 'scratch', id, 'sub'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'scratch', id, 'chart.png'), 'png');
+    fs.writeFileSync(path.join(root, 'scratch', id, 'sub', 'b.svg'), '<svg/>');
+  }
+  assert.equal(workplan.removeScratch(SID, root), true);
+  assert.deepEqual(fs.readdirSync(path.join(root, 'scratch')), [OTHER]);
+  assert.deepEqual(fs.readdirSync(path.join(root, 'scratch', OTHER)).sort(), ['chart.png', 'sub']);
+  assert.equal(workplan.removeScratch(SID, root), false, 'a second call finds nothing');
+});
+
+test('removeScratch removes a symbolic link in place of the folder, and nothing where it leads', { skip: process.platform === 'win32' && 'links need rights on Windows' }, () => {
+  const root = tmp();
+  const outside = tmp();
+  fs.writeFileSync(path.join(outside, 'keep.txt'), 'x');
+  fs.mkdirSync(path.join(root, 'scratch'));
+  fs.symlinkSync(outside, path.join(root, 'scratch', SID));
+  assert.equal(workplan.removeScratch(SID, root), true);
+  assert.deepEqual(fs.readdirSync(path.join(root, 'scratch')), []);
+  assert.deepEqual(fs.readdirSync(outside), ['keep.txt']);
+});
+
 test('the side files are the ones plan_common.py names', () => {
   const text = fs.readFileSync(path.join(__dirname, '..', '..', 'opencode-plugin', 'agent-work-plan', 'hooks', 'plan_common.py'), 'utf8');
   const named = [...text.matchAll(/^[A-Z_]+_SUFFIX = "(\.[a-z-]+)"/gm)].map((m) => m[1]).filter((s) => s !== '.lock');

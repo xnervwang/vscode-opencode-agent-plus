@@ -19,7 +19,7 @@ const { uriOf } = require('../../src/host/agentplus-source');
 
 const A = '3f2b6c1e-0000-4000-8000-00000000000a';
 
-function setup({ locked = false, onBusy = null } = {}) {
+function setup({ locked = false, onBusy = null, ownWindow = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'na-ce-'));
   const other = createLocks({ dir, pid: 7777, alive: () => true });
   if (locked) other.acquire(A);
@@ -40,7 +40,8 @@ function setup({ locked = false, onBusy = null } = {}) {
     manager,
     show: (panel, entry) => { const v = { panel, entry, disposed: 0, dispose() { v.disposed++; } }; shown.push(v); return v; },
     focus: (id) => focused.push(id),
-    busy: async (id, pid) => { busy.push([id, pid]); return onBusy ? onBusy(other) : false; },
+    busy: async (id, pid) => { busy.push([id, pid]); return onBusy ? onBusy(other, provider) : false; },
+    ...(ownWindow ? { ownWindow } : {}),
   });
   return { manager, provider, shown, focused, busy, convs };
 }
@@ -97,6 +98,17 @@ test('once the other window lets go, the same tab opens the conversation', async
   assert.deepStrictEqual(s.busy, [[A, 7777]]);
   assert.strictEqual(s.shown.length, 1);
   assert.strictEqual(s.manager.panelOf(A), panel);
+});
+
+test('while this window takes back its own conversation, the tab says it is opening it, not that another window has it', async () => {
+  let page = '';
+  const panel = control.panel();
+  const s = setup({ locked: true, ownWindow: (id) => id === A, onBusy: (other) => { page = panel.webview.html; other.release(A); return true; } });
+  await open(s.provider, uriOf(A), panel);
+  assert.match(page, /Opening the conversation this window had open before it reloaded/);
+  assert.doesNotMatch(page, /Take over here/);
+  assert.deepStrictEqual(s.busy, [[A, 7777]], 'busy still does the taking back');
+  assert.strictEqual(s.shown.length, 1);
 });
 
 test('a URI that names no conversation, and a tab closed while it opened', async () => {

@@ -80,13 +80,21 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(tree.getTreeItem(rows[0]).command.command, 'opencodePlus.openConversation');
 
-  /* Deleting it takes its plan and the files beside it, and leaves another conversation's. */
+  /* Deleting it takes its plan, the files beside it and its scratch folder, and leaves another conversation's. */
   const id = opened[0][0].slice('opencodeplus-session:/'.length);
   const plans = path.join(process.env.OPENCODE_PLUS_HOME, 'plans');
+  const scratch = path.join(process.env.OPENCODE_PLUS_HOME, 'scratch');
   const other = 'ses_0000000000000000other';
   for (const n of [`${id}.json`, `${id}.injected`, `${id}.turn`, `${other}.json`]) fs.writeFileSync(path.join(plans, n), '{}');
+  for (const s of [id, other]) {
+    fs.mkdirSync(path.join(scratch, s, 'sub'), { recursive: true });
+    fs.writeFileSync(path.join(scratch, s, 'chart.png'), 'png');
+    fs.writeFileSync(path.join(scratch, s, 'sub', 'more.svg'), '<svg/>');
+  }
   control.state.answers.push(['Delete "', 'Delete']);
   assert.strictEqual(await control.state.handlers['opencodePlus.deleteConversation'](rows[0]), true);
   assert.deepStrictEqual(fs.readdirSync(plans).sort(), ['config.json', `${other}.json`]);
+  assert.deepStrictEqual(fs.readdirSync(scratch), [other]);
+  assert.ok(fs.existsSync(path.join(scratch, other, 'sub', 'more.svg')));
   extension.deactivate();
 });
