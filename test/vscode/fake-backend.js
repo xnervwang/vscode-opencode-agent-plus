@@ -6,8 +6,9 @@
 /*
  * OPENCODE_PLUS_TEST_BACKEND for the window tests: createOpenCode's shape (src/opencode/index.js) with task three's scripted
  * conversation (test/ui/fake-conversation.js) as each session, so no OpenCode and no model are needed. A session's
- * first turn draws every kind of item, a permission request included. Sessions and the events each one emitted are
- * kept in <OPENCODE_PLUS_HOME>/fake-backend.json, so a reloaded window finds them again.
+ * first turn draws every kind of item, a permission request included; a message "Say: <text>" is answered with <text>,
+ * for a reply the test writes itself. Sessions and the events each one emitted are kept in
+ * <OPENCODE_PLUS_HOME>/fake-backend.json, so a reloaded window finds them again.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -55,6 +56,20 @@ function createOpenCode() {
       write(db);
       if (['turnStart', 'turnEnd', 'permission', 'permissionSettled', 'userMessage'].includes(ev.type)) changed(saved.id);
     });
+    const send = c.send;
+    let said = 0;
+    c.send = (text, extra) => {
+      const m = /^Say: ([\s\S]+)$/.exec(String(text));
+      if (!m) return send.call(c, text, extra);
+      const turnId = `say-${++said}`;
+      setTimeout(() => {
+        c.emit({ type: 'turnStart', turnId });
+        c.emit({ type: 'userMessage', text: String(text) });
+        for (let i = 0; i < m[1].length; i += 24) c.emit({ type: 'text', delta: m[1].slice(i, i + 24) });
+        c.emit({ type: 'turnEnd', turnId, reason: 'endTurn' });
+      }, 60);
+      return Promise.resolve();
+    };
     const dispose = c.dispose;
     c.dispose = () => { live.delete(saved.id); dispose.call(c); };
     live.set(saved.id, c);

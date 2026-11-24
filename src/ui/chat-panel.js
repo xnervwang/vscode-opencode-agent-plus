@@ -28,6 +28,10 @@
  * never widen; VS Code reloads a page whose options change). A diff opened from a permission card gets Allow once, Allow
  * in this project and Deny in its editor's title bar (see answerFromDiff); its right side's path is listed under the
  * context key opencodePlus.openDiffs while the request is open.
+ *
+ * `links` (the caller's: src/host/conversation-links.js) gives the conversations a reply may name, which the page turns
+ * into links ('conversations' { rev, list, self }), and opens the one clicked. The page's outline of the user's messages
+ * and its subagent filter need nothing from here.
  */
 const path = require('path');
 const fs = require('fs');
@@ -42,6 +46,8 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_FILES = 20;
 const MARKDOWN_IT = ['node_modules', 'markdown-it', 'dist', 'browser'];
 const FLUSH_MS = 16;
+/* This extension's source id at Agent Plus (src/host/agentplus-source.js). */
+const SOURCE_ID = 'opencode-plus';
 
 /* One read-only content provider for every panel; it holds the before/after texts of recent diffs. */
 const diffDocs = new Map();
@@ -130,6 +136,7 @@ class ChatPanel {
    *   info?: () => (Array<{ label: string, value: string }> | Promise<Array<{ label: string, value: string }>>),
    *   sound?: { on(): boolean, set(on: boolean): unknown },
    *   loadImage?: (src: string) => Promise<{ ok: true, dataUrl: string } | { ok: false, reason: string }>,
+   *   links?: { current(): { rev: number, list: object[] }, onDidChange(fn: () => void): { dispose(): void }, open(sourceId: string, sessionId: string): unknown },
    *   vscode?: object,
    *   now?: () => number,
    * }} opts
@@ -162,6 +169,7 @@ class ChatPanel {
     this.info = typeof opts.info === 'function' ? opts.info : null;
     this.sound = opts.sound && typeof opts.sound.on === 'function' ? opts.sound : null;
     this.loadImage = typeof opts.loadImage === 'function' ? opts.loadImage : null;
+    this.links = opts.links && typeof opts.links.current === 'function' ? opts.links : null;
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
     if (opts.model) state = vm.reduce(state, { type: 'ui.model', model: opts.model });
@@ -187,6 +195,7 @@ class ChatPanel {
     ];
     if (this.selection) this.subs.push(toOff(this.selection.onDidChange(() => { if (this.ready) this.postSelection(); })));
     if (this.planBar) this.subs.push(toOff(this.planBar.onDidChange((summary) => { if (this.ready) this.post({ type: 'planBar', summary: summary || null }); })));
+    if (this.links) this.subs.push(toOff(this.links.onDidChange(() => { if (this.ready) this.postConversations(); })));
   }
 
   html(webview, mdDir) {
@@ -212,10 +221,15 @@ class ChatPanel {
   <select id="mode" class="option" hidden></select>
   <select id="effort" class="option" hidden></select>
   <span id="ring" class="ring"><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6"></circle><circle class="fill" cx="8" cy="8" r="6"></circle></svg></span>
+  <button id="subBtn" class="toggle" type="button" aria-pressed="false" hidden>Subagents</button>
+  <button id="navBtn" class="toggle" type="button" aria-pressed="false" hidden>Outline</button>
   <button id="infoBtn" class="icon" type="button" title="About this conversation" hidden>i</button>
 </header>
 <div id="infoBox" role="dialog" hidden></div>
+<div id="middle">
 <main id="log" aria-live="polite"></main>
+<nav id="outline" aria-label="Your messages" hidden><div class="outline-head">Your messages</div><div class="outline-list"></div></nav>
+</div>
 <footer id="bottom">
   <details id="background" hidden><summary></summary><div class="bg-list"></div></details>
   <div id="status" hidden></div>
@@ -308,6 +322,7 @@ ${md}
     this.postCaps();
     this.postSelection();
     this.postPlanBar();
+    this.postConversations();
     if (this.models || this.modelsError) this.postModels();
     else this.loadModels();
   }
@@ -363,6 +378,15 @@ ${md}
     let label = '';
     try { const d = this.selection && this.selection.describe(); label = d && d.label ? String(d.label) : ''; } catch (_) { /* none */ }
     this.post({ type: 'selection', label });
+  }
+
+  /* The conversations a reply may link to; the page leaves out its own. */
+  postConversations() {
+    if (!this.links) return;
+    let got = null;
+    try { got = this.links.current(); } catch (_) { got = null; }
+    const id = typeof this.conversation.id === 'string' ? this.conversation.id : '';
+    this.post({ type: 'conversations', rev: got && Number(got.rev) || 0, list: got && Array.isArray(got.list) ? got.list : [], self: { sourceId: SOURCE_ID, sessionId: id } });
   }
 
   postPlanBar() {
@@ -474,6 +498,13 @@ ${md}
         Promise.resolve().then(() => this.loadImage(src)).then(
           (r) => this.post(r && r.ok ? { type: 'image', id, ok: true, dataUrl: r.dataUrl } : { type: 'image', id, ok: false, reason: (r && r.reason) || 'The image could not be read.' }),
           (err) => this.post({ type: 'image', id, ok: false, reason: (err && err.message) || String(err) }));
+        break;
+      }
+      case 'openConversation': {
+        const sourceId = String(msg.sourceId || '').slice(0, 80);
+        const sessionId = String(msg.sessionId || '').slice(0, 200);
+        if (!this.links || !sourceId || !sessionId) break;
+        Promise.resolve().then(() => this.links.open(sourceId, sessionId)).catch((err) => this.showError(err));
         break;
       }
       case 'background':

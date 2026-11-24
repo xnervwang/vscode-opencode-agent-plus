@@ -14,16 +14,22 @@
  *               commands { commands: [{ name, description }] }, caps { images, files, selection },
  *               selection { label }, selectionAdded { item }, files { seq, query, items }, questionErrors
  *               { requestId, errors }, planBar { summary }, sound { shown, on }, info { rows, error? }, image { id, ok,
- *               dataUrl | reason }, draft { text }; each carries the extension host's `now`.
+ *               dataUrl | reason }, draft { text }, conversations { rev, list, self }; each carries the extension
+ *               host's `now`.
  * Messages out: ready { tz }, send { text, images?, files?, selections? }, abort, permission, question { requestId, action,
  *               values }, viewDiff, setModel, setOption, reloadModels, copy, openLink, findFiles { query, seq },
  *               addSelection, planBarOpen { part: 'plan' | 'answer' }, rewind { itemId }, info, setSound { on },
- *               image { id, src }, background.
+ *               image { id, src }, background, openConversation { sourceId, sessionId }.
  *
  * Esc stops the turn when no list or box is open. A chime (Agent Plus's kit.js, the same three as Claude Code Plus)
  * sounds when a turn ends, when a permission request comes and when a question does, unless the footer's button has
  * muted them. A local image in a reply is read by the extension and comes back as a data: URL; one from the web is shown
  * as a link and never fetched, so an address a reply was given cannot carry anything out.
+ *
+ * Another conversation a reply names, by its title or its id, becomes a link that opens it (agentPlusKit's mentions for
+ * titles and UUIDs, ChatComposer.idRanges for OpenCode's own ids). The Outline button shows a column of the user's
+ * messages and the compaction points beside the log; a click scrolls to one. The Subagents button hides what subagents
+ * did and folds their progress, leaving a request of theirs that still waits. Both choices live in the page's state.
  */
 (function () {
   const api = acquireVsCodeApi();
@@ -54,6 +60,10 @@
   const bgSum = bgEl.querySelector('summary');
   const bgList = bgEl.querySelector('.bg-list');
   const soundBtn = $('sound');
+  const navBtn = $('navBtn');
+  const subBtn = $('subBtn');
+  const outlineEl = $('outline');
+  const outlineList = outlineEl.querySelector('.outline-list');
   /* The settings shown next to the model, by the id the conversation's options() gives them. */
   const optionSels = { mode: $('mode'), effort: $('effort') };
   const ring = $('ring');
@@ -90,6 +100,16 @@
   let fileSeq = 0;
   let fileTimer = 0;
   let noteTimer = 0;
+  /* The conversations a reply may name: agentPlusKit's index of them, and the ones agentPlusKit cannot find by id. */
+  let convIx = null;
+  let convRev = -1;
+  const convIds = new Map();
+  /* The outline and the subagent filter, as the user last left them in this page; the outline starts open on a wide
+     page. */
+  const kept = api.getState() || {};
+  let outlineOpen = typeof kept.outline === 'boolean' ? kept.outline : window.innerWidth >= 760;
+  let hideSubs = kept.hideSubagents === true;
+  let sideFrame = 0;
 
   const DECISION_WORDS = {
     allowOnce: 'Allowed once',
@@ -136,6 +156,7 @@
     }
     target.innerHTML = md.render(text);
     placeImages(target);
+    linkConversations(target);
     for (const pre of target.querySelectorAll('pre')) {
       const wrap = el('div', 'code');
       pre.replaceWith(wrap);
@@ -559,6 +580,11 @@
         break;
     }
     if (item.hidden === true) entry.el.hidden = true;
+    const share = C.subagentShare(item);
+    entry.share = share;
+    entry.el.classList.toggle('sub-hide', share === 'hide');
+    entry.el.classList.toggle('sub-fold', share === 'fold');
+    scheduleSide();
   }
 
   /* Rewinding is offered on the user's messages while nothing runs. */
@@ -620,6 +646,114 @@
     }
     fill(entry, item);
   }
+
+  /* ---------- links to other conversations ---------- */
+
+  function convLink(r, text) {
+    const a = el('a', 'conv-link', text);
+    a.setAttribute('href', '#');
+    a.dataset.source = r.sourceId;
+    a.dataset.session = r.sessionId;
+    let tip = '';
+    try { tip = KIT && typeof KIT.mentionTip === 'function' ? KIT.mentionTip(r, hostNow()) : ''; } catch (_) { tip = ''; }
+    a.title = tip || r.title || r.sessionId;
+    if (KIT && KIT.MENTION_ATTR) a.setAttribute(KIT.MENTION_ATTR, `${r.sourceId}:${r.sessionId}`);
+    return a;
+  }
+  /* Ids agentPlusKit does not look for, in text outside code blocks and links. */
+  function linkIds(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const texts = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) if (n.parentElement && !n.parentElement.closest('pre, a')) texts.push(n);
+    for (const n of texts) {
+      const s = n.nodeValue;
+      const ranges = C.idRanges(s, convIds);
+      if (!ranges.length) continue;
+      const parts = [];
+      let from = 0;
+      for (const r of ranges) {
+        if (r.start > from) parts.push(document.createTextNode(s.slice(from, r.start)));
+        parts.push(convLink({ ...convIds.get(r.id), others: [] }, r.id));
+        from = r.end;
+      }
+      if (from < s.length) parts.push(document.createTextNode(s.slice(from)));
+      n.replaceWith(...parts);
+    }
+  }
+  function linkConversations(target) {
+    if (!convIx) return;
+    if (KIT && typeof KIT.linkMentions === 'function') {
+      try { KIT.linkMentions(target, convIx, (r, text) => convLink(r, text)); } catch (_) { /* the reply as written */ }
+    }
+    if (convIds.size) linkIds(target);
+  }
+  const UUID_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function applyConversations(m) {
+    const rev = Number(m.rev) || 0;
+    const list = Array.isArray(m.list) ? m.list : [];
+    const self = m.self && typeof m.self === 'object' ? m.self : {};
+    const key = `${rev}\n${self.sessionId || ''}`;
+    if (key === convRev) return;
+    convRev = key;
+    convIds.clear();
+    for (const c of list) {
+      if (!c || typeof c.sessionId !== 'string' || !c.sessionId || UUID_ID.test(c.sessionId)) continue;
+      if (c.sessionId === self.sessionId && (!self.sourceId || c.sourceId === self.sourceId)) continue;
+      convIds.set(c.sessionId, c);
+    }
+    convIx = KIT && typeof KIT.mentionIndex === 'function' && list.length ? KIT.mentionIndex(list, { sourceId: self.sourceId, sessionId: self.sessionId, title: head ? head.title : '' }) : null;
+    if (convIx && !convIx.size && !convIds.size) convIx = null;
+    for (const e of nodes.values()) if (e.item && (e.item.kind === 'text' || e.item.kind === 'reasoning') && e.text) scheduleRender(e);
+  }
+
+  /* ---------- the outline and the subagent filter ---------- */
+
+  function keep(patch) { api.setState({ ...(api.getState() || {}), ...patch }); }
+  function scheduleSide() {
+    if (sideFrame) return;
+    sideFrame = requestAnimationFrame(() => { sideFrame = 0; renderSide(); });
+  }
+  function renderSide() {
+    const entries = [...nodes.values()];
+    const rows = C.outlineRows(entries.map((e) => e.item).filter(Boolean));
+    navBtn.hidden = !rows.length;
+    navBtn.setAttribute('aria-pressed', outlineOpen ? 'true' : 'false');
+    navBtn.title = outlineOpen ? 'Hide the list of your messages' : 'Show your messages in a list beside the conversation, to jump to one';
+    outlineEl.hidden = !(outlineOpen && rows.length);
+    outlineList.replaceChildren(...rows.map((r) => {
+      const row = el('button', `outline-row outline-${r.kind}`);
+      row.type = 'button';
+      row.dataset.item = r.id;
+      if (r.kind === 'user') row.append(el('span', 'outline-n', `${r.n}`), el('span', 'outline-text', r.label));
+      else row.append(el('span', 'outline-text', r.label));
+      row.title = `${r.at ? `${stamp(r.at)}  ` : ''}${r.kind === 'user' ? (nodes.get(r.id) && nodes.get(r.id).item.text) || r.label : r.label}`;
+      return row;
+    }));
+    const subs = entries.filter((e) => e.share).length;
+    subBtn.hidden = !subs;
+    subBtn.textContent = hideSubs ? `Subagents hidden (${subs})` : 'Subagents';
+    subBtn.setAttribute('aria-pressed', hideSubs ? 'true' : 'false');
+    subBtn.title = hideSubs ? 'Show what the subagents did' : 'Show only this conversation\'s own output: hide what subagents did and fold their progress';
+    document.body.classList.toggle('hide-subagents', hideSubs);
+  }
+  /* Scrolls the log, and only the log, so that `el` is at its top (8px below it) or, with `center`, in its middle:
+     scrollIntoView would also scroll the page by the few pixels it is taller than its frame. */
+  function scrollLogTo(el, center) {
+    const l = log.getBoundingClientRect(), r = el.getBoundingClientRect();
+    log.scrollTop += center ? (r.top + r.height / 2) - (l.top + l.height / 2) : r.top - l.top - 8;
+  }
+  function jumpTo(entry) {
+    if (!entry) return;
+    scrollLogTo(entry.el, false);
+    entry.el.classList.add('flash');
+    setTimeout(() => entry.el.classList.remove('flash'), 1200);
+  }
+  navBtn.addEventListener('click', () => { outlineOpen = !outlineOpen; keep({ outline: outlineOpen }); renderSide(); });
+  subBtn.addEventListener('click', () => { hideSubs = !hideSubs; keep({ hideSubagents: hideSubs }); renderSide(); });
+  outlineList.addEventListener('click', (e) => {
+    const row = e.target.closest('.outline-row');
+    if (row) jumpTo(nodes.get(row.dataset.item));
+  });
 
   /* ---------- head ---------- */
 
@@ -717,7 +851,8 @@
     const row = e.target.closest('.bg-row');
     const entry = row && row.dataset.item ? nodes.get(row.dataset.item) : null;
     if (!entry) return;
-    entry.el.scrollIntoView({ block: 'center' });
+    if (hideSubs && entry.share) { hideSubs = false; keep({ hideSubagents: false }); renderSide(); }
+    scrollLogTo(entry.el, true);
     if (entry.childC && entry.childC.details) entry.childC.details.open = true;
     entry.el.classList.add('flash');
     setTimeout(() => entry.el.classList.remove('flash'), 1200);
@@ -1122,6 +1257,12 @@
 
   log.addEventListener('click', (e) => {
     const target = e.target;
+    const conv = target.closest('a.conv-link');
+    if (conv) {
+      e.preventDefault();
+      api.postMessage({ type: 'openConversation', sourceId: conv.dataset.source || '', sessionId: conv.dataset.session || '' });
+      return;
+    }
     const link = target.closest('a[href]');
     if (link) {
       e.preventDefault();
@@ -1207,6 +1348,7 @@
       nodes.clear();
       toRender.clear();
       log.replaceChildren();
+      scheduleSide();
       for (const item of m.items || []) upsert(item);
       if (m.head) applyHead(m.head);
       stick = true;
@@ -1218,6 +1360,8 @@
       if (wasAtBottom) scrollEnd();
     } else if (m.type === 'models') {
       applyModels(m);
+    } else if (m.type === 'conversations') {
+      applyConversations(m);
     } else if (m.type === 'planBar') {
       const wasAtBottom = stick;
       applyPlanBar(m.summary && typeof m.summary === 'object' ? m.summary : null);

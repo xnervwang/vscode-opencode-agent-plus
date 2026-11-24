@@ -21,6 +21,9 @@
  *   src/host/reply-file.js        each conversation's latest reply beside its plan, for a steward to read
  *   src/host/rewind.js            rewinding a conversation to before one of the user's messages (OpenCode 2)
  *   src/host/reply-images.js      the local images a reply shows, read for the chat page
+ *   src/host/conversation-links.js   the conversations a reply names, linked in the chat page
+ *   src/host/recent-closed.js     the chat tabs closed in this workspace, for the Recently closed group
+ *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
  *
  * OPENCODE_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -52,6 +55,9 @@ const { createReplyFiles } = require('./src/host/reply-file');
 const workplan = require('./src/workplan');
 const rewinding = require('./src/host/rewind');
 const { loadImage } = require('./src/host/reply-images');
+const { createConversationLinks } = require('./src/host/conversation-links');
+const { createRecentClosed } = require('./src/host/recent-closed');
+const { findConversation } = require('./src/host/find-conversation');
 const hookSettings = require('./src/shared/hook-settings');
 const tokenMode = require('./src/shared/token-mode');
 
@@ -72,6 +78,8 @@ const BUSY_TEXT = 'Another VS Code window has this conversation open, or had it 
 const FORCE_TEXT = 'The other window did not let go of the conversation within 10 seconds. Take it over anyway? '
   + 'If that window is still running, both windows may change the conversation at the same time.';
 let running = null;
+/* Conversations whose tabs close for a takeover, which is not the user closing them. */
+const quietClose = new Set();
 
 function activate(context) {
   const channel = vscode.window.createOutputChannel(brand.displayName, { log: true });
@@ -219,6 +227,22 @@ function activate(context) {
     },
   };
 
+  /* The conversations a reply may name, as links in the chat pages; read only while a page is open. */
+  const links = createConversationLinks({
+    on: () => vscode.workspace.getConfiguration(brand.prefix).get('conversationLinks', true) !== false,
+    active: () => chats.size > 0,
+    own: () => backend.listSessions(),
+    openCore: (target) => vscode.commands.executeCommand('agentPlus.openConversation', target),
+    openOwn: async (id, handOff) => {
+      const p = manager.panelOf(id);
+      if (p) { p.reveal(p.viewColumn); return true; }
+      if (handOff && locks.holder(id)) return false;
+      return openSession(id);
+    },
+    log,
+  });
+  subs.push(links, vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration(`${brand.prefix}.conversationLinks`)) links.settingChanged(); }));
+
   /* Shared by the chat tabs; they list files only while @ is typed and follow the selection only while open. */
   const files = createFileSearch({ vscode });
   const selection = createSelectionTracker({ vscode });
@@ -250,6 +274,7 @@ function activate(context) {
       info: () => infoRows(entry.id),
       sound,
       loadImage: (src) => loadImage(src),
+      links,
       planBar: {
         summary: () => planBar.summaryOf(entry.id),
         onDidChange: (fn) => planBar.follow(entry.id, fn),
@@ -258,6 +283,7 @@ function activate(context) {
       vscode,
     });
     chats.add(chat);
+    links.settingChanged();
     for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);
     /* The model a turn runs on (turnStart.modelId), and its context window once OpenCode has learned it, which is
        after the model's first call. */
@@ -270,7 +296,7 @@ function activate(context) {
       if (ev && ev.type === 'turnStart' && typeof ev.modelId === 'string' && ev.modelId) follow(ev.modelId);
       if (ev && ev.type === 'turnEnd') models.list().then(() => follow(conv.modelName), () => {});
     });
-    panel.onDidDispose(() => { off(); chats.delete(chat); });
+    panel.onDidDispose(() => { off(); chats.delete(chat); links.settingChanged(); });
     return chat;
   }
 
@@ -342,6 +368,8 @@ function activate(context) {
   locks.onTakeover((id) => {
     const e = manager.get(id);
     const panels = e ? [...e.panels] : [];
+    quietClose.add(id);
+    setTimeout(() => quietClose.delete(id), 3000);
     manager.close(id, { abort: true });
     for (const p of panels) { try { p.dispose(); } catch (_) { /* gone */ } }
     tell('This conversation was taken over by another VS Code window.');
@@ -379,6 +407,16 @@ function activate(context) {
   };
   const chatTabs = (id) => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
     .filter((t) => ap.isChatTab(t) && ap.sessionOfUri(t.input.uri) === id);
+
+  /* A chat tab the user closes goes to the top of Recently closed; one closed by a takeover or a delete does not. */
+  const recent = createRecentClosed({ memo: context.workspaceState, log });
+  subs.push(vscode.window.tabGroups.onDidChangeTabs((e) => {
+    for (const t of (e && e.closed) || []) {
+      if (!ap.isChatTab(t)) continue;
+      const id = ap.sessionOfUri(t.input.uri);
+      if (id && !quietClose.has(id) && !chatTabs(id).length) recent.add(id);
+    }
+  }));
 
   /* A chat tab says what its conversation is doing by the dot on its icon, and a reply not read yet by an envelope
      after its title. */
@@ -420,6 +458,7 @@ function activate(context) {
       }),
       /* Its plan goes with it: Agent Plus only reads the plans folder. */
       deleteSession: (id) => backend.deleteSession(id).then(() => {
+        recent.remove(id);
         const gone = workplan.removePlan(id);
         if (gone.length) log(`deleted the plan files of ${id}: ${gone.join(', ')}`);
       }),
@@ -432,6 +471,7 @@ function activate(context) {
   let soon = null;
   const nudge = () => { if (!soon) soon = setTimeout(() => { soon = null; listChanged.fire(); }, 200); };
   subs.push(listChanged, { dispose: () => clearTimeout(soon) }, manager.onDidChange(nudge), backend.onDidChangeSessions(nudge));
+  subs.push(listChanged.event(() => links.refresh()), recent.onDidChange(nudge));
   const { SessionsView } = require('./src/ui/sessions-view');
   const sessionsView = new SessionsView({
     listSessions: () => listed.list().catch((e) => { if (e && e.name === 'OpenCodeError') throw new Error(e.message); throw e; }).finally(() => backend.listen()),
@@ -448,6 +488,7 @@ function activate(context) {
     },
     titleOf: (id) => { const s = manager.snapshot(id); return s ? s.title : ''; },
     isOpenHere: (id) => manager.has(id),
+    recent: () => recent.get(),
     vscode,
   });
   subs.push(sessionsView.register(), sessionsView);
@@ -468,6 +509,9 @@ function activate(context) {
       return openSession(f.id);
     }),
     vscode.commands.registerCommand(`${brand.prefix}.showMcpServers`, () => showMcp()),
+    vscode.commands.registerCommand(`${brand.prefix}.findConversation`, () => findConversation({ vscode,
+      list: () => backend.listSessions().finally(() => backend.listen()), open: (id) => openSession(id), openHere: (id) => manager.has(id) })),
+    vscode.commands.registerCommand(`${brand.prefix}.clearRecentlyClosed`, () => { recent.clear(); return true; }),
     vscode.commands.registerCommand(`${brand.prefix}.diffAllowOnce`, (arg) => answerDiff(arg, 'allowOnce')),
     vscode.commands.registerCommand(`${brand.prefix}.diffAllowInProject`, (arg) => answerDiff(arg, 'allowSession')),
     vscode.commands.registerCommand(`${brand.prefix}.diffDeny`, (arg) => answerDiff(arg, 'deny')),
@@ -551,6 +595,7 @@ function activate(context) {
       if (running) running.registration = r.registration; else r.registration.dispose();
       link.refocus();
       planBar.attach(r.core);
+      links.attach(r.core);
     }
     return vscode.commands.executeCommand('setContext', CONTEXT_AGENT_PLUS, r.accepted);
   }).catch((e) => log(`Agent Plus registration failed: ${(e && e.message) || e}`));
@@ -561,7 +606,7 @@ function activate(context) {
     return { test: { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
       source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready, windowFile: windows.file,
       send: (id, text) => manager.send(id, text), snapshot: (id) => manager.snapshot(id), replyFile: (id) => replies.fileOf(id),
-      told: () => told.slice(), sound: () => soundOn, infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
+      told: () => told.slice(), sound: () => soundOn, recent: () => recent.get(), links: () => links.list(), infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
       zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }) } };
   }
   return undefined;

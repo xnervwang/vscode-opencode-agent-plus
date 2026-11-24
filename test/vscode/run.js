@@ -280,6 +280,129 @@ async function main() {
     return { items, renamed: true };
   };
 
+  /* ---------- the fourth batch's steps, shared by the runs ---------- */
+
+  /* The chat page's links to other conversations: [{ session, source, text, tip }]. */
+  const convLinks = (f) => f.evaluate(() => [...document.querySelectorAll('#log a.conv-link')].map((a) => ({ session: a.dataset.session, source: a.dataset.source, text: a.textContent, tip: a.title })));
+  const activeUri = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
+  const closeChat = (id) => call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeplus-session:/" + arg);
+    await vscode.window.tabGroups.close(tabs); return true;`, id).catch(() => false);
+  /* Clicks the page's first link to conversation `id`; resolves to the id of the chat tab then in front. */
+  const followLink = async (f, id) => {
+    await f.evaluate((sid) => { const a = [...document.querySelectorAll('#log a.conv-link')].reverse().find((x) => x.dataset.session === sid);
+      const l = document.getElementById('log');
+      if (a) l.scrollTop += a.getBoundingClientRect().top - l.getBoundingClientRect().top - l.clientHeight / 2; }, id);
+    await f.click(`#log a.conv-link[data-session="${id}"] >> nth=-1`);
+    return until(async () => { const u = await activeUri(); return u === `opencodeplus-session:/${id}` ? id : null; }, 20000);
+  };
+  /* The outline beside the log, and the messages in the log. */
+  const outlineOf = (f) => f.evaluate(() => {
+    const o = document.getElementById('outline'), b = document.getElementById('navBtn');
+    return { shown: !o.hidden && o.getBoundingClientRect().width > 50, button: !b.hidden, pressed: b.getAttribute('aria-pressed'),
+      rows: [...o.querySelectorAll('.outline-row')].map((r) => ({ kind: r.classList.contains('outline-compaction') ? 'compaction' : 'user', text: r.textContent })),
+      users: document.querySelectorAll('#log .msg.user').length, compactions: document.querySelectorAll('#log .compaction').length };
+  });
+  /* Scrolls the log to its end, clicks the outline's row `n` (0 first) and says how far the message it names is from the
+     top of the log, and whether it flashed. */
+  const jumpWith = async (f, n) => {
+    await f.evaluate(() => { const l = document.getElementById('log'); l.scrollTop = l.scrollHeight; });
+    await f.click(`#outline .outline-user >> nth=${n}`);
+    await sleep(300);
+    return f.evaluate((i) => {
+      const u = document.querySelectorAll('#log .msg.user')[i], l = document.getElementById('log');
+      return u ? { offset: Math.round(u.getBoundingClientRect().top - l.getBoundingClientRect().top), flash: u.classList.contains('flash'), canScroll: l.scrollHeight > l.clientHeight + 4 } : null;
+    }, n);
+  };
+  /* Whether the page itself is scrolled (only its log should be), and by how much it is taller than its frame. */
+  const pageScroll = (f) => f.evaluate(() => ({ scrolled: document.scrollingElement.scrollTop, top: Math.round(document.getElementById('top').getBoundingClientRect().top),
+    over: document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight }));
+  /* A hover label the pointer left (a tab's, or a button's whose row went away) gives way to the activity bar's, which
+     goes with the pointer; moving into a chat page alone does not end it, as the workbench hears nothing in there. */
+  const dropHover = async () => {
+    await page.hover('.activitybar .action-item [aria-label^="OpenCode Plus"]', { timeout: 3000 }).catch(() => {});
+    await sleep(1200);
+    await page.mouse.move(900, 500);
+    await sleep(300);
+  };
+  /* The outline step: the column lists the user's messages; a row scrolls to its message; the button hides and shows it. */
+  const outlineStep = async (f, name, expect) => {
+    await dropHover();
+    const o = await until(async () => { const x = await outlineOf(f); return x.shown && x.rows.filter((r) => r.kind === 'user').length === x.users && x.users > 0 ? x : null; }, 15000);
+    const jump = o ? await jumpWith(f, 0) : null;
+    const still = await pageScroll(f);
+    if (still.over > 0) console.log(`  note  the chat page is ${still.over} px taller than its frame; only its log scrolls`);
+    check(!!o && !!jump && jump.flash && (!jump.canScroll || Math.abs(jump.offset) <= 40) && still.scrolled === 0 && still.top === 0,
+      'the outline beside the log lists each of your messages, and a click on the first scrolls the log to it, not the page', { outline: o || await outlineOf(f), jump, page: still });
+    await shot(name, { features: ['conversation outline'], expect, part: '#workbench\\.parts\\.editor' });
+    await f.click('#navBtn');
+    const closed = await until(async () => { const x = await outlineOf(f); return !x.shown && x.button && x.pressed === 'false' ? x : null; }, 5000);
+    await f.click('#navBtn');
+    const back = await until(async () => { const x = await outlineOf(f); return x.shown && x.pressed === 'true' ? x : null; }, 5000);
+    check(!!closed && !!back, 'the Outline button hides the column and shows it again', { closed, back });
+    return o;
+  };
+  /* What the subagent filter shows: which of the subagent items are drawn, and its button. */
+  const subagentView = (f) => f.evaluate(() => {
+    const shown = (e) => !!e && getComputedStyle(e).display !== 'none' && !!e.getClientRects().length;
+    const b = document.getElementById('subBtn');
+    return { button: !b.hidden, text: b.textContent, pressed: b.getAttribute('aria-pressed'),
+      cards: [...document.querySelectorAll('#log .tool.subagent')].map(shown),
+      folded: [...document.querySelectorAll('#log .tool.sub-fold')].map((t) => ({ card: shown(t), child: shown(t.querySelector('.child')) })),
+      hidden: [...document.querySelectorAll('#log .sub-hide')].map(shown),
+      waiting: [...document.querySelectorAll('#log .permission:not(.settled), #log .question:not(.settled)')].filter((e) => e.querySelector('.from-sub:not([hidden])')).map(shown) };
+  });
+  /* Recently closed: its group lists `titles` (each start of a title); its row's button empties it. */
+  const recentStep = async (titles, name, expect) => {
+    await call('await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
+    const group = await until(() => page.evaluate((want) => {
+      const rows = [...document.querySelectorAll('#workbench\\.parts\\.sidebar .monaco-list-row')].map((r) => r.textContent.trim());
+      const at = rows.findIndex((t) => /^Recently closed/.test(t));
+      if (at < 0) return null;
+      const after = rows.slice(at + 1, at + 1 + want.length);
+      return want.every((w, i) => after[i] && after[i].startsWith(w)) ? { rows } : null;
+    }, titles), 20000);
+    const recent = (await ext('return api.test.recent();')) || [];
+    check(!!group, 'the Conversations view has "Recently closed" at the top, listing the conversations whose tabs were closed, the latest first', { titles, group, recent,
+      rows: await page.evaluate(() => [...document.querySelectorAll('#workbench\\.parts\\.sidebar .monaco-list-row')].map((r) => r.textContent.trim())) });
+    const row = page.locator('#workbench\\.parts\\.sidebar .monaco-list-row', { hasText: 'Recently closed' }).first();
+    await row.hover().catch(() => {});
+    const button = row.locator('.action-label[aria-label^="Clear Recently Closed"]').first();
+    const visible = await button.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false);
+    /* On the button itself, so the row's hover label does not cover it. */
+    if (visible) await button.hover().catch(() => {});
+    /* The whole window: a close-up is taken after it, when the pointer's hover has gone. */
+    await shot(name, { features: ['recently closed'], expect });
+    /* The row's buttons show while the pointer is on it, which a screenshot does not keep. */
+    let clicked = false;
+    if (visible) clicked = await row.hover().then(() => button.click({ timeout: 5000 })).then(() => true, () => false);
+    if (!clicked) await call('return vscode.commands.executeCommand("opencodePlus.clearRecentlyClosed");');
+    await dropHover();
+    const cleared = await until(async () => {
+      const r = (await ext('return api.test.recent();')) || [];
+      const t = await page.evaluate(() => document.getElementById('workbench.parts.sidebar').textContent);
+      return !r.length && !/Recently closed/.test(t);
+    }, 10000);
+    check(visible && clicked && cleared, "the group's Clear button empties Recently closed, and the group goes", { visible, clicked, cleared });
+  };
+  /* Find Conversation: part of `id` typed in its pick finds that conversation alone; Enter opens it. */
+  const findStep = async (id, name, expect) => {
+    await dropHover();
+    await call(`vscode.commands.executeCommand("opencodePlus.findConversation"); return true;`);
+    await page.waitForSelector('.quick-input-widget input', { state: 'visible', timeout: 15000 });
+    const part = id.slice(5, 14);
+    await page.fill('.quick-input-widget input', part);
+    const rows = await until(async () => {
+      const r = await page.evaluate(() => [...document.querySelectorAll('.quick-input-list .monaco-list-row')].map((x) => x.textContent));
+      return r.length === 1 && r[0].includes(id) ? r : null;
+    }, 15000);
+    await shot(name, { features: ['find by session id'], expect });
+    await page.keyboard.press('Enter');
+    const opened = await until(async () => ((await activeUri()) === `opencodeplus-session:/${id}` ? id : null), 20000);
+    check(!!rows && !!opened, 'Find Conversation finds the conversation by part of its session id, and Enter opens it', { part, rows, opened,
+      listed: await page.evaluate(() => [...document.querySelectorAll('.quick-input-list .monaco-list-row')].map((x) => x.textContent)) });
+    return opened;
+  };
+
   /* When the real model's first message was sent, for its time after the reload. */
   let firstSentAt = 0;
   try {
@@ -421,8 +544,69 @@ async function main() {
         const grouped = await until(() => page.evaluate(() => { const t = document.getElementById('workbench.parts.sidebar').textContent; return /Open in this window/.test(t) && /Other conversations/.test(t); }), 15000);
         check(grouped, 'the Conversations view has "Open in this window" with the open one and "Other conversations" with the fork');
         await shot('04x-groups', { features: ['open conversations first'],
-          expect: 'The Conversations view has two groups: "Open in this window" with "Renamed in the fake run", and "Other conversations" with its fork ("Renamed in the fake run (fork)"); each group header shows a count.',
+          expect: 'The Conversations view has three groups: "Recently closed" with the fork ("Renamed in the fake run (fork)"), whose tab was just closed; "Open in this window" with "Renamed in the fake run"; and "Other conversations" with the fork again. Each group header shows a count.',
           part: '#workbench\\.parts\\.sidebar' });
+
+        // 4w. Recently closed: the fork's tab was closed above; the button on its group's row empties it.
+        await recentStep(['Renamed in the fake run (fork)'], '04w-recently-closed',
+          'The Conversations view, the pointer on the clear-all button (lines with a cross) at the right end of the "Recently closed" row at the top, maybe with its label "Clear Recently Closed"; the group lists "Renamed in the fake run (fork)"; below it "Open in this window" with "Renamed in the fake run" and "Other conversations" with the fork; the view\'s title bar has a magnifier (Find Conversation) beside the plus.');
+
+        // 4v. A reply naming the fork by its title and by its id links both, but not the page's own id; a click opens it.
+        await chat.fill('#input', `Say: The copy is \u300CRenamed in the fake run (fork)\u300D, session ${forkId}; this one is ${sessionId}.`);
+        await chat.press('#input', 'Enter');
+        const linked = await until(async () => { const l = await convLinks(chat); return l.filter((x) => x.session === forkId).length >= 2 ? l : null; }, 20000);
+        check(!!linked && linked.every((x) => x.session === forkId && x.source === 'opencode-plus') && linked.some((x) => /OpenCode Plus conversation ses_/.test(x.tip)),
+          "a reply naming another conversation by its title and by its id links both, not the page's own id, and a link's hover names the conversation", { linked: linked || await convLinks(chat) });
+        await shot('04v-conversation-links', { features: ['links to other conversations'],
+          expect: 'The last reply reads "The copy is 「Renamed in the fake run (fork)」, session ses_… ; this one is ses_…." where the fork\'s title inside the corner brackets and the first session id are links (link colour, dotted underline) and the second id, this conversation\'s own, is plain text. A column "YOUR MESSAGES" on the right lists the two messages.',
+          part: '#workbench\\.parts\\.editor' });
+        const went = await followLink(chat, forkId);
+        check(!!went, 'a click on such a link opens that conversation in its own tab', { went, active: await activeUri() });
+        await closeChat(forkId);
+        await sleep(800);
+        chat = await frameWith(page, '#input', 20000);
+
+        // 4s. Find Conversation: part of the fork's id finds it; Enter opens it.
+        if (await findStep(forkId, '04s-find-conversation',
+          'A quick pick at the top titled "Find a Conversation", its box holding a few letters and digits of a session id, and one row: "Renamed in the fake run (fork)" with "active … ago" and, below, the full ses_… id and the folder, the typed part highlighted.')) {
+          await closeChat(forkId);
+          await sleep(800);
+          chat = await frameWith(page, '#input', 20000);
+        }
+
+        // 4u. The outline of the two messages.
+        await outlineStep(chat, '04u-outline',
+          'Right of the conversation a column headed "YOUR MESSAGES" lists the two user messages, numbered 1 ("Hello there, please fix the failing test") and 2 ("Say: The copy is …"); the log is scrolled to the first message, which has a thin focus-coloured outline; the header has an "Outline" button drawn pressed, left of the round "i".');
+
+        // 4t. The subagent filter, on what a subagent brings (posted to the page the way the extension posts it).
+        const quiet = await subagentView(chat);
+        const SUB = { childId: 'ses_childfake00000000000000', title: 'Look around' };
+        await chat.evaluate((sub) => {
+          const now = Date.now();
+          window.postMessage({ type: 'update', now, items: [
+            { id: 'zz1', kind: 'tool', name: 'task', summary: 'Look around the repository', input: '{"description":"Look around"}', state: 'done', result: 'Found three files.', at: now, doneAt: now,
+              child: { childId: sub.childId, title: sub.title, status: 'done', entries: [{ kind: 'tool', name: 'bash', summary: 'ls', state: 'done', result: 'a' }, { kind: 'text', text: 'Listed the files.' }], dropped: 0, last: 'Listed the files.' } },
+            { id: 'zz2', kind: 'tool', name: 'bash', summary: 'ls -la', input: '{"command":"ls -la"}', state: 'done', result: 'README.md', at: now, doneAt: now, subagent: sub },
+            { id: 'zz3', kind: 'permission', at: now, requestId: 'perm-sub-1', request: { tool: 'bash', summary: 'ls -la', command: 'ls -la', hasDiff: false }, decision: 'allowOnce', subagent: sub },
+            { id: 'zz4', kind: 'permission', at: now, requestId: 'perm-sub-2', request: { tool: 'bash', summary: 'rm -rf build', command: 'rm -rf build', hasDiff: false }, decision: null, subagent: sub },
+            { id: 'zz5', kind: 'subagent', at: now, childId: 'ses_childfake11111111111111', title: 'Second helper', status: 'running', entries: [], dropped: 0, last: 'Reading notes.txt' },
+          ] }, '*');
+        }, SUB);
+        const subShown = await until(async () => { const v = await subagentView(chat); return v.button && v.text === 'Subagents' ? v : null; }, 5000);
+        await chat.click('#subBtn');
+        const subHidden = await until(async () => { const v = await subagentView(chat); return v.pressed === 'true' ? v : null; }, 5000);
+        check(!quiet.button && !!subShown && subShown.folded.every((x) => x.card && x.child) && subShown.hidden.every(Boolean)
+          && !!subHidden && subHidden.text === 'Subagents hidden (4)' && subHidden.folded.length === 1 && subHidden.folded.every((x) => x.card && !x.child)
+          && subHidden.hidden.length === 3 && subHidden.hidden.every((x) => !x) && subHidden.waiting.length === 1 && subHidden.waiting.every(Boolean),
+        "the Subagents button shows only once a subagent did something; pressed, it hides the subagents' cards, calls and answered requests, folds the call that started one, and keeps a request of theirs that still waits",
+          { quiet, subShown, subHidden });
+        await chat.evaluate(() => { const t = document.querySelector('#log [data-id="zz1"]'), l = document.getElementById('log'); if (t) l.scrollTop += t.getBoundingClientRect().top - l.getBoundingClientRect().top - 8; });
+        await shot('04t-subagents-hidden', { features: ['subagent filter'],
+          expect: 'The header has a pressed button "Subagents hidden (4)". In the log, a task card "Look around the repository" with no Subagent box under it, then a permission card for "rm -rf build" marked "from subagent Look around" with its Allow once, Allow in this project and Deny buttons; no bash card, no answered permission card and no "Second helper" card.',
+          part: '#workbench\\.parts\\.editor' });
+        await chat.click('#subBtn');
+        const subBack = await until(async () => { const v = await subagentView(chat); return v.pressed === 'false' && v.hidden.every(Boolean) && v.folded.every((x) => x.child) ? v : null; }, 5000);
+        check(!!subBack, 'pressed again, everything the subagents did shows again', subBack || await subagentView(chat));
       }
 
     } else {
@@ -528,6 +712,14 @@ async function main() {
           await shot('04z2-v1-info', { features: ['session info on OpenCode 1'],
             expect: 'The chat page of OpenCode 1.19.6 with no "Rewind to here" on the user messages; the info box may still be closing.',
             part: '#workbench\\.parts\\.editor' });
+          // 3z3. On OpenCode 1 the outline, the Subagents button and Find Conversation are what they are on 2.
+          await outlineStep(chat, '04z3-v1-outline',
+            'The chat page of OpenCode 1.19.6 with a column "YOUR MESSAGES" on the right listing its user messages, numbered from 1; the header has "Outline" pressed; no "Subagents" button.');
+          const v1Subs = await subagentView(chat);
+          check(!v1Subs.button, 'with no subagent in the conversation there is no Subagents button', v1Subs);
+          await findStep(sessionId, '04z4-v1-find',
+            'A quick pick "Find a Conversation" with a few characters of a session id typed and one row: this conversation\'s title, "open in this window", and below it its ses_… id and folder.');
+          chat = await frameWith(page, '#input', 30000);
         }
 
         if (line >= 2) {
@@ -624,6 +816,22 @@ async function main() {
           await shot('04f2-subagent-reply', { features: ['turn OpenCode started itself'],
             expect: 'The end of the conversation: the notice "OpenCode went on without a message from you, for a background task (a subagent or a command).", then the reply that the subagent has finished, with its figures line under it; the status line shows no work in progress.',
             part: '#workbench\\.parts\\.editor' });
+
+          // 3f2. The subagent filter: only this conversation's own output, the subagent's progress folded away.
+          const subOn = await subagentView(chat);
+          await chat.click('#subBtn').catch(() => {});
+          const subOff = await until(async () => { const v = await subagentView(chat); return v.pressed === 'true' ? v : null; }, 5000);
+          check(subOn.button && subOn.folded.length + subOn.cards.length > 0 && !!subOff && /^Subagents hidden \(\d+\)$/.test(subOff.text)
+            && subOff.folded.every((x) => x.card && !x.child) && subOff.cards.every((x) => !x) && subOff.hidden.every((x) => !x),
+          "the Subagents button hides what the subagent did and folds the card of the call that started it, which stays", { subOn, subOff });
+          await chat.evaluate(() => { const t = document.querySelector('#log .tool.sub-fold') || document.querySelector('#log .tool'), l = document.getElementById('log'); if (t) l.scrollTop += t.getBoundingClientRect().top - l.getBoundingClientRect().top - 8; });
+          await shot('04f3-subagents-hidden', { features: ['subagent filter'],
+            expect: 'The header has a pressed button "Subagents hidden (n)". At the top of the log the subagent tool card stands alone, with no Subagent box under it; the subagent\'s shell card and its permission card are gone; the parent\'s own messages, replies and notice are there.',
+            part: '#workbench\\.parts\\.editor' });
+          await chat.click('#subBtn').catch(() => {});
+          const subAgain = await until(async () => { const v = await subagentView(chat); return v.pressed === 'false' && v.folded.every((x) => x.child) && v.hidden.every(Boolean) ? v : null; }, 5000);
+          check(!!subAgain, 'pressed again, what the subagent did shows again', subAgain || await subagentView(chat));
+          await chat.evaluate(() => { const log = document.getElementById('log'); log.scrollTop = log.scrollHeight; });
         }
 
         if (line >= 2) {
@@ -981,10 +1189,20 @@ async function main() {
           const beforeEsc = await figures();
           await chat.fill('#input', 'Use the shell tool to run the command "sleep 45" in the foreground (not in the background), then reply with only the word slept.');
           await chat.press('#input', 'Enter');
-          const running = await until(async () => {
+          const sleeping = (after) => until(async () => {
             for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) await b.click();
-            return chat.evaluate(() => !!document.querySelector('#log .tool.state-running') && document.body.dataset.status === 'working');
+            if (await chat.evaluate(() => !!document.querySelector('#log .tool.state-running') && document.body.dataset.status === 'working')) return 'running';
+            return (await status()) === 'idle' && (await figures()) > after ? 'answered' : null;
           }, 90000, 500);
+          let running = (await sleeping(beforeEsc)) === 'running';
+          /* A model may answer without running the command; it is asked once more. */
+          if (!running) {
+            console.log(`  note  the model answered without running sleep 45: ${JSON.stringify((await lastReply()).slice(0, 120))}; asking again`);
+            const again = await figures();
+            await chat.fill('#input', 'You did not run it. Call the shell tool now with the command "sleep 45", in the foreground, and wait for it to finish before you reply.');
+            await chat.press('#input', 'Enter');
+            running = (await sleeping(again)) === 'running';
+          }
           await chat.focus('#input');
           await chat.press('#input', 'Escape');
           const stopped = await until(() => chat.evaluate(() => document.body.dataset.status === 'idle' && [...document.querySelectorAll('#log .notice')].some((n) => /^Stopped\.$/.test(n.textContent))), 20000);
@@ -1034,12 +1252,45 @@ async function main() {
           const groups = await until(() => page.evaluate(() => { const t = document.getElementById('workbench.parts.sidebar').textContent; return /Open in this window/.test(t) && /Other conversations/.test(t); }), 20000);
           check(groups, 'the Conversations view puts the conversations open here under "Open in this window" and the rest under "Other conversations"');
           await shot('23-fork-groups', { features: ['fork', 'open conversations first'],
-            expect: 'The editor shows the fork in a new tab (the same conversation); the Conversations view has two groups: "Open in this window" with the conversation and its fork, and "Other conversations" with the untitled one closed earlier; each group header shows a count.' });
+            expect: 'The editor shows the fork in a new tab (the same conversation); the Conversations view has three groups: "Recently closed" with the untitled one closed earlier, "Open in this window" with the conversation and its fork, and "Other conversations" with the untitled one again; each group header shows a count.' });
           if (forked) {
             await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeplus-session:/" + arg); await vscode.window.tabGroups.close(tabs); return true;', forked).catch(() => {});
             await sleep(1000);
           }
           chat = await frameWith(page, '#input', 30000);
+
+          // 3w. Links: the model names the fork by its session id; the page links it, and a click opens the fork.
+          if (forked) {
+            await turn(`Reply with exactly this line and nothing else: The copy is session ${forked}.`, '23b');
+            const l = await until(async () => { const x = await convLinks(chat); return x.some((y) => y.session === forked) ? x : null; }, 20000);
+            check(!!l && l.every((y) => y.session !== sessionId && y.source === 'opencode-plus'), "a reply naming another conversation by its session id links it, and the page's own id is never linked",
+              { links: l || await convLinks(chat), reply: await lastReply() });
+            await shot('23b-conversation-link', { features: ['links to other conversations'],
+              expect: 'The last reply reads "The copy is session ses_…" with the id drawn as a link (link colour, dotted underline); the column "YOUR MESSAGES" on the right lists the messages sent so far.',
+              part: '#workbench\\.parts\\.editor' });
+            const went = await followLink(chat, forked);
+            check(!!went, 'a click on the link opens that conversation in its tab', { went, active: await activeUri() });
+            await closeChat(forked);
+            await sleep(1000);
+            chat = await frameWith(page, '#input', 30000);
+          }
+
+          // 3x. Recently closed: the fork, then the empty conversation the envelope step closed.
+          const forkRow = ((await ext('return api.test.sessions();')) || []).find((r) => r.id === forked) || {};
+          await recentStep([(forkRow.title || 'Untitled conversation').slice(0, 12), 'Untitled conversation'], '23c-recently-closed',
+            'The Conversations view, the pointer on the clear-all button at the right end of the "Recently closed" row at the top, maybe with its label "Clear Recently Closed"; the group lists the fork first and the "Untitled conversation" second; below it "Open in this window" and "Other conversations".');
+
+          // 3y. Find Conversation by part of the fork's id.
+          if (forked && await findStep(forked, '23d-find-conversation',
+            'A quick pick at the top titled "Find a Conversation", its box holding a few characters of a session id, and one row: the fork\'s title with "active … ago", and below it the full ses_… id and the folder.')) {
+            await closeChat(forked);
+            await sleep(1000);
+            chat = await frameWith(page, '#input', 30000);
+          }
+
+          // 3z. The outline of the messages so far.
+          await outlineStep(chat, '23e-outline',
+            'Right of the conversation a column headed "YOUR MESSAGES" lists every user message, numbered from 1 ("列出工作目录下的文件" first), each cut to one line; the log is scrolled to the first message, which has a thin focus-coloured outline; the header\'s "Outline" button is pressed.');
 
           /* Last of these: the first message after compacting gets the work plan's note about the plan again, which a
              model may answer instead of the message. */
@@ -1070,13 +1321,15 @@ async function main() {
             return c && c.classList.contains('status-completed') ? { label: c.querySelector('.compaction-label').textContent, summary: !c.querySelector('.compaction-summary').hidden } : null;
           }), 60000);
           check(!!compaction && compaction.summary, 'after /compact the page shows the compaction line, with the summary to unfold', compaction);
+          const marked = await until(async () => { const x = await outlineOf(chat); return x.rows.some((r) => r.kind === 'compaction' && /Compacted/.test(r.text)) ? x : null; }, 10000);
+          check(!!marked, 'the outline marks where the conversation was compacted', marked || await outlineOf(chat));
           await chat.evaluate(() => {
             const d = [...document.querySelectorAll('#log .compaction-summary')].pop();
             const log = document.getElementById('log');
             if (d) { d.open = true; log.scrollTop = d.closest('.compaction').offsetTop - log.offsetTop; }
           });
           await shot('09b-compacted', { features: ['compaction divider'],
-            expect: 'At the top, a horizontal line labelled "Conversation compacted" with a "Summary" below it, unfolded to show the summary OpenCode wrote (headings such as Objective); the figures line of the /compact turn follows the summary, possibly below the visible part.',
+            expect: 'At the top, a horizontal line labelled "Conversation compacted" with a "Summary" below it, unfolded to show the summary OpenCode wrote (headings such as Objective); the figures line of the /compact turn follows the summary, possibly below the visible part. The column "YOUR MESSAGES" on the right ends with a dashed line and "Compacted" in italics.',
             part: '#workbench\\.parts\\.editor' });
         }
       }
@@ -1106,13 +1359,14 @@ async function main() {
     check(inList, 'the Conversations view lists the conversation');
     await shot('06-sessions', { features: ['session list'],
       expect: real && line >= 2
-        ? 'The OpenCode Plus Conversations view has two groups: "Open in this window" with the conversation by its title, and "Other conversations" with its fork (the same title, or one OpenCode gave it) and an "Untitled conversation", the empty one the envelope step opened and closed (OpenCode keeps a conversation from the moment it is made); speech-bubble icons, and a relative time such as "now" that a long title may cut off.'
+        ? 'The OpenCode Plus Conversations view has three groups: "Recently closed" with the fork (the same title, or one OpenCode gave it), whose tab was closed last; "Open in this window" with the conversation by its title; and "Other conversations" with the fork and an "Untitled conversation", the empty one the envelope step opened and closed (OpenCode keeps a conversation from the moment it is made); speech-bubble icons, and a relative time such as "now" that a long title may cut off.'
         : real
           ? 'The OpenCode Plus Conversations view lists one row with the conversation title and a speech-bubble icon (a relative time such as "now" may be cut off by a long title).'
-          : 'The OpenCode Plus Conversations view has two groups: "Open in this window" with "Renamed in the fake run", and "Other conversations" with its fork ("Renamed in the fake run (fork)").',
+          : 'The OpenCode Plus Conversations view has three groups: "Recently closed" with the fork ("Renamed in the fake run (fork)"), "Open in this window" with "Renamed in the fake run", and "Other conversations" with the fork again.',
       part: '#workbench\\.parts\\.sidebar' });
 
     // 6. A reload brings the tab back with its history.
+    const recentBefore = ((await ext('return api.test.recent();')) || []).map((e) => e.id);
     await w.reload();
     await until(() => ext('return !!(api && api.test);'), 60000);
     const back = await until(() => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodePlus.chat").map((t) => t.input.uri.toString());`), 30000);
@@ -1120,6 +1374,9 @@ async function main() {
     const again = await frameWith(page, '#input', 30000);
     const history = again && await until(() => again.evaluate((re) => new RegExp(re).test(document.getElementById('log').textContent), real ? '列出工作目录下的文件' : 'subtracted instead of adding'), 30000);
     check(!!history, 'the restored tab shows the conversation so far');
+    const recentAfter = (await ext('return api.test.recent();')) || [];
+    check(!recentAfter.some((e) => e.id === sessionId) && JSON.stringify(recentAfter.map((e) => e.id)) === JSON.stringify(recentBefore),
+      'Recently closed outlasts the reload, and the reload did not count as closing the chat tab', { before: recentBefore, after: recentAfter });
     if (real && again && firstSentAt) {
       const reloadedAt = Date.now();
       const firstTime = await again.evaluate(() => { const t = document.querySelector('#log .msg.user .time'); return t ? t.textContent : ''; });

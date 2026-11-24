@@ -10,7 +10,10 @@
  * which also keeps the "5m" ages roughly current without a timer.
  *
  * Conversations open in this window come first, in a group of their own ("Open in this window"), and the rest after
- * them in another; with only one kind there are no groups.
+ * them in another; with only one kind there are no groups. Above them, "Recently closed" lists the conversations whose
+ * chat tabs were last closed in this workspace (the injected recent(), most recent first), up to SHOWN of them, leaving
+ * out those open again and those the list no longer has; its row clears it. With it the other two groups are shown even
+ * when only one of them has rows.
  */
 
 const RENAME_COMMAND = 'opencodePlus.renameConversation';
@@ -19,7 +22,9 @@ const OPEN_COMMAND = 'opencodePlus.openConversation';
 const CONTEXT_IDLE = 'opencodePlus.session';
 const CONTEXT_BUSY = 'opencodePlus.session.busy';
 const CONTEXT_GROUP = 'opencodePlus.group';
-const GROUPS = Object.freeze({ open: 'Open in this window', other: 'Other conversations' });
+const CONTEXT_RECENT = 'opencodePlus.group.recent';
+const GROUPS = Object.freeze({ recent: 'Recently closed', open: 'Open in this window', other: 'Other conversations' });
+const SHOWN = 10;
 
 const STATUS_WORDS = { working: 'Working', waiting: 'Waiting for you', idle: 'Idle' };
 
@@ -54,6 +59,7 @@ class SessionsView {
    *   idOf?: (arg: unknown) => string,
    *   titleOf?: (id: string) => string,
    *   isOpenHere?: (id: string) => boolean,
+   *   recent?: () => Array<{ id: string, at: number }>,
    *   vscode?: object,
    *   now?: () => number,
    * }} opts
@@ -69,6 +75,7 @@ class SessionsView {
     this.idOf = typeof opts.idOf === 'function' ? opts.idOf : () => '';
     this.titleOf = typeof opts.titleOf === 'function' ? opts.titleOf : () => '';
     this.isOpenHere = typeof opts.isOpenHere === 'function' ? opts.isOpenHere : () => false;
+    this.recent = typeof opts.recent === 'function' ? opts.recent : () => [];
     this.now = opts.now || Date.now;
     this.last = [];
     this.treeView = null;
@@ -97,8 +104,22 @@ class SessionsView {
     const here = (m) => { try { return this.isOpenHere(m.id) === true; } catch (_) { return false; } };
     const open = this.last.filter(here);
     const other = this.last.filter((m) => !here(m));
-    if (!open.length || !other.length) return this.last;
-    return [{ group: 'open', label: GROUPS.open, rows: open }, { group: 'other', label: GROUPS.other, rows: other }];
+    let closed = [];
+    try { closed = this.recent() || []; } catch (_) { closed = []; }
+    const byId = new Map(this.last.map((m) => [m.id, m]));
+    const recent = [];
+    for (const r of Array.isArray(closed) ? closed : []) {
+      const m = r && byId.get(r.id);
+      if (!m || here(m) || recent.some((x) => x.id === m.id)) continue;
+      recent.push({ ...m, closedAt: r.at, recent: true });
+      if (recent.length >= SHOWN) break;
+    }
+    const groups = [];
+    if (recent.length) groups.push({ group: 'recent', label: GROUPS.recent, rows: recent });
+    if (!recent.length && (!open.length || !other.length)) return this.last;
+    if (open.length) groups.push({ group: 'open', label: GROUPS.open, rows: open });
+    if (other.length) groups.push({ group: 'other', label: GROUPS.other, rows: other });
+    return groups;
   }
 
   getTreeItem(meta) {
@@ -107,14 +128,14 @@ class SessionsView {
       const g = new vscode.TreeItem(meta.label, vscode.TreeItemCollapsibleState.Expanded);
       g.id = `group:${meta.group}`;
       g.description = String(meta.rows.length);
-      g.contextValue = CONTEXT_GROUP;
+      g.contextValue = meta.group === 'recent' ? CONTEXT_RECENT : CONTEXT_GROUP;
       return g;
     }
     const status = this.statusOf(meta) || 'idle';
     const title = meta.title || 'Untitled conversation';
     const item = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
     const now = this.now();
-    item.id = meta.id;
+    item.id = meta.recent ? `recent:${meta.id}` : meta.id;
     item.description = age(lastActive(meta), now);
     item.iconPath = status === 'working'
       ? new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.green'))
@@ -131,6 +152,7 @@ class SessionsView {
       `${STATUS_WORDS[status] || status}${when ? ` · last active ${when}` : ''}`,
       meta.cwd ? `Folder: ${meta.cwd}` : '',
       meta.modelId ? `Model: ${meta.modelId}` : '',
+      meta.recent && meta.closedAt ? `Tab closed ${new Date(meta.closedAt).toLocaleString(undefined, { timeZoneName: 'short' })}` : '',
       `ID: ${meta.id}`,
     ].filter(Boolean).join('\n');
     item.contextValue = status === 'idle' ? CONTEXT_IDLE : CONTEXT_BUSY;
@@ -225,5 +247,7 @@ module.exports = {
   CONTEXT_IDLE,
   CONTEXT_BUSY,
   CONTEXT_GROUP,
+  CONTEXT_RECENT,
   GROUPS,
+  SHOWN,
 };

@@ -24,7 +24,7 @@ test('open here first, then the rest, each newest first; a group is not a conver
   const v = view(['a', 'c']);
   const top = await v.getChildren();
   assert.deepEqual(top.map((g) => g.label), [GROUPS.open, GROUPS.other]);
-  assert.deepEqual(GROUPS, { open: 'Open in this window', other: 'Other conversations' });
+  assert.deepEqual(GROUPS, { recent: 'Recently closed', open: 'Open in this window', other: 'Other conversations' });
   assert.deepEqual((await v.getChildren(top[0])).map((r) => r.id), ['c', 'a']);
   assert.deepEqual((await v.getChildren(top[1])).map((r) => r.id), ['b']);
   const item = v.getTreeItem(top[0]);

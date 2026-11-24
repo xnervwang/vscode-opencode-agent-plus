@@ -5,7 +5,8 @@
 'use strict';
 /*
  * The parts of the VS Code API that src/host/ touches, enough to run it in Node: events, URIs, tab inputs, a tab model
- * the test drives, commands, settings, secrets, messages, quick picks and webview panels. install() makes
+ * the test drives, commands, settings, secrets, messages, quick picks (also one made with createQuickPick, which the
+ * test answers through state.quickPick) and webview panels. install() makes
  * require('vscode') return it.
  */
 const Module = require('module');
@@ -100,6 +101,15 @@ function create() {
       showWarningMessage: say('warning'),
       showErrorMessage: say('error'),
       showQuickPick: async (items, opts) => { const list = await items; state.picks.push({ list, opts }); return state.pickAnswer ? state.pickAnswer(list) : undefined; },
+      createQuickPick: () => {
+        const accepted = new EventEmitter(), hidden = new EventEmitter();
+        const qp = { items: [], selectedItems: [], activeItems: [], shown: false, disposed: false, onDidAccept: accepted.event, onDidHide: hidden.event,
+          show() { qp.shown = true; }, hide() { if (qp.shown) { qp.shown = false; hidden.fire(); } }, dispose() { qp.disposed = true; },
+          /* The user picks the item `fn` finds, or closes the pick when it finds none. */
+          answer(fn) { const it = fn(qp.items); if (it) { qp.selectedItems = [it]; accepted.fire(); } else qp.hide(); } };
+        state.quickPick = qp;
+        return qp;
+      },
       showInputBox: async (opts) => { state.inputs.push(opts); return typeof state.inputAnswer === 'function' ? state.inputAnswer(opts) : state.inputAnswer; },
       withProgress: async (opts, task) => { state.progress.push(opts); return task({ report() {} }, { isCancellationRequested: false }); },
     },
@@ -148,6 +158,13 @@ function create() {
       groups[0].activeTab = groups[0].tabs[active] || undefined;
       if (groups[0].activeTab) groups[0].activeTab.isActive = true;
       tabsChanged.fire({ opened: [], closed: [], changed: [] });
+    },
+    /* Takes these tabs out of the group, as the user closing them. */
+    closeTabs(list) {
+      const gone = groups[0].tabs.filter((t) => list.includes(t));
+      groups[0].tabs = groups[0].tabs.filter((t) => !list.includes(t));
+      if (!groups[0].tabs.includes(groups[0].activeTab)) groups[0].activeTab = groups[0].tabs[0];
+      tabsChanged.fire({ opened: [], closed: gone, changed: [] });
     },
     chatTab(sessionId) { return { label: 'chat', input: new TabInputCustom(Uri.from({ scheme: 'opencodeplus-session', path: `/${sessionId}` }), 'opencodePlus.chat') }; },
     fileTab(p) { return { label: path.basename(p), input: new TabInputText(Uri.file(p)) }; },
