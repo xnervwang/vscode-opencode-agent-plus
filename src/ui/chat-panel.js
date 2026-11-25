@@ -48,8 +48,8 @@
  *   readRange  (path, startLine, endLine) => text or null: lines of a file named with @<path>#L.. in a message
  *
  * compose({ refs, draft }) puts @ references or a draft into the message box, after any text already there, and
- * focuses it;
- * before the page has loaded, it waits.
+ * focuses it; before the page has loaded, it waits. prefill(text, ms) does the same for Agent Plus's prefill and
+ * resolves with the page's answer ('prefill' { id, text } out, 'prefilled' { id, ok } back).
  *
  * The plan bar's fragment brings its own style element, so the page's policy lets inline styles in. A diff opened from
  * a permission card gets Allow once, Allow in this project and Deny in its editor's title bar (see answerFromDiff);
@@ -232,8 +232,11 @@ class ChatPanel {
     this.forkFrom = typeof opts.forkFrom === 'function' ? opts.forkFrom : null;
     this.detached = typeof opts.detached === 'function' ? opts.detached : null;
     this.readRange = typeof opts.readRange === 'function' ? opts.readRange : null;
-    /* Messages for the page held until it has loaded: compose and focus. */
+    /* Messages for the page held until it has loaded: compose, prefill and focus. */
     this.waiting = [];
+    /* Prefills waiting for the page's answer, by id. */
+    this.prefills = new Map();
+    this.prefillSeq = 0;
     this.detachedTimer = null;
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
@@ -452,6 +455,22 @@ ${hl}<script src="${media('kit.js')}"></script>
         ...(Number(r.startLine) > 0 ? { startLine: Number(r.startLine), endLine: Number(r.endLine) || Number(r.startLine) } : {}) }));
     const msg = { type: 'compose', refs, draft: typeof payload.draft === 'string' ? payload.draft : '' };
     if (this.ready) this.post(msg); else this.waiting.push(msg);
+  }
+
+  /*
+   * Puts `text` in the message box after what it holds (a space between when that does not end in one), focuses it
+   * with the caret at the end, and sends nothing. Resolves with the page's answer: true when the box has the text,
+   * false when the page could not put it there, null when no answer came within `ms`.
+   */
+  prefill(text, ms) {
+    if (this.disposed || typeof text !== 'string' || !text) return Promise.resolve(false);
+    const id = `p${++this.prefillSeq}`;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.prefills.delete(id); resolve(null); }, Math.max(0, ms));
+      this.prefills.set(id, (ok) => { clearTimeout(timer); this.prefills.delete(id); resolve(ok === true); });
+      const msg = { type: 'prefill', id, text };
+      if (this.ready) this.post(msg); else this.waiting.push(msg);
+    });
   }
 
   focusInput() {
@@ -699,6 +718,11 @@ ${hl}<script src="${media('kit.js')}"></script>
   onMessage(msg) {
     if (!msg || typeof msg.type !== 'string' || this.disposed) return;
     switch (msg.type) {
+      case 'prefilled': {
+        const done = typeof msg.id === 'string' ? this.prefills.get(msg.id) : null;
+        if (done) done(msg.ok === true);
+        break;
+      }
       case 'ready':
         this.ready = true;
         /* The page runs on the user's machine, so this is the user's time zone even over Remote-SSH. */
@@ -903,6 +927,7 @@ ${hl}<script src="${media('kit.js')}"></script>
     if (this.detachedTimer) clearTimeout(this.detachedTimer);
     this.detachedTimer = null;
     this.waiting = [];
+    for (const done of [...this.prefills.values()]) done(false);
     for (const off of this.subs) {
       try {
         off();

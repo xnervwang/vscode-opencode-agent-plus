@@ -17,14 +17,14 @@
  *               questionErrors { requestId, errors }, planBar { summary }, sound { shown, on }, info { rows, error? },
  *               image { id, ok, dataUrl | reason }, draft { text }, conversations { rev, list, self }, composer
  *               { ctrlEnter, attachFile, attachSelection }, permissionMode { shown, auto }, compose { refs, draft },
- *               focus, detached { list }, view { focus, pin, toggle }, paths { results: [{ path, ok }] }; each
- *               carries the extension host's `now`.
+ *               prefill { id, text }, focus, detached { list }, view { focus, pin, toggle }, paths { results: [{ path,
+ *               ok }] }; each carries the extension host's `now`.
  * Messages out: ready { tz }, send { text, images?, files?, ranges?, selections?, context? }, abort, permission, question
  *               { requestId, action, values }, viewDiff, setModel, setOption, reloadModels, connectProvider, copy,
  *               openLink, findFiles { query, seq }, addSelection, planBarOpen { part: 'plan' | 'answer' }, rewind
  *               { itemId }, forkFrom { itemId }, info, setSound { on }, image { id, src }, background,
  *               openConversation { sourceId, sessionId }, setPermissionMode { mode }, checkPaths { paths },
- *               openFile { path, line, col }, setFocusView { on }.
+ *               openFile { path, line, col }, setFocusView { on }, prefilled { id, ok }.
  *
  * With each message the page sends the editor's selection, or else the file open in the editor (the composer settings
  * say which), shown lit on the pill under the box; the pill's × leaves it out of this message, and a click on a selection
@@ -2068,6 +2068,16 @@
       paintSend();
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
+    } else if (m.type === 'prefill') {
+      /* Agent Plus's prefill: the text goes in for the user to go on writing, and nothing is sent. */
+      const want = C.prefillText(input.value, typeof m.text === 'string' ? m.text : '');
+      input.value = want;
+      autosize();
+      saveDraft();
+      paintSend();
+      input.focus();
+      input.setSelectionRange(want.length, want.length);
+      api.postMessage({ type: 'prefilled', id: m.id, ok: !!m.text && input.value === want && input.value.endsWith(m.text) });
     } else if (m.type === 'focus') {
       input.focus();
     } else if (m.type === 'detached') {

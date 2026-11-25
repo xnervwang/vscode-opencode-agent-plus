@@ -1923,6 +1923,7 @@ async function main() {
     await require('./lib/retry').run({ page, call, check, shot, until, sleep, frameWith, real });
     await require('./lib/gap-host').run({ page, call, ext, check, shot, until, sleep, frameWith, real, line, folder: p.folder, out: OUT, chatUris, front });
     await require('./lib/model-groups').run({ page, call, check, until, frameWith, real });
+    await require('./lib/prefill').run({ page, call, ext, check, shot, until, sleep, frameWith, chatUris, front, real });
   } catch (e) {
     check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
     try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }

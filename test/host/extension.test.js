@@ -59,10 +59,10 @@ test('activate registers, and starts nothing', async () => {
   const cfg = JSON.parse(fs.readFileSync(path.join(home, 'plans', 'config.json'), 'utf8'));
   assert.deepStrictEqual({ enabled: cfg.enabled, brief: cfg.brief }, { enabled: true, brief: true });
   assert.strictEqual(api.test.plan().launch.OPENCODE_AGENT_PLUS_HOOKS_DIR, path.join(home, 'opencode-plugin', 'agent-work-plan', 'hooks'));
-  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere', 'brief']);
+  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere', 'brief', 'prefill']);
   control.setConfig('agentPlus.tokenMode', 'interface');
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(home, 'plans', 'config.json'), 'utf8')).enabled, false);
-  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere']);
+  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere', 'prefill']);
   control.setConfig('agentPlus.tokenMode', 'all');
 });
 

@@ -27,6 +27,8 @@ const CORE_ID = 'xnervwang.agent-plus';
 const VIEW_TYPE = `${brand.prefix}.chat`;
 const SCHEME = 'opencodeagentplus-session';
 const EXTENSION_ID = `${brand.publisher}.${brand.packageName}`;
+/* Agent Plus waits ten seconds for a prefill and takes no answer as 'uncertain'; this answers a little before that. */
+const PREFILL_MS = 9500;
 
 /* The session id of an opencodeagentplus-session:/<id> URI, or ''. */
 function sessionOfUri(uri) {
@@ -100,6 +102,8 @@ function emitter() {
  *   logo()             { light, dark } Uris, or null
  *   reveal(sessionId)  Promise<boolean>: bring its tab in this window to the front
  *   openHere(sessionId)  Promise<boolean>: open it in this window
+ *   prefill(sessionId, text, deadline)  optional: Promise<{ outcome, reason? }>, putting `text` in its message box
+ *                      without sending it (the 'prefill' feature); `deadline` is the Date.now() to answer by
  *   trusted()          whether the workspace is trusted
  *   hidden(sessionId)  optional: true for a session not to list (a subagent's, open in a tab restored from before)
  *   allConversations() optional: every window's conversations on this machine
@@ -112,6 +116,7 @@ function createAgentPlusSource(deps) {
   /* The session of the latest focus report; cleared once a tab that is not ours comes to the front. */
   let front = '';
   const deliveries = new Map();
+  const canPrefill = typeof deps.prefill === 'function';
 
   const activeTab = () => {
     try { const g = vscode.window.tabGroups.activeTabGroup; return g ? g.activeTab : undefined; } catch (_) { return undefined; }
@@ -137,7 +142,7 @@ function createAgentPlusSource(deps) {
 
   const source = {
     protocol: PROTOCOL,
-    get features() { return briefOn() ? ['shows', 'openHere', 'brief'] : ['shows', 'openHere']; },
+    get features() { return ['shows', 'openHere', ...(briefOn() ? ['brief'] : []), ...(canPrefill ? ['prefill'] : [])]; },
     id: ID,
     label: brand.displayName,
     extensionId: EXTENSION_ID,
@@ -192,6 +197,22 @@ function createAgentPlusSource(deps) {
     },
 
     canDeliver(sessionId) { return trusted() && deps.manager.has(sessionId); },
+
+    /* Puts `text` in the conversation's message box, as it is, without sending it. Settles within PREFILL_MS and never
+       rejects: 'uncertain' when that time runs out. */
+    prefill(sessionId, text) {
+      if (!canPrefill) return Promise.resolve({ outcome: 'notReceived', reason: 'this window cannot fill in a message box' });
+      if (!trusted()) return Promise.resolve({ outcome: 'notReceived', reason: 'the workspace is not trusted' });
+      if (typeof sessionId !== 'string' || sessionOfUri(uriOf(sessionId)) !== sessionId) return Promise.resolve({ outcome: 'notReceived', reason: 'no such conversation' });
+      if (typeof text !== 'string' || !text) return Promise.resolve({ outcome: 'notReceived', reason: 'there is no text to put in' });
+      const deadline = Date.now() + PREFILL_MS;
+      let timer = null;
+      const late = new Promise((resolve) => { timer = setTimeout(() => resolve({ outcome: 'uncertain', reason: 'the message box did not answer in time' }), PREFILL_MS); });
+      const doing = Promise.resolve().then(() => deps.prefill(sessionId, text, deadline)).then(
+        (r) => (r && ['drafted', 'notReceived', 'uncertain'].includes(r.outcome) ? r : { outcome: 'uncertain', reason: 'no answer about the message box' }),
+        (e) => ({ outcome: 'notReceived', reason: String((e && e.message) || e).slice(0, 200) }));
+      return Promise.race([doing, late]).finally(() => clearTimeout(timer));
+    },
 
     /* A repeated deliveryId gets the first call's result instead of typing the text again, also while that call runs;
        after notReceived the id is dropped, so the caller can retry. */

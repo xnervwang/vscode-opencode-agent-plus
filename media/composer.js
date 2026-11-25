@@ -261,6 +261,15 @@
     return [n('images', 'image'), n('selections', 'selection')].filter(Boolean).join(' and ');
   }
 
+  /* The message box with `text` put in for the user to go on writing: after what the box holds, with a space between
+     when that does not end in white space. */
+  function prefillText(value, text) {
+    const v = String(value || '');
+    const t = String(text || '');
+    if (!v) return t;
+    return /\s$/.test(v) ? v + t : `${v} ${t}`;
+  }
+
   /* Whether the models listed are only OpenCode's own free ones (opencode/…), as before any provider is connected. */
   function onlyFreeModels(list) {
     const l = Array.isArray(list) ? list.filter((m) => m && typeof m.id === 'string') : [];
@@ -268,5 +277,5 @@
   }
 
   return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl, escapeAction, chimeKind, ringLow, imageKind, driveSlashes, backgroundSummary,
-    outlineRows, subagentShare, onlyFreeModels, queuedText, hasToken, insertRefs, appendDraft, enterAction, permissionModes, contextPill, autoContext, ASK, AUTO };
+    outlineRows, subagentShare, onlyFreeModels, queuedText, prefillText, hasToken, insertRefs, appendDraft, enterAction, permissionModes, contextPill, autoContext, ASK, AUTO };
 }));

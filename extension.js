@@ -383,8 +383,8 @@ function start(context, log, gate, channel) {
     const noteFront = () => { if (panel.active) { frontId = entry.id; otherChatLast(false); } };
     noteFront();
     const offFront = panel.onDidChangeViewState(noteFront);
-    const draft = forkDrafts.get(entry.id);
-    if (draft) { forkDrafts.delete(entry.id); chat.compose({ draft }); }
+    const draft = drafts.get(entry.id);
+    if (draft) { drafts.delete(entry.id); chat.compose({ draft }); }
     for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);
     /* Shows the model a turn runs on (turnStart.modelId) and, after the model's first call, the context window
        OpenCode has learned for it. */
@@ -449,15 +449,39 @@ function start(context, log, gate, channel) {
     return mentions.refFor(file, { folders: folderPaths(), ...sel });
   };
 
+  /* Text for the message box of a conversation whose tab is about to open, put in once its page is set up. */
+  const drafts = new Map();
+
+  /*
+   * Agent Plus's prefill: brings conversation `id` to the front in this window, opening its tab as openSession() does,
+   * and puts `text` in its message box after what the box holds, the caret at its end; nothing is sent. Resolves with
+   * { outcome: 'drafted' } once the page has it in the box, 'uncertain' when the page gave no answer by `deadline`, or
+   * 'notReceived' with the reason.
+   */
+  async function prefill(id, text, deadline) {
+    const chatOf = () => [...chats].find((c) => c.conversation && c.conversation.id === id) || null;
+    let chat = chatOf();
+    if (!chat) {
+      const opened = await openSession(id).catch(() => false);
+      if (!opened) return { outcome: 'notReceived', reason: 'the conversation could not be opened in this window' };
+      while (!(chat = chatOf()) && Date.now() < deadline - 200) await new Promise((r) => setTimeout(r, 100));
+      if (!chat) return { outcome: 'notReceived', reason: 'its tab opened, but its chat page was not ready in time' };
+    }
+    chat.panel.reveal(chat.panel.viewColumn, false);
+    const ok = await chat.prefill(text, Math.max(0, deadline - Date.now()));
+    if (ok === true) return { outcome: 'drafted' };
+    if (ok === false) return { outcome: 'notReceived', reason: 'the chat page could not put the text in its message box' };
+    return { outcome: 'uncertain', reason: 'the chat page did not confirm the text in time' };
+  }
+
   /* Fork from here: OpenCode copies the history before the user message `target` into a new conversation, which opens
      in a tab of its own with that message in its box. */
-  const forkDrafts = new Map();
   async function forkFromMessage(id, target) {
     const mid = rewinding.messageOf(target, target.messageId ? [] : await backend.userMessages(id));
     if (!mid) throw new Error('Cannot fork here: OpenCode\'s copy of the conversation does not have this message.');
     const f = await backend.forkBefore(id, mid);
     if (f.cwd) folders.set(f.id, f.cwd);
-    if (target.text) forkDrafts.set(f.id, target.text);
+    if (target.text) drafts.set(f.id, target.text);
     log(`forked ${id} before ${mid} as ${f.id}`);
     return openSession(f.id);
   }
@@ -842,6 +866,7 @@ function start(context, log, gate, channel) {
     },
     reveal: async (id) => { const p = manager.panelOf(id); if (!p) return false; p.reveal(p.viewColumn); return true; },
     openHere: (id) => openSession(id),
+    prefill: (id, text, deadline) => prefill(id, text, deadline),
     trusted: () => vscode.workspace.isTrusted,
     hidden: (id) => backend.isChild(id),
     allConversations: () => windows.readAll(),

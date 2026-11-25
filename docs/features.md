@@ -180,7 +180,7 @@ A conversation can be open in only one VS Code window at a time. If you open it 
 
 ## Work Plan and Plan Bar
 
-If OpenCode Agent Plus finds [Python](setup.md#python-for-the-work-plan), it installs a work plan plugin for the OpenCode 2 process it starts. The plugin lets the model track what still needs to be done in your conversation. In Agent Plus, you can read the plan in the Work plan view and see which of your OpenCode Agent Plus conversations are working, waiting or idle in the Conversations view.
+If OpenCode Agent Plus finds [Python](setup.md#python-for-the-work-plan), it installs a work plan plugin for the OpenCode 2 process it starts. The plugin lets the model track what still needs to be done in your conversation. In Agent Plus, you can read the plan in the Work plan view and see which of your OpenCode Agent Plus conversations are working, waiting or idle in the Conversations view. The pen at the end of a row in the Work plan view brings the conversation to the front with `About row N (title): ` in its message box, after anything you already typed there, for you to finish and send.
 
 The plan bar above the input box (`opencodeAgentPlus.planBar`) shows the plan's open rows, the row in progress when there is one, and a yellow count of this conversation's questions waiting for your answer. Click the bar to open the Work plan view, or click the yellow count to go to those questions in Agent Plus's Answer view.
 
