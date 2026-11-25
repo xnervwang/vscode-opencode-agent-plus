@@ -5,8 +5,8 @@
 'use strict';
 /*
  * JSON-RPC 2.0 over a child's stdio, one JSON object per line: the transport the Agent Client Protocol uses. Requests
- * the agent sends us (session/request_permission) go to `onRequest`, whose promise may stay pending for as long as
- * the user takes to answer.
+ * the agent sends us (session/request_permission, elicitation/create) go to `onRequest`, whose promise may stay pending
+ * for as long as the user takes to answer.
  */
 
 class RpcError extends Error {

@@ -2,7 +2,7 @@
    Copyright (c) 2026, Xnerv Wang
    All rights reserved. */
 
-/* Colors come only from the theme's --vscode-* variables, so light, dark and high-contrast themes all work. */
+/* Colors use the theme's --vscode-* variables. */
 
 html, body {
   height: 100%;
@@ -114,7 +114,7 @@ select.option[hidden] {
   color: var(--vscode-editorWarning-foreground);
 }
 
-/* ---------- the log, and the outline beside it ---------- */
+/* ---------- log and outline ---------- */
 
 #middle {
   flex: 1 1 auto;
@@ -183,7 +183,7 @@ select.option[hidden] {
   color: var(--vscode-descriptionForeground);
 }
 
-/* The header's Outline and Subagents buttons: pressed while the outline shows, or while subagents are hidden. */
+/* The header's Outline and Subagents buttons. */
 button.toggle {
   flex: none;
   padding: 1px 7px;
@@ -214,7 +214,7 @@ body.hide-subagents .sub-fold .child {
   text-underline-offset: 2px;
 }
 #log:empty::before {
-  content: 'Ask a question to start the conversation.';
+  content: 'No messages yet.';
   color: var(--vscode-descriptionForeground);
 }
 
@@ -553,7 +553,7 @@ details.reasoning .md {
   text-overflow: ellipsis;
 }
 
-/* ---------- the / and @ lists, and what goes with the next message ---------- */
+/* ---------- the / and @ lists, attachments ---------- */
 
 #menu {
   max-height: 220px;

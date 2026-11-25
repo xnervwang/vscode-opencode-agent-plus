@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * A conversation's history as the chat page takes it: session records (contracts.js SessionRecord) go to the page's
- * view model whole (src/ui/view-model.js fromRecords); AgentEvents are replayed into it one by one, an event without
- * a time taking the time of the one before it, so a replayed reply is not stamped with the moment of the replay; bare
+ * Turns a conversation's history into what the chat page takes: session records (contracts.js SessionRecord) go to the page's
+ * view model whole (src/ui/view-model.js fromRecords); AgentEvents are replayed into it one by one, and an event
+ * without a time takes the previous event's, so a reply from history is not shown with the time it was replayed; bare
  * messages (contracts.js Message, optionally with `at`) are turned into message records.
  */
 function historyFor(history) {

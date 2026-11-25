@@ -39,7 +39,7 @@ test('text deltas stream into one reply item, reasoning into its own', () => {
   assert.equal(s.status, 'working');
 });
 
-test('changed items are found by identity, untouched ones keep theirs', () => {
+test('changed items are found by identity; untouched ones stay the same objects', () => {
   const a = run([{ type: 'turnStart', turnId: 't1', at: T0 }, { type: 'userMessage', text: 'q', at: T0 }, { type: 'text', delta: 'A' }]);
   const b = vm.reduce(a, { type: 'text', delta: 'B' }, T0 + 9000);
   assert.equal(b.items[0], a.items[0]);
@@ -300,7 +300,7 @@ test('unknown events and actions leave the state as it was', () => {
   assert.equal(vm.reduce(s, { type: 'permissionSettled', requestId: 'nope', decision: 'deny' }, T0), s);
 });
 
-test('turnStart.modelId names the model of the turn; a later ui.model for it brings the context window', () => {
+test("a turn's model comes from turnStart.modelId, and a later ui.model for that model brings its context window", () => {
   let s = vm.initialState();
   s = vm.reduce(s, { type: 'ui.model', model: { id: 'amazon-bedrock/us.xai.grok-4.7', name: 'Grok 4.7', contextWindow: 500000 } }, 1000);
   s = vm.reduce(s, { type: 'turnStart', turnId: 't1', at: 1000, modelId: 'amazon-bedrock/us.anthropic.claude-haiku-4-5' }, 1000);

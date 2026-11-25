@@ -4,11 +4,10 @@
 
 'use strict';
 /*
- * Restricted Mode. Until the workspace is trusted the extension starts nothing: no OpenCode, no conversation, no file
- * written, no Agent Plus source. Only its commands, its chat editor and an empty Conversations view are registered here,
- * so that a command, a chat tab VS Code restores and the view say what to do (the view's text is a viewsWelcome entry in
- * package.json). Once trust is granted they give way to the real ones, without a reload, and a chat tab already open
- * is handed to the real chat editor.
+ * Restricted Mode. Until the workspace is trusted the extension starts no OpenCode and no conversation, writes no file
+ * and registers no Agent Plus source. It registers stand-ins that tell the user to trust the workspace: its commands, its
+ * chat editor, and an empty Conversations view whose text is a viewsWelcome entry in package.json. Once trust is granted
+ * they give way to the real ones without a reload, and a chat tab already open is handed to the real chat editor.
  *
  * The chat editor is registered here in every case, since VS Code takes one provider per view type; start() hands it
  * the real provider through useEditor().
@@ -42,7 +41,7 @@ document.getElementById('manage').addEventListener('click', () => vscode.postMes
 /*
  * deps:
  *   vscode
- *   viewType      the chat editor's view type
+ *   viewType      opencodePlus.chat (the chat editor)
  *   viewId        the Conversations view
  *   commands      the ids of the commands package.json contributes
  *   log(line)     optional
@@ -100,7 +99,6 @@ function createTrustGate({ vscode, viewType, viewId, commands, log = () => {} })
       });
       subs.push(grant);
     },
-    /* The real chat editor; a tab showing the Restricted Mode page is drawn again by it. */
     useEditor(editor) {
       real = editor;
       const tabs = [...waiting];

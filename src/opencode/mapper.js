@@ -12,21 +12,22 @@
  * Text a plugin adds for the model only (a work-plan line, a turn-end note) arrives as a user chunk annotated with
  * `audience: ["assistant"]` (1.x); it becomes a userMessage with `synthetic: true` and never starts a turn. The work plan
  * plugin on 2.x wraps its turn-end reminder in a <system-update> block; 2.4.1 neither streams nor replays it over ACP,
- * and a user chunk that starts with one is taken the same way should a later OpenCode send it.
+ * and a user chunk that starts with one is taken the same way, in case a later OpenCode sends it.
  *
- * usage_update carries the session's running cost; AgentEvent usage carries the cost of one call, so the difference
- * from the last one seen is sent.
+ * usage_update reports the session's running cost, while an AgentEvent usage holds the cost of one call, so each usage
+ * event gets the difference from the last total seen.
  *
  * OpenCode 2.x reports a retry it has scheduled as a session_info_update whose _meta["opencode/retry"] holds the next
- * attempt, and clears it with null when that attempt starts; they become `retry` events, attempt 0 for the clearing.
+ * attempt, and clears it with null when that attempt starts. Each becomes a `retry` event; the clearing one has
+ * attempt 0.
  *
  * With the client capability session.compaction, 2.x reports compacting as compaction_update (in_progress, then
  * completed with the summary, failed or cancelled) and streams the summary in compaction_summary_chunk; these become
  * `compaction` events, the chunks kept only for a completed update that carries no summary. A replay holds the
  * completed update where the compaction happened; it ends the replayed turn before it.
  *
- * A replayed user message carries the messageId OpenCode gave it (`messageId` on the userMessage event); a live one has
- * none, since session/prompt answers with no id.
+ * The userMessage event of a replayed user message has the `messageId` OpenCode gave it; a live one has none, since
+ * session/prompt answers with no id.
  *
  * A user message's images and files come back in a replay as image and resource_link chunks of the same messageId; a
  * file whose text was sent along comes back as part of the text, the way OpenCode wrote it for the model: a line
@@ -107,7 +108,8 @@ function toolNameOf(tc) {
   return (tc && KIND_TOOL[tc.kind]) || title || 'tool';
 }
 
-/* contracts.js PermissionRequest from session/request_permission's toolCall. `toolName` is what the tool call said. */
+/* contracts.js PermissionRequest from session/request_permission's toolCall. `toolName` is the name the call was first
+   seen with; without it the name is read from `toolCall`. */
 function permissionRequest(toolCall, toolName) {
   const tc = toolCall || {};
   const raw = tc.rawInput && typeof tc.rawInput === 'object' ? tc.rawInput : {};
@@ -146,8 +148,9 @@ function permissionRequest(toolCall, toolName) {
   }
 }
 
-/* contracts.js ModelInfo[] from ACP's model config option. The catalog numbers are not in ACP: a context window is
- * filled in once a usage_update has reported it for that model, prices never are (OpenCode reports the cost). */
+/* { models: contracts.js ModelInfo[], current } from ACP's model config option. The catalog numbers are not in ACP: a
+ * context window is filled in once a usage_update has reported it for that model, prices never are (OpenCode reports
+ * the cost). */
 function modelsFromConfig(configOptions, contextWindows = {}) {
   const opt = Array.isArray(configOptions) ? configOptions.find((o) => o && (o.id === 'model' || o.category === 'model')) : null;
   if (!opt || !Array.isArray(opt.options)) return { models: [], current: '' };
@@ -193,11 +196,10 @@ function pathOfUri(uri) {
   try { return fileURLToPath(uri.replace(/#.*$/, '')); } catch (_) { return ''; }
 }
 
-/* A user message's attachment as the chat page names it, from a replayed chunk. */
 /* OpenCode's lines for a selection sent with its text (2.4.1, `Wh()`): "\n[<absolute path>:<line>]\n<text>". */
 const SELECTION_PART = /\n\[((?:[A-Za-z]:)?[\\/][^\]\n]*?)(?::(\d+))?\]\n/g;
 
-/* The replayed text without the selections OpenCode wrote into it, and the selections. */
+/* { text, shown }: the replayed text up to the first selection OpenCode wrote into it, and those selections. */
 function splitSelections(text) {
   const t = String(text || '');
   const found = [...t.matchAll(SELECTION_PART)];
@@ -209,6 +211,7 @@ function splitSelections(text) {
   return { text: t.slice(0, found[0].index), shown };
 }
 
+/* A user message's attachment as the chat page names it, from a replayed chunk. */
 function attachmentOf(content) {
   if (!content || typeof content !== 'object') return null;
   if (content.type === 'image') return { kind: 'image', name: 'image' };
@@ -260,7 +263,8 @@ function createMapper({ now = Date.now } = {}) {
     return [turnStart(turnId, t, modelId, effort), msg];
   }
 
-  /* A turn OpenCode began without a prompt (a subagent or a background shell it waited for finished): no user message. */
+  /* A turn OpenCode began without a prompt, as when a subagent or a background shell it waited for finishes. It has no
+     user message. */
   function beginOwn(turnId, at, modelId, effort) {
     const start = turnStart(turnId, at || now(), modelId, effort);
     start.unsolicited = true;
@@ -271,7 +275,7 @@ function createMapper({ now = Date.now } = {}) {
     if (!pendingUser && !pendingAttachments.length) return [];
     const split = replaying ? splitSelections(pendingUser) : { text: pendingUser, shown: [] };
     const ev = { type: 'userMessage', text: split.text, at: turn ? turn.startedAt : now() };
-    /* A replayed message names its id, which rewinding to it and its time in the export go by. */
+    /* Rewinding and the export's times look a replayed message up by this id. */
     if (replaying && lastUserMessage) ev.messageId = lastUserMessage;
     const shown = [...pendingAttachments, ...split.shown];
     if (shown.length) ev.attachments = shown;
@@ -309,7 +313,6 @@ function createMapper({ now = Date.now } = {}) {
     if (status === 'completed') {
       t.done = true;
       const display = { title: typeof u.title === 'string' ? u.title : '', kind: t.kind || '' };
-      /* A subagent tool names the session the subagent runs in. */
       const meta = u.rawOutput && u.rawOutput.metadata;
       if (meta && typeof meta.sessionID === 'string' && meta.sessionID) display.childId = meta.sessionID;
       const text = contentText(u.content) || (u.rawOutput && typeof u.rawOutput.output === 'string' ? u.rawOutput.output : '');

@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The permission requests answered "allow once" without asking the user: a write or an edit by OpenCode's write or
- * edit tool whose every target lies inside the one folder the extension names for that conversation (its folder for
- * images, src/workplan scratchDir). OpenCode's own rules cannot say this: they are fixed when its process starts and
- * shared by every conversation it runs, so the narrowest rule there would cover every conversation's folder.
+ * The permission requests answered "allow once" without asking the user: writes and edits by OpenCode's write or edit
+ * tool when every target is inside the conversation's own folder (its folder for images, src/workplan scratchDir).
+ * OpenCode's own rules cannot say this: they are fixed when its process starts and shared by every conversation it
+ * runs, so the narrowest rule there would cover every conversation's folder.
  * Targets are compared by their real paths, so a symbolic link cannot lead a write out of the folder; a target with a
  * `.` or `..` segment, or not absolute, is asked about.
  */
@@ -16,7 +16,7 @@ const path = require('path');
 
 const TOOLS = new Set(['write', 'edit']);
 
-/* Every path the tool call names as a target, or null when it is not such a write or names none. */
+/* The paths a write or edit tool call names as targets; null for any other call, or when it names none. */
 function writeTargets(toolCall) {
   const tc = toolCall && typeof toolCall === 'object' ? toolCall : {};
   if (tc.kind !== 'edit' || !TOOLS.has(tc.name)) return null;
@@ -29,7 +29,7 @@ function writeTargets(toolCall) {
   return out.length ? out : null;
 }
 
-/* The real path of `p`, which may not exist yet: its deepest existing folder resolved, the rest appended. */
+/* The real path of `p`, which may not exist yet. */
 function realOf(p) {
   let at = p;
   const rest = [];
@@ -54,8 +54,9 @@ function inside(file, folder) {
 }
 
 /*
- * The reply to session/request_permission `params` without asking, or null to ask: `folderOf(sessionId)` gives the
- * conversation's folder (or null). A subagent asks with its parent's session id, so it gets the parent's folder.
+ * The answer to give session/request_permission `params` on the user's behalf, or null when the user has to be asked.
+ * `folderOf(sessionId)` gives the conversation's folder (or null). A subagent asks with its parent's session id, so it
+ * gets the parent's folder.
  */
 function answer(params, folderOf) {
   if (!params || typeof folderOf !== 'function') return null;

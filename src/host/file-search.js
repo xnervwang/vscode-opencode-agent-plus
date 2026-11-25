@@ -5,9 +5,9 @@
 'use strict';
 /*
  * Workspace files for the chat page's @ list. vscode.workspace.findFiles runs where the extension runs, which is the
- * remote machine under Remote-SSH. The list is read at most once per `ttlMs` while @ is typed, at most `maxFiles` of
- * them, leaving out what files.exclude and search.exclude set to true plus node_modules and .git; the query is matched
- * here.
+ * remote machine under Remote-SSH. While @ is typed the list is read again only after `ttlMs`; it holds up to
+ * `maxFiles` files and leaves out what files.exclude and search.exclude set to true, plus node_modules and .git. The
+ * query is matched here.
  */
 const path = require('path');
 
@@ -28,7 +28,6 @@ function excludeGlob(read) {
   return `{${keys.join(',')}}`;
 }
 
-/* Whether the letters of `q` appear in `s` in order. */
 function inOrder(s, q) {
   let i = 0;
   for (const ch of s) if (ch === q[i]) i += 1;
@@ -36,8 +35,8 @@ function inOrder(s, q) {
 }
 
 /*
- * Files for a query, best first: the name starts with it, the name holds it, the path holds it, the path holds its
- * letters in order; shorter paths first within each. An empty query gives the shortest paths.
+ * Files for a query, best first, in four tiers: name prefix, name substring, path substring, then the query's letters
+ * in order anywhere in the path.
  */
 function rank(files, query, limit = 50) {
   const q = String(query || '').toLowerCase();

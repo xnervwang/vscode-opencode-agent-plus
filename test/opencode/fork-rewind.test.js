@@ -108,7 +108,7 @@ test('2.x: in a folder OpenCode keeps no snapshots of, a rewind restores no file
   assert.deepEqual(staged, { messageId: 'msg_20dad7443001Ct1Z3hYCEqDRyZ', tracked: false, files: [] });
 });
 
-test('rewinding: a bad message id never runs, OpenCode refusing says why, a working conversation and 1.x are refused', async (t) => {
+test('rewinding: a bad message id runs nothing, a refusal from OpenCode carries its reason, and a working conversation or 1.x is refused', async (t) => {
   const { oc, calls } = setup(t, 'v2-rewind.jsonl', V2, () => [Object.assign(new Error('Command failed'), { code: 1 }), '{"_tag":"Session.BusyError","message":"Session is busy"}', 'HTTP 409']);
   await assert.rejects(oc.rewindStage(ORIGINAL, 'msg x; rm'), (e) => e.code === 'badRequest');
   assert.equal(calls.length, 0);

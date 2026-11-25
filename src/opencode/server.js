@@ -12,10 +12,10 @@
  * OpenCode 2.x `acp` starts a private server of its own (`serve --stdio --port 0`) that inherits the environment set
  * here (AWS credentials, the permission rules below), whether or not the machine's shared background service runs.
  *
- * Its other subcommands are different: `opencode api`, `session list`, `session export` and the like connect to the
- * shared background service, and start a lasting one with our environment when none runs, which the user's own
+ * OpenCode's other subcommands are different: `opencode api`, `session list`, `session export` and the like connect to
+ * the shared background service, and start a lasting one with our environment when none runs, which the user's own
  * OpenCode would then use. On 2.x every subcommand this extension runs goes through subcommandArgs(), which adds
- * `--standalone` (a private server for that one command).
+ * `--standalone` (a private server for that one command) to each one that would start a server.
  */
 const fs = require('fs');
 const os = require('os');
@@ -91,8 +91,9 @@ function readVersion(bin) {
 }
 
 /*
- * The configured path, then PATH, then the places the installers use. Returns { path, version } (version may be null
- * when `--version` printed nothing usable) or throws an OpenCodeError whose message tells the user what to do.
+ * The configured path when one is set, else the first match in PATH and then in the places the installers use.
+ * Returns { path, version } (version may be null when `--version` printed nothing usable) or throws an OpenCodeError
+ * whose message tells the user what to do.
  */
 function findOpenCode(opts = {}) {
   const env = opts.env || process.env;
@@ -117,7 +118,7 @@ function findOpenCode(opts = {}) {
    for an answer nobody can give. */
 const QUESTIONS_FROM = Object.freeze({ major: 2, minor: 4, patch: 1 });
 
-/* Whether `version` ({ major, minor, patch }) is QUESTIONS_FROM or later; a bare major number is not enough to tell. */
+/* Whether `version` ({ major, minor, patch }) is QUESTIONS_FROM or later. */
 function asksQuestions(version) {
   if (!version || typeof version !== 'object') return false;
   const a = [version.major, version.minor, version.patch].map((n) => Number(n) || 0);
@@ -128,8 +129,7 @@ function asksQuestions(version) {
 
 /* Default rules: ask before edits, commands, web fetches and paths outside the project. From QUESTIONS_FROM on, the
  * question tool asks through forms the chat page answers; before it (1.x has no way to ask over ACP at all) the tool
- * is off. Written once per config dialect: 1.x reads `permission`, 2.x reads `permissions`. `version` is the one
- * findOpenCode() read, or just its major. */
+ * is off. `version` is the one findOpenCode() read, or just its major. */
 function permissionConfig(version) {
   const major = typeof version === 'number' ? version : (version && version.major) || 1;
   const questions = asksQuestions(version);
@@ -146,7 +146,7 @@ function permissionConfig(version) {
   return { permission: { edit: 'ask', bash: 'ask', webfetch: 'ask', external_directory: 'ask', question: 'deny' } };
 }
 
-/* Objects merge key by key, arrays concatenate (so rules added later come later and win), anything else is replaced. */
+/* Objects merge key by key, arrays concatenate (rules from `extra` come last and win), anything else is replaced. */
 function deepMerge(base, extra) {
   if (Array.isArray(base) && Array.isArray(extra)) return [...base, ...extra];
   if (base && extra && typeof base === 'object' && typeof extra === 'object' && !Array.isArray(base) && !Array.isArray(extra)) {
@@ -189,20 +189,21 @@ function acpLaunch({ bin, version, env = {}, permissions = true, config = null, 
    opencode debug paths"). */
 const LOCAL_SUBCOMMANDS = Object.freeze(['debug paths']);
 
-/* The arguments of an OpenCode subcommand other than `acp` (see the top of this file); 1.x has no `--standalone`. */
+/* `args` of an OpenCode subcommand other than `acp`, with `--standalone` added on 2.x unless the subcommand is one of
+   LOCAL_SUBCOMMANDS (see the top of this file). */
 function subcommandArgs(version, args) {
   const local = LOCAL_SUBCOMMANDS.includes(args.slice(0, 2).join(' '));
   return (version && version.major >= 2 && !local) ? [...args, '--standalone'] : [...args];
 }
 
-/* The environment of such a subcommand. */
+/* The environment for such a subcommand: ours, with autoupdate off as for `acp`. */
 function subcommandEnv(env = {}, baseEnv = process.env) {
   return { ...baseEnv, ...env, OPENCODE_DISABLE_AUTOUPDATE: '1' };
 }
 
 /*
- * Starts the process. stderr is kept as a short tail for error messages. The child exits on its own when stdin
- * closes, so a crashed extension host does not leave it behind.
+ * stderr is kept as a short tail for error messages. The child exits on its own when stdin closes, so a crashed
+ * extension host does not leave it behind.
  */
 function startAcp(opts) {
   const launch = acpLaunch(opts);
@@ -217,7 +218,7 @@ function startAcp(opts) {
   return { child, stderrTail: () => tail, args: launch.args };
 }
 
-/* Ends stdin, then kills if it has not gone after `graceMs`. */
+/* Ends stdin and sends SIGTERM, then SIGKILL if the child has not exited after `graceMs`. */
 function stopAcp(child, graceMs = 3000) {
   if (!child || child.exitCode !== null || child.signalCode) return Promise.resolve();
   return new Promise((resolve) => {

@@ -3,7 +3,7 @@
 // All rights reserved.
 
 'use strict';
-/* The plan bar: Agent Plus's summary of a conversation's plan, followed while its page is open, and the bar's clicks. */
+/* The plan bar: a page follows Agent Plus's summary of its conversation's plan while open, and the bar's clicks go to Agent Plus. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
@@ -35,11 +35,11 @@ function fakeCore({ features = ['allConversations', 'waitingFor', 'planSummary']
   };
 }
 
-test('the source id the bar asks with is the one this extension registers', () => {
+test('the plan bar uses the source id this extension registers', () => {
   assert.equal(SOURCE, ID);
 });
 
-test('a page follows its conversation\'s summary while open; other conversations and sources are not its own', () => {
+test("a page follows its conversation's summary while open, and ignores other conversations and other sources", () => {
   let on = true;
   const ran = [];
   const bar = createPlanBar({ on: () => on, run: async (c, a) => ran.push([c, a]) });

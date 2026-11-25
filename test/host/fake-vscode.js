@@ -180,7 +180,7 @@ function create() {
       if (groups[0].activeTab) groups[0].activeTab.isActive = true;
       tabsChanged.fire({ opened: [], closed: [], changed: [] });
     },
-    /* Takes these tabs out of the group, as the user closing them. */
+    /* Takes these tabs out of the group, as if the user closed them. */
     closeTabs(list) {
       const gone = groups[0].tabs.filter((t) => list.includes(t));
       groups[0].tabs = groups[0].tabs.filter((t) => !list.includes(t));

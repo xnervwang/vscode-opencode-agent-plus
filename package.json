@@ -313,31 +313,31 @@
         "opencodePlus.model": {
           "type": "string",
           "default": "",
-          "description": "Model for new conversations, as provider/model, such as amazon-bedrock/us.xai.grok-4.7. Empty asks before the first message."
+          "description": "Model for new conversations, as provider/model, such as amazon-bedrock/us.xai.grok-4.7. Leave it empty to choose one when you send your first message."
         },
         "opencodePlus.opencode.path": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "Path to the opencode executable. Empty looks for it on PATH and where its installers put it."
+          "description": "Path to the opencode executable. If it is empty, OpenCode Plus looks on PATH and in the folders OpenCode's installers use."
         },
         "opencodePlus.opencode.askPermissions": {
           "type": "boolean",
           "default": true,
           "scope": "machine",
-          "description": "Ask before OpenCode edits files, runs commands, fetches web pages or reads outside the project. This replaces the edit, bash, webfetch and external_directory rules of your own OpenCode configuration; turn it off to keep those."
+          "description": "Ask before OpenCode edits files, runs commands, fetches web pages or reads or writes files outside the project. This replaces the edit, bash (shell on OpenCode 2), webfetch and external_directory rules of your own OpenCode configuration; turn it off to keep those."
         },
         "opencodePlus.bedrock.profile": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "AWS profile for Amazon Bedrock, given to OpenCode as AWS_PROFILE. Empty leaves it to OpenCode and your AWS configuration."
+          "description": "AWS profile for Amazon Bedrock, passed to OpenCode as AWS_PROFILE. Leave it empty to use OpenCode's own configuration and your AWS configuration."
         },
         "opencodePlus.bedrock.region": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "AWS Region for Amazon Bedrock, given to OpenCode as AWS_REGION. Empty leaves it to OpenCode and your AWS configuration."
+          "description": "AWS Region for Amazon Bedrock, passed to OpenCode as AWS_REGION. Leave it empty to use OpenCode's own configuration and your AWS configuration."
         },
         "opencodePlus.workPlan": {
           "type": "boolean",
@@ -348,7 +348,7 @@
         "opencodePlus.planBar": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show a bar above the input box with where the conversation's work plan stands, from Agent Plus. Click it to open the Work plan view."
+          "markdownDescription": "Show the conversation's work plan from Agent Plus in a bar above the input box. Click the bar to open the Work plan view."
         },
         "opencodePlus.conversationLinks": {
           "type": "boolean",
@@ -365,7 +365,7 @@
           "type": "boolean",
           "default": true,
           "scope": "application",
-          "markdownDescription": "Tell the model the time zone you read the conversation in when it differs from that of the machine OpenCode runs on, as over Remote-SSH, so it gives times in yours. It is said once, and again after a compaction or when a date or the offset changes. Used only while `#agentPlus.tokenMode#` is Custom."
+          "markdownDescription": "Tell the model your time zone when it differs from that of the machine OpenCode runs on, as it can over Remote-SSH. It is said once, and again after a compaction or when a date or the offset changes. Used only while `#agentPlus.tokenMode#` is Custom."
         }
       }
     },

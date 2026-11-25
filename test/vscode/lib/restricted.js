@@ -8,8 +8,8 @@
  * not trusted; the folder's .vscode/settings.json points opencodePlus.opencode.path at a program of its own, which
  * writes a file if it is ever run, and sets the other three settings that pick what runs. Until trust is granted no
  * OpenCode process may start, that program may not run, nothing may be written to the extension's folder, and the
- * Conversations view, a chat tab and a command say to trust the workspace. The view's button and the tab's each open
- * the Workspace Trust editor, where the folder is then trusted; without a reload the extension starts, the chat tab is
+ * Conversations view, a chat tab and a command say to trust the workspace. The buttons in the view and in the tab each
+ * open the Workspace Trust editor, where the folder is then trusted; without a reload the extension starts, the chat tab is
  * handed over, and a new conversation runs on the OpenCode of the user settings, not the folder's.
  */
 const fs = require('fs');
@@ -19,7 +19,7 @@ const TEXT = 'OpenCode Plus does nothing in Restricted Mode. It starts when you 
 const KEYS = ['opencode.path', 'opencode.askPermissions', 'bedrock.profile', 'bedrock.region'];
 const PROBE = 'ses_restrictedprobe000000001';
 
-/* Writes the folder's own settings and the program they name; returns what the run checks against. */
+/* Writes the folder's own settings and the program they name; returns the marker file, the program and those settings. */
 function prepareFolder(folder, root) {
   const marker = path.join(root, 'workspace-opencode-ran.txt');
   const program = path.join(folder, 'tools', 'opencode');
@@ -68,7 +68,7 @@ async function run(t) {
   const restricted = await ext('return api.test.restricted();');
   check(trusted === false && restricted === true, 'the folder opens in Restricted Mode, and OpenCode Plus is active but has not started', { trusted, restricted });
 
-  // R2. The Conversations view says to trust the workspace, with the button, and offers nothing else.
+  // R2. The Conversations view says to trust the workspace and shows the button, and nothing else.
   const icon = await page.waitForSelector('.activitybar .action-item [aria-label^="OpenCode Plus"]', { timeout: 30000 }).catch(() => null);
   if (icon) await icon.click();
   const view = await until(async () => {
@@ -124,7 +124,7 @@ async function run(t) {
   const written = fs.existsSync(t.home) ? fs.readdirSync(t.home) : [];
   check(written.length === 0, "nothing was written to the extension's folder (no plugin, plans, locks or window state)", written);
 
-  // R7. Each button opens the Workspace Trust editor, with no prompt of VS Code's first; there the folder is trusted.
+  // R7. Each button opens the Workspace Trust editor without a VS Code prompt first; the folder is then trusted in it.
   const trustEditor = () => page.evaluate(() => ({ editor: !!document.querySelector('.workspace-trust-editor'),
     dialog: [...document.querySelectorAll('.monaco-dialog-box')].map((d) => d.textContent.trim().slice(0, 120)) }));
   const closeTrustEditor = () => call('await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => /Workspace Trust/.test(x.label))); return true;');
@@ -152,7 +152,8 @@ async function run(t) {
   const nowTrusted = await until(() => call('return vscode.workspace.isTrusted;'), 20000);
   check(clicked === true && nowTrusted === true, 'Trust in the Workspace Trust editor trusts the folder', { clicked, nowTrusted });
 
-  // R8. Without a reload the extension starts: the view lists, the tab is handed over.
+  // R8. Without a reload the extension starts: the Conversations view shows its list, and the chat tab is handed to the chat
+  // editor.
   const started = await until(() => ext('return !api.test.restricted() && typeof api.test.settings === "function";'), 30000);
   const host = await call('return process.pid;');
   check(!!started, 'OpenCode Plus starts once trusted, in the same extension host (no reload)', { started, host });
@@ -160,7 +161,7 @@ async function run(t) {
   const env = (settings && settings.env) || {};
   check(!!settings && settings.binaryPath === userPath && settings.permissions === true && (env.AWS_PROFILE || '') === want['bedrock.profile'] && (env.AWS_REGION || '') === want['bedrock.region'],
     "once trusted it still starts OpenCode with the user's settings, not the folder's", settings);
-  /* Trusted, restrictedConfigurations no longer applies: what still keeps the folder's values out is the machine scope. */
+  /* Once the folder is trusted, restrictedConfigurations no longer applies; the machine scope still keeps its values out. */
   const seenTrusted = await call(`const c = vscode.workspace.getConfiguration("opencodePlus");
     return arg.map((k) => { const i = c.inspect(k) || {}; return { key: k, get: c.get(k), globalValue: i.globalValue, workspaceValue: i.workspaceValue, workspaceFolderValue: i.workspaceFolderValue }; });`, KEYS);
   console.log(`  note  settings as VS Code gives them to the extension once trusted: ${JSON.stringify(seenTrusted)}`);
@@ -187,7 +188,7 @@ async function run(t) {
     part: '#workbench\\.parts\\.editor' });
   await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === "opencodeplus-session:/" + arg); await vscode.window.tabGroups.close(tabs); return true;', PROBE);
 
-  // R9. A new conversation runs, on the user's OpenCode.
+  // R9. A new conversation runs on the user's OpenCode.
   await page.hover(`${sidebar} .pane-header`).catch(() => {});
   const add = await page.waitForSelector(`${sidebar} .action-label[aria-label^="New Conversation"]`, { timeout: 15000 }).catch(() => null);
   check(!!add, 'once trusted, the view title has the New Conversation button');

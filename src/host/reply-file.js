@@ -10,11 +10,10 @@
  *
  *   { format: 1, at, lastUserAt, said: [{ text, at }], reply }
  *
- * `said` is the user's latest messages, oldest first, at most MAX_SAID, each cut to MAX_SAID_CHARS; `reply` is the text
- * the conversation wrote after the user's last message (no reasoning, no tool output), its parts joined by a blank
- * line and cut to its last MAX_REPLY_CHARS. Text a plugin added for the model (a synthetic userMessage) is not the
- * user's. A conversation opened from history starts from what the history holds. Deleting the conversation deletes the
- * file (src/workplan removePlan).
+ * `said` is the user's latest messages, oldest first; `reply` is the text the conversation wrote after the user's last
+ * message (no reasoning, no tool output), its parts joined by a blank line and cut to its last MAX_REPLY_CHARS. Text a
+ * plugin added for the model (a synthetic userMessage) is not the user's. For a conversation opened from history the
+ * state is first built from its stored events. Deleting the conversation deletes the file (src/workplan removePlan).
  */
 const fs = require('fs');
 const path = require('path');
@@ -30,7 +29,7 @@ const KEEP_CHARS = MAX_REPLY_CHARS * 2;
 const cutSaid = (t) => (t.length <= MAX_SAID_CHARS ? t : `${t.slice(0, MAX_SAID_CHARS)}...`);
 const cutReply = (t) => (t.length <= MAX_REPLY_CHARS ? t : `...${t.slice(-MAX_REPLY_CHARS)}`);
 
-/* What the file would hold after `events`, kept as it goes: said, the reply since the user last wrote, and times. */
+/* Builds the file's body event by event. */
 function createReplyState() {
   const st = { said: [], reply: '', lastUserAt: 0, at: 0, joinNext: false };
   return {
@@ -89,7 +88,8 @@ function createReplyFiles(deps) {
 
   return {
     fileOf,
-    /* Follows `conversation` (on(fn) of AgentEvents), starting from its `history` events; returns a function that stops. */
+    /* Replays `history`, then rewrites the file at the end of each turn of `conversation`; call the returned function
+       to stop. */
     track(id, conversation, history) {
       const r = createReplyState();
       for (const ev of Array.isArray(history) ? history : []) r.take(ev);

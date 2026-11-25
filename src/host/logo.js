@@ -4,13 +4,13 @@
 
 'use strict';
 /*
- * The logo Agent Plus draws beside this extension's conversations. Agent Plus reads it as an SVG file, where
- * currentColor has no theme to follow, so the activity bar icon (images/sidebar.svg) is copied into the extension's
- * storage twice, once in each default theme's icon colour, and rewritten only when the icon changes.
+ * The logo Agent Plus draws beside this extension's conversations. It is read as an SVG file, where currentColor has
+ * no theme to follow, so the activity bar icon (images/sidebar.svg) is copied into the extension's storage twice, once
+ * in each default theme's icon colour, and rewritten only when the icon changes.
  *
- * A chat tab's icon (tabIcons) is the same logo with a dot that says what the conversation is doing, in the colours
- * Claude Code Plus and Codex Plus use for their tabs: green while a turn runs, red while it waits for the user, none
- * once it has stopped. The logo is cut away round the dot so the dot reads at tab size. File names carry a hash of the
+ * A chat tab's icon (tabIcons) is the same logo with a dot for the conversation's state, in the colours Claude Code
+ * Plus and Codex Plus use for their tabs: green while a turn runs, red while it waits for the user, none once it has
+ * stopped. The logo is cut away round the dot so the dot reads at tab size. File names carry a hash of the
  * drawing: VS Code keeps an image it has loaded for as long as its URL stays the same.
  */
 const crypto = require('crypto');
@@ -21,7 +21,6 @@ const COLORS = { light: '#424242', dark: '#c5c5c5' };
 const DOTS = { working: '#22c55e', waiting: '#ef4444' };
 const TAB_STATES = ['stopped', 'working', 'waiting'];
 
-/* Writes `body` to `file` unless it is there already, through a temporary file. */
 function keep(file, body) {
   let old = null;
   try { old = fs.readFileSync(file, 'utf8'); } catch (_) { /* not written yet */ }
@@ -31,7 +30,7 @@ function keep(file, body) {
   fs.renameSync(tmp, file);
 }
 
-/* The 24-unit logo in `color`, with a dot of `dot` in its top right corner when given. */
+/* The 24-unit logo in `color`; with `dot` set, a circle of that colour sits at its top right. */
 function withDot(svg, color, dot) {
   const body = svg.replace(/currentColor/g, color);
   if (!dot) return body;
@@ -68,10 +67,7 @@ function logoFiles(extensionPath, storageDir) {
   return out;
 }
 
-/*
- * { stopped, working, waiting }, each { light, dark } file paths, or null when the icon cannot be read or the files
- * cannot be written.
- */
+/* { stopped, working, waiting }, each { light, dark } file paths; null on the same failures as logoFiles. */
 function tabIcons(extensionPath, storageDir) {
   let svg;
   try { svg = fs.readFileSync(path.join(extensionPath, 'images', 'sidebar.svg'), 'utf8'); } catch (_) { return null; }

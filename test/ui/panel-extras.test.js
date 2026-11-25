@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The chat page's third batch: answering a request from its diff's title bar, rewinding, the info box, the chimes and
- * their mute button, images in replies, the Background line, Esc and the ring's outline, with what the page decides
- * without a page (media/composer.js) and what the view model keeps for them.
+ * In the chat page: answering a request from its diff's title bar, rewinding, the info box, the chimes and their mute
+ * button, images in replies, the Background line, Esc and the ring's outline, with the logic that runs without the page
+ * (media/composer.js) and what the view model keeps for them.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -36,7 +36,7 @@ function setup(extra = {}, turns = demoTurns()) {
   return { vscode, panel, conversation, chat, responses };
 }
 
-test('a diff opened while its request is open gets the title bar answers, which reach the request once', async () => {
+test('a diff opened while its request is open gets the title bar buttons, and their answer reaches the request once', async () => {
   const { vscode, panel, chat, responses } = setup();
   panel.fromPage({ type: 'ready' });
   panel.fromPage({ type: 'send', text: 'go' });
@@ -90,7 +90,7 @@ test('the title bar buttons are in package.json for those diffs only, and Fork s
   assert.ok(pkg.contributes.commands.some((c) => c.command === 'opencodePlus.showMcpServers' && c.title === 'Show MCP Servers'));
 });
 
-test('rewinding: offered with a rewinder, it hands over the message and its place, and is refused while working', async () => {
+test('rewinding: offered when a rewinder is given, it passes on the message and its position, and is refused while a turn runs', async () => {
   const asked = [];
   const { panel, chat, conversation, vscode } = setup({ rewind: (t) => { asked.push(t); } }, []);
   panel.fromPage({ type: 'ready' });
@@ -105,7 +105,7 @@ test('rewinding: offered with a rewinder, it hands over the message and its plac
   panel.fromPage({ type: 'rewind', itemId: second.id });
   await settle(5);
   assert.deepEqual(asked, [], 'not while the turn runs');
-  assert.match(vscode.rec.errors.pop(), /wait for the turn to end/);
+  assert.match(vscode.rec.errors.pop(), /wait for it to end before rewinding/);
   conversation.emit({ type: 'turnEnd', turnId: 't2', reason: 'endTurn', at: 40 });
   const first = chat.state.items.find((i) => i.kind === 'user');
   assert.equal(first.messageId, 'msg_20dacb8aa001b0TY7agRN2JAFo');
@@ -144,7 +144,7 @@ test('a new history redraws the page whole, keeps the model, and puts the rewoun
   chat.dispose();
 });
 
-test('the info box gets the rows the host gives, or what went wrong', async () => {
+test('the info box shows the rows the host sends, or the error when getting them fails', async () => {
   let fail = false;
   const { panel, chat } = setup({ info: async () => { if (fail) throw new Error('OpenCode is not running'); return [{ label: 'Session', value: 'ses_x' }, { label: 'Folder', value: '/w' }, { value: 'no label' }]; } }, []);
   panel.fromPage({ type: 'ready' });
@@ -160,7 +160,7 @@ test('the info box gets the rows the host gives, or what went wrong', async () =
   chat.dispose();
 });
 
-test('the mute button follows what the host keeps, and a change reaches it', async () => {
+test('the mute button shows what the host keeps, and a change made in the page reaches the host', async () => {
   let on = true;
   const sets = [];
   const sound = { on: () => on, set: (v) => { sets.push(v); on = v; } };
@@ -181,7 +181,7 @@ test('the mute button follows what the host keeps, and a change reaches it', asy
   none.chat.dispose();
 });
 
-test('a local image a reply shows goes to the host and comes back as a data: URL, or as why not', async () => {
+test('a local image in a reply goes to the host and comes back as a data: URL or with the reason it is not shown', async () => {
   const asked = [];
   const { panel, chat } = setup({ loadImage: async (src) => { asked.push(src); return src.endsWith('.png') ? { ok: true, dataUrl: 'data:image/png;base64,AAAA' } : { ok: false, reason: 'There is no such file.' }; } }, []);
   panel.fromPage({ type: 'ready' });
@@ -238,7 +238,7 @@ test('replayed times reach the items: a user message and its reply are dated by 
   assert.equal(s.items.find((i) => i.kind === 'figures').durationMs, 4000);
 });
 
-test('what the page decides without a page: Esc, chimes, the outline, images and the Background summary', () => {
+test('media/composer.js without a page: Esc, the chimes, the ring\'s outline, images and the Background summary', () => {
   assert.equal(C.escapeAction({ box: true, menu: true, status: 'working' }), 'closeBox');
   assert.equal(C.escapeAction({ menu: true, status: 'working' }), 'closeMenu');
   assert.equal(C.escapeAction({ status: 'working' }), 'abort');
@@ -265,7 +265,7 @@ test('what the page decides without a page: Esc, chimes, the outline, images and
   assert.equal(C.backgroundSummary([{ kind: 'subagent' }, { kind: 'shell' }, { kind: 'shell' }]), 'Background: 1 subagent, 2 commands running');
 });
 
-test('the page loads Agent Plus\'s kit for the chimes before its own script, and the kit has the three', () => {
+test("the page loads Agent Plus's kit for the chimes before its own script, and the kit has the tones and chime() the page uses", () => {
   const { panel, chat } = setup({}, []);
   assert.match(panel.webview.html, /media\/kit\.js"><\/script>\n<script src="[^"]*media\/composer\.js/);
   chat.dispose();

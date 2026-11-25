@@ -46,7 +46,7 @@ test('one Python process answers for the plan, the time zone and the reply image
   assert.ok(texts['tell-reply-images.py'].includes(` ${workplan.scratchDir(SID, home)} `), texts['tell-reply-images.py']);
   assert.equal(texts['no-such.py'], '');
   assert.equal(texts['../plan-row.py'], '', 'only the hook scripts are run');
-  /* The hook keeps what it said beside the plan, so the next message is not told again. */
+  /* The hook records beside the plan that it has given the note, so the next message does not get it again. */
   assert.ok(fs.existsSync(path.join(plans, `${SID}.tz`)));
   assert.equal(run(plans, ['tell-time-zone.py'], payload)['tell-time-zone.py'], '');
   /* Off in config.json says nothing. */

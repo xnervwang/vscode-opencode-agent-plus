@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The fourth batch's host side without an editor: which conversations a page may link to and where a click opens one
- * (src/host/conversation-links.js), the tabs closed for Recently closed (src/host/recent-closed.js) and how the
+ * Host modules run without an editor: which conversations a page may link to and where a click opens one
+ * (src/host/conversation-links.js), the closed tabs kept for Recently closed (src/host/recent-closed.js) and how the
  * Conversations view groups them, and the Find Conversation pick (src/host/find-conversation.js).
  */
 const test = require('node:test');
@@ -39,7 +39,7 @@ function make(over = {}) {
   return { l, state };
 }
 
-test('the list joins Agent Plus\'s conversations with this extension\'s own, each once, and changes only when it does', async () => {
+test("the list joins Agent Plus's conversations with this extension's own, each once, and its revision moves only when the entries change", async () => {
   const { l, state } = make();
   let fired = 0;
   l.onDidChange(() => fired++);
@@ -75,7 +75,7 @@ test('the list joins Agent Plus\'s conversations with this extension\'s own, eac
   assert.equal(c.listening(), 0);
 });
 
-test('nothing is read while no page is open or the setting is off, and the pages hear when it turns off', async () => {
+test('nothing is read while no page is open or the setting is off, and turning the setting off sends the pages an empty list', async () => {
   const { l, state } = make();
   state.active = false;
   const c = core([{ sourceId: 'claude-code', sessionId: '0f9e8d7c-1111-4222-8333-444455556666', title: 'X' }]);
@@ -191,7 +191,7 @@ test('Recently closed comes first, most recently closed first, leaving out the o
   assert.equal(v.find(top[0].rows[0]).id, 'c', 'Rename, Delete and Fork take it');
 });
 
-test('with only Recently closed and one other kind, both groups show; with none closed nothing changes; at most SHOWN', async () => {
+test('Recently closed and one other kind make two groups; with nothing closed the rows are not grouped; Recently closed shows at most SHOWN rows', async () => {
   const one = await view([], [{ id: 'a', at: NOW }]).getChildren();
   assert.deepEqual(one.map((g) => g.label), [GROUPS.recent, GROUPS.other]);
   assert.deepEqual((await view([], []).getChildren()).map((r) => r.id), ['b', 'c', 'a']);

@@ -6,12 +6,13 @@
 /*
  * The chat page. It draws the items and head that src/ui/chat-panel.js posts (shapes in src/ui/view-model.js) and
  * sends back what the user does. It keeps no conversation state of its own beyond the draft in the input, which
- * survives the page being unloaded while hidden, and what waits to go with the next message (images, a selection,
- * files picked with @), which does not.
+ * survives the page being unloaded while hidden, and the attachments waiting for the next message (images,
+ * selections, files picked with @), which do not.
  *
  * Messages in:  reset { items, head }, update { items, head }, models { models, current, error },
  *               options { options: [{ id, name, value, values: [{ value, name, description? }] }] },
- *               commands { commands: [{ name, description }] }, caps { images, files, selection },
+ *               commands { commands: [{ name, description }] },
+ *               caps { images, files, selection, rewind, info, replyImages },
  *               selection { label }, selectionAdded { item }, files { seq, query, items }, questionErrors
  *               { requestId, errors }, planBar { summary }, sound { shown, on }, info { rows, error? }, image { id, ok,
  *               dataUrl | reason }, draft { text }, conversations { rev, list, self }; each carries the extension
@@ -22,11 +23,11 @@
  *               image { id, src }, background, openConversation { sourceId, sessionId }.
  *
  * Esc stops the turn when no list or box is open. A chime (Agent Plus's kit.js, the same three as Claude Code Plus)
- * sounds when a turn ends, when a permission request comes and when a question does, unless the footer's button has
- * muted them. A local image in a reply is read by the extension and comes back as a data: URL; one from the web is shown
- * as a link and never fetched, so an address a reply was given cannot carry anything out.
+ * sounds when a turn ends and when a permission request or a question arrives, unless the footer's button has muted
+ * the chimes. A local image in a reply is read by the extension and comes back as a data: URL; one from the web is
+ * shown as a link and never fetched, so an image URL in a reply cannot send data anywhere.
  *
- * Another conversation a reply names, by its title or its id, becomes a link that opens it (agentPlusKit's mentions).
+ * Replies link the other conversations they mention by title or id (agentPlusKit's mentions); a click opens one.
  * The Outline button shows a column of the user's messages and the compaction points beside the log; a click scrolls
  * to one. The Subagents button hides what subagents did and folds their progress, leaving a request of theirs that
  * still waits. Both choices live in the page's state.
@@ -84,10 +85,10 @@
   let frame = 0;
   let stick = true;
 
-  /* What the next message may carry, and what waits to go with it. */
+  /* Page features the extension turned on (caps). */
   let caps = { images: false, files: false, selection: false, rewind: false, info: false, replyImages: false };
   let sound = { shown: false, on: false };
-  /* What the last head said, for the chimes: none until the page has been given a whole view. */
+  /* The last head's status and pending count, which the chimes compare against; null until the first reset. */
   let heard = null;
   let commands = [];
   let selectionLabel = '';
@@ -95,12 +96,12 @@
   const selections = [];
   let picked = [];
   let attSeq = 0;
-  /* The open list under the input: { kind: 'slash' | 'at', items, index, token, loading?, empty? }. */
+  /* The open list under the input: { kind: 'slash' | 'at', items, index, token, loading? }. */
   let menu = null;
   let fileSeq = 0;
   let fileTimer = 0;
   let noteTimer = 0;
-  /* The conversations a reply may name, as agentPlusKit's index of them. */
+  /* agentPlusKit's mention index, or null. */
   let convIx = null;
   let convRev = -1;
   /* The outline and the subagent filter, as the user last left them in this page; the outline starts open on a wide
@@ -114,7 +115,7 @@
     allowOnce: 'Allowed once',
     allowSession: 'Allowed in this project',
     deny: 'Denied',
-    cancelled: 'No answer needed: the turn ended',
+    cancelled: 'The turn ended before an answer',
     answered: 'Answered',
     dismissed: 'Dismissed',
   };
@@ -245,7 +246,7 @@
     if (c.details.open) childList(c);
   }
 
-  /* What was answered, in words, for the card once settled. */
+  /* The submitted values as one line for the settled card, such as "Color: Red; Notes: fine". */
   function answerText(item, values) {
     const parts = [];
     for (const f of (item && item.fields) || []) {
@@ -259,7 +260,7 @@
     return parts.join('; ');
   }
 
-  /* One input per field of a question; `values()` reads them back. */
+  /* Builds a question's form, one fieldset per field; `values()` reads the answers back. */
   function questionForm(entry, item) {
     const inputs = [];
     const name = (k) => `${item.requestId}:${k}`;
@@ -340,8 +341,8 @@
         entry.time = time;
         entry.rewindBtn = el('button', 'rewind secondary', 'Rewind to here');
         entry.rewindBtn.type = 'button';
-        entry.rewindBtn.title = 'Experimental: go back to before this message. You see what changes and confirm first: this '
-          + 'message and the ones after it leave the conversation, and in a git repository OpenCode puts back the files changed since.';
+        entry.rewindBtn.title = 'Experimental: in Git repositories, clicking immediately restores files changed after this '
+          + 'message; Cancel undoes the restore.';
         entry.rewindBtn.hidden = true;
         meta.appendChild(entry.rewindBtn);
         entry.body = el('div', 'bubble');
@@ -422,7 +423,7 @@
         entry.submit.type = 'button';
         entry.cancel = el('button', 'secondary q-cancel', 'Cancel');
         entry.cancel.type = 'button';
-        entry.cancel.title = 'Answers nothing; OpenCode then stops the turn';
+        entry.cancel.title = 'Stops the turn without answering';
         entry.actions.append(entry.submit, entry.cancel);
         entry.result = el('div', 'perm-result');
         entry.el.append(meta, entry.heading, entry.form, entry.errors, entry.actions, entry.result);
@@ -586,7 +587,7 @@
     scheduleSide();
   }
 
-  /* Rewinding is offered on the user's messages while nothing runs. */
+  /* Shows Rewind on a user message only while the conversation is idle. */
   function showRewind(entry) {
     if (entry.rewindBtn) entry.rewindBtn.hidden = !(caps.rewind && head && head.status === 'idle');
   }
@@ -616,7 +617,7 @@
       if (kind === 'link') {
         const a = el('a', 'image-link', img.alt || raw);
         a.setAttribute('href', raw);
-        a.title = IMG_WEB.test(raw) ? 'An image on the web is not fetched; click to open it in the browser' : raw;
+        a.title = IMG_WEB.test(raw) ? 'Web images are not loaded here. Click to open in the browser.' : raw;
         img.replaceWith(a);
         continue;
       }
@@ -689,7 +690,7 @@
     const rows = C.outlineRows(entries.map((e) => e.item).filter(Boolean));
     navBtn.hidden = !rows.length;
     navBtn.setAttribute('aria-pressed', outlineOpen ? 'true' : 'false');
-    navBtn.title = outlineOpen ? 'Hide the list of your messages' : 'Show your messages in a list beside the conversation, to jump to one';
+    navBtn.title = outlineOpen ? 'Hide the list of your messages' : 'Show a list of your messages beside the conversation';
     outlineEl.hidden = !(outlineOpen && rows.length);
     outlineList.replaceChildren(...rows.map((r) => {
       const row = el('button', `outline-row outline-${r.kind}`);
@@ -704,7 +705,7 @@
     subBtn.hidden = !subs;
     subBtn.textContent = hideSubs ? `Subagents hidden (${subs})` : 'Subagents';
     subBtn.setAttribute('aria-pressed', hideSubs ? 'true' : 'false');
-    subBtn.title = hideSubs ? 'Show what the subagents did' : 'Show only this conversation\'s own output: hide what subagents did and fold their progress';
+    subBtn.title = hideSubs ? 'Show what the subagents did' : 'Hide what the subagents did';
     document.body.classList.toggle('hide-subagents', hideSubs);
   }
   /* Scrolls the log, and only the log, so that `el` is at its top (8px below it) or, with `center`, in its middle:
@@ -745,7 +746,7 @@
     const costLine = h.costText ? `\nCost so far: ${h.costText}` : '';
     ring.title = pct != null
       ? `${pct}% of the context window used (${h.contextText})${costLine}`
-      : `${h.contextText || 'Context use appears after the first reply'}${costLine}`;
+      : `${h.contextText || 'Context usage shows after the first reply'}${costLine}`;
 
     if (h.model && modelSel.dataset.current !== h.model.id) {
       modelSel.dataset.current = h.model.id;
@@ -789,8 +790,8 @@
     soundBtn.hidden = !sound.shown;
     soundBtn.textContent = '\u266A';
     soundBtn.classList.toggle('muted', !sound.on);
-    soundBtn.title = sound.on ? 'A chime when a turn ends, and when OpenCode waits for you: click to mute'
-      : 'Chimes are muted: click to hear one when a turn ends or OpenCode waits for you';
+    soundBtn.title = sound.on ? 'Chimes when a turn ends or OpenCode waits for you. Click to mute.'
+      : 'Chimes are muted. Click to turn them on.';
     soundBtn.setAttribute('aria-pressed', sound.on ? 'true' : 'false');
   }
   soundBtn.addEventListener('click', () => {
@@ -868,7 +869,7 @@
   });
   document.addEventListener('click', () => { if (!infoBox.hidden) closeInfo(); });
 
-  /* Esc closes the open box, and otherwise stops the turn. */
+  /* Esc closes the open box or list, and otherwise stops the turn. */
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
     const act = C.escapeAction({ box: !infoBox.hidden, menu: !!menu, status: head ? head.status : 'idle' });
@@ -890,7 +891,7 @@
       statusEl.textContent = `Retrying, attempt ${r.attempt}${left > 0 ? ` in ${left}s` : ''} · ${r.error}`;
     } else if (head.status === 'waiting') {
       statusEl.className = 'waiting';
-      statusEl.textContent = head.waitingFor === 'question' ? 'Waiting for your answer to a question' : 'Waiting for your answer to a permission request';
+      statusEl.textContent = head.waitingFor === 'question' ? 'Waiting for your answer' : 'Waiting for you to allow or deny a request';
     } else {
       statusEl.className = 'working';
       statusEl.textContent = head.turnStartedAt ? `Working · ${seconds(hostNow() - head.turnStartedAt)}` : 'Working';
@@ -969,18 +970,18 @@
     });
   }
 
-  /* ---------- what goes with the next message ---------- */
+  /* ---------- attachments ---------- */
 
-  /* The placeholder stays short, since a narrow box cuts it off; the whole of it is the box's tooltip. */
+  /* A narrow box cuts off a long placeholder, so the full list of hints goes in the tooltip. */
   function placeholder() {
     const hints = [];
     if (commands.length) hints.push('/ for commands');
     if (caps.files) hints.push('@ for files');
     input.placeholder = hints.length ? `Ask anything. ${hints.join(', ')}` : BASE_PLACEHOLDER;
     const more = [];
-    if (commands.length) more.push('/ lists the commands');
-    if (caps.files) more.push('@ lists the files of the workspace');
-    if (caps.images) more.push('paste or drop an image to send it along');
+    if (commands.length) more.push('/ for commands');
+    if (caps.files) more.push('@ for workspace files');
+    if (caps.images) more.push('paste or drop images');
     input.title = ['Enter to send, Shift+Enter for a new line', ...more].join('; ');
   }
 
@@ -1019,13 +1020,13 @@
   }
 
   function addImageFile(file) {
-    if (!caps.images) { showNote('Images cannot go with a message to this agent.'); return; }
-    if (images.length >= MAX_IMAGES) { showNote(`At most ${MAX_IMAGES} images go with one message.`); return; }
+    if (!caps.images) { showNote('This agent does not accept images.'); return; }
+    if (images.length >= MAX_IMAGES) { showNote(`A message can have at most ${MAX_IMAGES} images.`); return; }
     if (file.size > MAX_IMAGE_BYTES) { showNote(`${file.name || 'The image'} is larger than 5 MB and was not added.`); return; }
     const reader = new FileReader();
     reader.onload = () => {
       const img = C.imageOfDataUrl(reader.result);
-      if (!img) { showNote(`${file.name || 'That file'} is not an image this page can read.`); return; }
+      if (!img) { showNote(`${file.name || 'That file'} could not be read as an image.`); return; }
       images.push({ id: ++attSeq, mediaType: img.mediaType, data: img.data, name: file.name || 'image', url: reader.result });
       renderAttachments();
     };
@@ -1064,7 +1065,7 @@
     selectionLabel = label || '';
     selBtn.hidden = !(caps.selection && selectionLabel);
     selBtn.textContent = `+ ${selectionLabel}`;
-    selBtn.title = `Send the selection in ${selectionLabel} with the message`;
+    selBtn.title = `Attach ${selectionLabel} to the message`;
   }
   selBtn.addEventListener('click', () => api.postMessage({ type: 'addSelection' }));
 
@@ -1286,14 +1287,13 @@
     log.scrollTop = log.scrollHeight;
   }
   log.addEventListener('scroll', () => { stick = atBottom(); });
-  /* The bottom bar grows with a list, attachments or a status line; the log keeps to its end if it was there. */
+  /* When the bottom bar grows (a list, attachments, a status line), a log scrolled to its end stays there. */
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (stick) scrollEnd(); }).observe(log);
 
   /* ---------- the plan bar ---------- */
 
-  /* Agent Plus's fragment (media/plan-bar.js) draws the summary of this conversation's work plan above the input box; a
-     click opens Agent Plus's Work plan view at it, one on the red part its Answer view. A null summary hides it. It goes
-     above the / and @ lists and what goes with the next message, which belong to the box, so they stay next to it. */
+  /* Agent Plus's fragment (media/plan-bar.js) draws the summary of this conversation's work plan above the input box.
+     A null summary hides it. The bar goes above the / and @ lists and the attachments so that those stay next to the box. */
   const PB = window.agentPlusPlanBar;
   let planBar = null;
   function applyPlanBar(summary) {

@@ -120,26 +120,26 @@ test('the latest reply file is written beside the plan when a turn ends, from th
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a delivery to a conversation waiting for an approval or a form is refused with the reason; after the answer it goes', async () => {
+test('a delivery to a conversation waiting for an approval or a form is refused with the reason; once that is answered the same delivery goes through', async () => {
   const { manager, convs } = liveManager();
   await manager.open(A);
   const link = ap.createAgentPlusSource({ manager, planDir: () => '/p', reveal: async () => true, openHere: async () => true, trusted: () => true });
   const c = convs.get(A);
   c.fire({ type: 'turnStart', at: 1 });
   c.fire({ type: 'permission', requestId: 'p1', request: { tool: 'bash' } });
-  assert.deepStrictEqual(await link.source.deliverAnswer(A, 'go on', { deliveryId: 'd1' }), { outcome: 'notReceived', reason: 'it is waiting for approval of bash in its window' });
+  assert.deepStrictEqual(await link.source.deliverAnswer(A, 'go on', { deliveryId: 'd1' }), { outcome: 'notReceived', reason: 'bash is waiting for approval in its window' });
   c.fire({ type: 'permissionSettled', requestId: 'p1', decision: 'allowOnce' });
   c.fire({ type: 'question', requestId: 'q1', message: 'Questions', schema: {} });
   assert.deepStrictEqual((await link.source.listConversations())[0].waitingFor, { kind: 'question' });
-  assert.deepStrictEqual(await link.source.deliverAnswer(A, 'go on', { deliveryId: 'd1' }), { outcome: 'notReceived', reason: 'it is waiting for an answer to a question in its window' });
+  assert.deepStrictEqual(await link.source.deliverAnswer(A, 'go on', { deliveryId: 'd1' }), { outcome: 'notReceived', reason: 'a question in its window is waiting for an answer' });
   c.fire({ type: 'questionSettled', requestId: 'q1', action: 'accept' });
   assert.deepStrictEqual(await link.source.deliverAnswer(A, 'go on', { deliveryId: 'd1' }), { outcome: 'submitted' }, 'the refused id can be tried again');
   assert.deepStrictEqual(c.sent, ['go on']);
-  assert.strictEqual(ap.waitReason({ activity: 'waiting', waitingFor: { kind: 'permission' } }), 'it is waiting for an approval in its window');
+  assert.strictEqual(ap.waitReason({ activity: 'waiting', waitingFor: { kind: 'permission' } }), 'a tool is waiting for approval in its window');
   assert.strictEqual(ap.waitReason({ activity: 'working' }), '');
 });
 
-test('listAllConversations gives every window\'s, without the subagents\'; timeZone is what the page said', async () => {
+test("listAllConversations gives every window's conversations except subagents'; timeZone is the zone the page reported", async () => {
   const { manager } = liveManager();
   await manager.open(A);
   let zone = '';

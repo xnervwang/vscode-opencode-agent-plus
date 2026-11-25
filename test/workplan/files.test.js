@@ -14,7 +14,7 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'na-wpfiles-'));
 const SID = 'ses_df3c28ab2ffe0TYFbXAnoBpqy6';
 const OTHER = 'ses_df3c28ab2ffe0TYFbXAnoBpqy7';
 
-test('removePlan deletes a conversation\'s plan, its side files and closed rows, and nothing of another', () => {
+test("removePlan deletes a conversation's plan, its side files and closed rows, and leaves other conversations' files alone", () => {
   const dir = tmp();
   fs.mkdirSync(path.join(dir, 'closed'));
   const mine = ['.json', '.injected', '.turn', '.settled', '.nudged', '.briefed', '.compacted'].map((s) => `${SID}${s}`);
@@ -60,7 +60,7 @@ test('scratchDir is <root>/scratch/<id>, and removeScratch takes that folder onl
   assert.equal(workplan.removeScratch(SID, root), false, 'a second call finds nothing');
 });
 
-test('removeScratch removes a symbolic link in place of the folder, and nothing where it leads', { skip: process.platform === 'win32' && 'links need rights on Windows' }, () => {
+test('removeScratch removes a symbolic link in place of the folder and leaves what it points to', { skip: process.platform === 'win32' && 'links need rights on Windows' }, () => {
   const root = tmp();
   const outside = tmp();
   fs.writeFileSync(path.join(outside, 'keep.txt'), 'x');
@@ -77,7 +77,7 @@ test('the side files are the ones plan_common.py names', () => {
   assert.deepEqual(workplan.SIDE_SUFFIXES.filter((s) => s !== '.json').slice().sort(), named.sort());
 });
 
-test('writeLauncher writes the Python found as its full path, once', () => {
+test('writeLauncher records the full path of the Python found, and writes only when it changes', () => {
   const dir = tmp();
   const py = { launcher: ['py', '-3'], executable: 'C:/Python312/python.exe', version: '3.12' };
   assert.equal(workplan.writeLauncher(py, dir), true);

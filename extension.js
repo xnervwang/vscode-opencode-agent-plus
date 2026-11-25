@@ -4,25 +4,25 @@
 
 'use strict';
 /*
- * Activation registers the commands, the Conversations view, the chat editor and the listeners, and nothing more: the
- * agent (OpenCode, through src/host/backend.js and src/opencode/) starts when the first conversation or the
- * Conversations view needs it, and a conversation's history is read when its tab opens. In Restricted Mode not even
- * that: start() waits until the workspace is trusted (src/host/trust-gate.js).
+ * Activation registers the commands, the Conversations view, the chat editor and the listeners. The agent (OpenCode,
+ * through src/host/backend.js and src/opencode/) starts when the first conversation or the Conversations view needs it,
+ * and a conversation's history is read when its tab opens. In Restricted Mode not even that: start() waits until the
+ * workspace is trusted (src/host/trust-gate.js).
  *
  *   src/host/chat-editor.js       a chat tab is the custom editor opencodePlus.chat of opencodeplus-session:/<session id>
  *   src/host/session-manager.js   the conversations open in this window, one window each (src/host/locks.js)
  *   src/host/provider-config.js   the settings OpenCode starts with, the Bedrock API key
  *   src/host/models.js            the models OpenCode offers, and the picker
  *   src/host/agentplus-source.js  the conversations as a source of Agent Plus
- *   src/host/work-plan.js         the work plan plugin OpenCode loads, its Python, and the token mode's switches for it
+ *   src/host/work-plan.js         copies the work plan plugin for OpenCode, finds Python for it, writes its settings
  *   src/host/file-search.js       the workspace files the chat page's @ list offers
  *   src/host/selection.js         the editor selection the chat page can send along
  *   src/host/plan-bar.js          the plan bar above each chat page's input box, from Agent Plus's summary
  *   src/host/window-states.js     every window's open conversations, for Agent Plus's listAllConversations()
  *   src/host/reply-file.js        each conversation's latest reply beside its plan, for a steward to read
  *   src/host/rewind.js            rewinding a conversation to before one of the user's messages (OpenCode 2)
- *   src/host/reply-images.js      the local images a reply shows, read for the chat page
- *   src/host/conversation-links.js   the conversations a reply names, linked in the chat page
+ *   src/host/reply-images.js      reads the local image files a reply shows
+ *   src/host/conversation-links.js   links to the conversations a reply names
  *   src/host/recent-closed.js     the chat tabs closed in this workspace, for the Recently closed group
  *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
  *   src/host/trust-gate.js        what the commands, the chat tabs and the view do before the workspace is trusted
@@ -67,25 +67,24 @@ const COMMANDS = require('./package.json').contributes.commands.map((c) => c.com
 const VIEW_ID = `${brand.prefix}.sessions`;
 
 const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
-/* Set once the OpenCode found can rename conversations (2.x); the Rename entries show only then. */
+/* package.json shows the Rename entries when this is true: the OpenCode found can rename conversations (2.x). */
 const CONTEXT_RENAME = `${brand.prefix}.canRename`;
 const ZONE_KEY = `${brand.prefix}.timeZone`;
-/* Set once OpenCode has said it can fork a conversation; the Fork entries show only then. */
 const CONTEXT_FORK = `${brand.prefix}.canFork`;
-/* Whether the chat pages chime, as the footer's button last left it; on until muted, as in Claude Code Plus. */
+/* Whether the chat pages chime. The footer's button sets it, and it stays on until muted, as in Claude Code Plus. */
 const SOUND_KEY = `${brand.prefix}.sound`;
 /* The name of this window in the locks it takes (src/host/locks.js windowToken). */
 const WINDOW_KEY = `${brand.prefix}.window`;
 const REWIND = 'Rewind';
 const TAKE_OVER = 'Take over here';
 const TAKE_ANYWAY = 'Take over anyway';
-const BUSY_TEXT = 'Another VS Code window has this conversation open, or had it open before it lost its connection '
-  + '(VS Code keeps such a window running for a while). Take it over to continue here: the other window stops its turn '
-  + 'and closes the conversation.';
-const FORCE_TEXT = 'The other window did not let go of the conversation within 10 seconds. Take it over anyway? '
+const BUSY_TEXT = 'This conversation is open in another VS Code window, which may have lost its connection. '
+  + 'Take it over to continue here. The other window stops any running turn and closes the conversation.';
+const FORCE_TEXT = 'The other window did not release the conversation within 10 seconds. Take it over anyway? '
   + 'If that window is still running, both windows may change the conversation at the same time.';
 let running = null;
-/* Conversations whose tabs close for a takeover, which is not the user closing them. */
+/* Conversations whose tabs are closing for a takeover. The user did not close them, so Recently closed leaves them
+   out. */
 const quietClose = new Set();
 
 function activate(context) {
@@ -132,7 +131,7 @@ function start(context, log, gate) {
   };
   const named = () => String(vscode.workspace.getConfiguration(brand.prefix).get('model') || '').trim();
 
-  /* The plugin and its scripts are copied before OpenCode can first start, which is on first use. */
+  /* Copies the plugin and its scripts where OpenCode loads them, before anything can start OpenCode. */
   const plan = createWorkPlan({ vscode, extensionPath: context.extensionPath, storage: context.globalStorageUri.fsPath, memo: context.workspaceState, tell, log });
   subs.push(plan);
   plan.start().catch((e) => log(`work plan: ${(e && e.message) || e}`));
@@ -141,8 +140,8 @@ function start(context, log, gate) {
   const settings = createProviderConfig({ vscode, secrets: context.secrets, restart: (o) => backend.restart(plan.launch(o)), log });
   subs.push(settings);
   backend = createBackend({ options: () => ({ ...plan.launch(settings.options()), root: paths.root(), log }) });
-  /* Whether the OpenCode found can rename conversations, for the Rename entries; known once the list or a conversation
-     has started it. */
+  /* backend.canRename() is known once the conversation list or a conversation has started OpenCode; the Rename
+     context key is set then. */
   let renameKnown = false;
   const noteRename = () => {
     noteFork();
@@ -150,15 +149,16 @@ function start(context, log, gate) {
     renameKnown = true;
     Promise.resolve().then(() => vscode.commands.executeCommand('setContext', CONTEXT_RENAME, backend.canRename())).catch(() => { renameKnown = false; });
   };
-  /* Known once OpenCode has started and said what it offers; asked again until then. */
+  /* backend.canFork() stays false until OpenCode has started and said what it offers, so each call asks again until it
+     is true. */
   let forkKnown = false;
   function noteFork() {
     if (forkKnown || !backend.canFork()) return;
     forkKnown = true;
     Promise.resolve(vscode.commands.executeCommand('setContext', CONTEXT_FORK, true)).catch(() => { forkKnown = false; });
   }
-  /* Once a conversation has started OpenCode here its version is known; OpenCode 1 keeps no work plan, which is said
-     once. */
+  /* The version is known once a conversation has started OpenCode in this window. OpenCode 1 keeps no work plan, and
+     plan.checkVersion() tells the user so once. */
   let versionKnown = false;
   const noteVersion = () => {
     noteRename();
@@ -169,11 +169,11 @@ function start(context, log, gate) {
   const models = createModels({ vscode, listModels: () => backend.listModels(), defaultModel: () => backend.defaultModel() });
   const locks = createLocks({ dir: path.join(paths.root(), 'locks'), window: windowToken(context.workspaceState, WINDOW_KEY), log });
   subs.push(locks);
-  /* Sessions this window just made, handed to the chat tab that opens them; folders of listed ones, for openSession. */
+  /* `made` keeps a session this window has just created until its chat tab opens it. `folders` keeps the folder of each
+     listed or forked session, so that opening it starts it there. */
   const made = new Map();
   const folders = new Map();
 
-  /* A turn refused for Bedrock credentials: OpenCode's way to fix it, at most once a minute. */
   let toldAuth = 0;
   const onAuth = (ev) => {
     if (!ev || ev.type !== 'turnEnd' || !ev.error || ev.error.kind !== 'auth' || Date.now() - toldAuth < 60000) return;
@@ -184,7 +184,6 @@ function start(context, log, gate) {
     }).catch(() => {});
   };
 
-  /* Each conversation's latest reply, beside its plan, for a steward to read. */
   const replies = createReplyFiles({ dir: () => workplan.planDir(), log });
   let manager = null;
   manager = createSessionManager({
@@ -195,7 +194,7 @@ function start(context, log, gate) {
       noteVersion();
       let events = [];
       try { events = await inner.history(); } catch (e) { log(`history of ${id}: ${(e && e.message) || e}`); }
-      /* The model list too: a restored reply's context share needs the model's window when it is drawn. */
+      /* Loads the model list too: drawing a restored reply's context share needs the model's context window. */
       await models.list().catch(() => null);
       const conv = withModelChoice(inner, {
         needsChoice: !named() && !(Array.isArray(events) && events.length),
@@ -215,7 +214,7 @@ function start(context, log, gate) {
   });
   subs.push(manager);
 
-  /* The plan bar of each chat page, fed by Agent Plus once this extension is registered there. */
+  /* Agent Plus feeds the plan bar on each chat page once this extension has registered with it. */
   const planBar = createPlanBar({
     on: () => vscode.workspace.getConfiguration(brand.prefix).get('planBar', true) !== false,
     run: (command, arg) => vscode.commands.executeCommand(command, arg),
@@ -223,17 +222,16 @@ function start(context, log, gate) {
   });
   subs.push(planBar, vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration(`${brand.prefix}.planBar`)) planBar.settingChanged(); }));
 
-  /* The reader's zone as the last chat page to load reported it; the plugin's time-zone hook reads it from the plans
-     folder (client-time-zone.json). */
+  /* The user's time zone, as the last chat page to load reported it. The plugin's time-zone hook reads it from
+     client-time-zone.json in the plans folder. */
   const memo = context.globalState && typeof context.globalState.get === 'function' ? context.globalState : null;
   let timeZone = memo ? String(memo.get(ZONE_KEY, '') || '') : '';
   const writeZone = (zone) => {
     if (!zone || vscode.workspace.isTrusted === false) return;
-    try { if (hookSettings.writeClientZone(workplan.planDir(), zone)) log(`the reader's time zone for the plugin: ${zone}`); } catch (e) { log(`writing the time zone failed: ${e.message}`); }
+    try { if (hookSettings.writeClientZone(workplan.planDir(), zone)) log(`time zone written for the plugin: ${zone}`); } catch (e) { log(`writing the time zone failed: ${e.message}`); }
   };
   writeZone(timeZone);
 
-  /* The chat pages open in this window, and whether they chime. */
   const chats = new Set();
   let soundOn = memo ? memo.get(SOUND_KEY, true) !== false : true;
   const sound = {
@@ -245,7 +243,6 @@ function start(context, log, gate) {
     },
   };
 
-  /* The conversations a reply may name, as links in the chat pages; read only while a page is open. */
   const links = createConversationLinks({
     on: () => vscode.workspace.getConfiguration(brand.prefix).get('conversationLinks', true) !== false,
     active: () => chats.size > 0,
@@ -261,7 +258,8 @@ function start(context, log, gate) {
   });
   subs.push(links, vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration(`${brand.prefix}.conversationLinks`)) links.settingChanged(); }));
 
-  /* Shared by the chat tabs; they list files only while @ is typed and follow the selection only while open. */
+  /* Shared by the chat tabs. A tab lists files only while @ is being typed, and follows the selection only while it is
+     open. */
   const files = createFileSearch({ vscode });
   const selection = createSelectionTracker({ vscode });
   subs.push(selection);
@@ -269,7 +267,6 @@ function start(context, log, gate) {
   function show(panel, entry) {
     const { ChatPanel } = require('./src/ui/chat-panel');
     const conv = entry.conversation;
-    /* The model as the list names it, or a stand-in of the same id until the list has it. */
     const infoOf = (name) => (name ? models.cached(name) || { id: name, providerId: name.includes('/') ? name.split('/')[0] : '', name, contextWindow: 0 } : undefined);
     const chat = new ChatPanel({
       panel,
@@ -303,8 +300,8 @@ function start(context, log, gate) {
     chats.add(chat);
     links.settingChanged();
     for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);
-    /* The model a turn runs on (turnStart.modelId), and its context window once OpenCode has learned it, which is
-       after the model's first call. */
+    /* Shows the model a turn runs on (turnStart.modelId) and, after the model's first call, the context window
+       OpenCode has learned for it. */
     const follow = (name) => {
       const m = infoOf(name);
       const at = chat.state && chat.state.model;
@@ -319,8 +316,8 @@ function start(context, log, gate) {
   }
 
   /*
-   * Rewinds conversation `id` to before the user message `target` names (src/host/rewind.js): OpenCode puts the files
-   * back and lists them, the user confirms, and the page is drawn again from what OpenCode then has. Cancelling puts the
+   * Rewinds conversation `id` to before the user message `target` points to (src/host/rewind.js): OpenCode puts the files
+   * back and lists them, the user confirms, and the page is redrawn from the history OpenCode then returns. Cancelling puts the
    * files back as they were.
    */
   const rewindsRunning = new Set();
@@ -330,14 +327,14 @@ function start(context, log, gate) {
     rewindsRunning.add(id);
     try {
       const mid = rewinding.messageOf(target, target.messageId ? [] : await backend.userMessages(id));
-      if (!mid) throw new Error('This message could not be found in what OpenCode keeps of the conversation, so nothing was rewound.');
+      if (!mid) throw new Error('OpenCode\'s copy of the conversation does not have this message, so nothing was rewound.');
       const staged = await backend.rewindStage(id, mid);
       log(`rewind of ${id} to before ${mid} staged: ${staged.files.length} files, tracked ${staged.tracked}`);
       const ask = rewinding.confirmation(staged);
       const pick = await Promise.resolve(vscode.window.showWarningMessage(ask.message, { modal: true, detail: ask.detail }, REWIND)).catch(() => undefined);
       if (pick !== REWIND) {
         await backend.rewindClear(id);
-        log(`rewind of ${id} cancelled; the files are as they were`);
+        log(`rewind of ${id} cancelled; files restored`);
         return false;
       }
       await backend.rewindCommit(id);
@@ -350,7 +347,6 @@ function start(context, log, gate) {
     }
   }
 
-  /* What the info box of conversation `id`'s page lists. */
   async function infoRows(id) {
     const e = manager.get(id);
     const info = backend.info();
@@ -366,10 +362,6 @@ function start(context, log, gate) {
     ];
   }
 
-  /*
-   * Another window holds it: offers to take it over, asks that window to let go, and when it does not answer in time
-   * offers to take it anyway. True once this window may open it.
-   */
   async function takeOver(id) {
     if (locks.ownWindow(id)) return takeBack(id);
     const choice = await ask(BUSY_TEXT, TAKE_OVER);
@@ -406,7 +398,8 @@ function start(context, log, gate) {
     tell('This conversation was taken over by another VS Code window.');
   });
 
-  /* Its tab here to the front, or a new tab; false when another window has it open and keeps it. */
+  /* Brings the conversation's tab in this window to the front, or opens a new one. Returns false when another window
+     has it open and does not let go. */
   async function openSession(id) {
     const panel = manager.panelOf(id);
     if (panel) { panel.reveal(panel.viewColumn); return true; }
@@ -419,7 +412,7 @@ function start(context, log, gate) {
     let s;
     const model = named();
     try { s = await backend.createSession(folder(), model ? { model } : {}); } catch (e) { fail('A new conversation could not be started', e); return false; }
-    if (!s || !s.id) { fail('A new conversation could not be started', 'OpenCode gave no session'); return false; }
+    if (!s || !s.id) { fail('A new conversation could not be started', 'OpenCode returned no session'); return false; }
     noteVersion();
     made.set(s.id, s);
     return openSession(s.id);
@@ -439,7 +432,7 @@ function start(context, log, gate) {
   const chatTabs = (id) => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
     .filter((t) => ap.isChatTab(t) && ap.sessionOfUri(t.input.uri) === id);
 
-  /* A chat tab the user closes goes to the top of Recently closed; one closed by a takeover or a delete does not. */
+  /* Closing a chat tab puts its conversation at the top of Recently closed, unless a takeover or a delete closed it. */
   const recent = createRecentClosed({ memo: context.workspaceState, log });
   subs.push(vscode.window.tabGroups.onDidChangeTabs((e) => {
     for (const t of (e && e.closed) || []) {
@@ -449,8 +442,8 @@ function start(context, log, gate) {
     }
   }));
 
-  /* A chat tab says what its conversation is doing by the dot on its icon, and a reply not read yet by an envelope
-     after its title. */
+  /* A dot on a chat tab's icon shows what its conversation is doing, and an envelope after its title marks a reply
+     the user has not read yet. */
   let icons;
   const iconFor = (activity) => {
     if (icons === undefined) {
@@ -474,7 +467,8 @@ function start(context, log, gate) {
   });
   gate.useEditor(editor);
 
-  /* The Conversations view: the sessions of this window's folders, redrawn when one here or OpenCode's list changes. */
+  /* The Conversations view lists the sessions of this window's folders, and is redrawn when a conversation open here,
+     OpenCode's session list or Recently closed changes. */
   const inScope = (cwd) => {
     const f = (vscode.workspace.workspaceFolders || []).filter((x) => x.uri.scheme === 'file').map((x) => x.uri.fsPath);
     if (!f.length) return true;
@@ -488,7 +482,8 @@ function start(context, log, gate) {
         for (const r of rows) if (r.cwd) folders.set(r.id, r.cwd);
         return rows.filter((r) => inScope(r.cwd));
       }),
-      /* Its plan and its scratch folder go with it: Agent Plus only reads the plans folder. */
+      /* Deleting a session also removes its plan files and scratch folder, since Agent Plus only reads the plans folder
+         and nothing else clears them. */
       deleteSession: (id) => backend.deleteSession(id).then(() => {
         recent.remove(id);
         const gone = workplan.removePlan(id);
@@ -514,7 +509,7 @@ function start(context, log, gate) {
     statusOf: (meta) => listed.statusOf(meta),
     rename: (id, title) => listed.rename(id, marks.withoutMarks(title)),
     remove: (id) => listed.remove(id),
-    /* From a chat tab's menus the argument is its URI; with none, the chat tab in front. */
+    /* A chat tab's menus pass its URI. With no argument, this takes the chat tab in front. */
     idOf: (arg) => {
       if (arg instanceof vscode.Uri) return ap.sessionOfUri(arg);
       if (arg !== undefined) return '';
@@ -560,7 +555,7 @@ function start(context, log, gate) {
       try {
         const [list, status] = await Promise.all([models.list(), backend.bedrockStatus()]);
         return settings.show(settings.describe({ status, models: list, found }));
-      } catch (e) { return fail('OpenCode could not be asked', e); }
+      } catch (e) { return fail('The connection test failed', e); }
     }),
   );
 
@@ -579,7 +574,8 @@ function start(context, log, gate) {
     return text;
   }
 
-  /* The title bar of a permission request's diff answers that request, then closes the diff. */
+  /* The Allow and Deny buttons in the title bar of a permission request's diff answer the request and close the
+     diff. */
   async function answerDiff(arg, decision) {
     const { answerFromDiff } = require('./src/ui/chat-panel');
     let uri = arg instanceof vscode.Uri ? arg : null;
@@ -591,7 +587,7 @@ function start(context, log, gate) {
     return true;
   }
 
-  /* Agent Plus. Without it, or refused by it, everything above works the same. */
+  /* Agent Plus. Everything above works the same when Agent Plus is not installed or turns down this registration. */
   let logo;
   link = ap.createAgentPlusSource({
     manager,

@@ -6,14 +6,13 @@
 /*
  * The Conversations view in the activity bar (opencodePlus.sessions): one row per saved conversation, most recently
  * active first, with its title, how long ago it was active and a status icon. Everything shown comes from the injected
- * listSessions(); the list is redrawn when the injected onDidChange fires and when the view becomes visible again,
- * which also keeps the "5m" ages roughly current without a timer.
+ * listSessions(). onDidChange and the view becoming visible again redraw the list; the second also keeps the "5m" ages
+ * roughly current without a timer.
  *
- * Conversations open in this window come first, in a group of their own ("Open in this window"), and the rest after
- * them in another; with only one kind there are no groups. Above them, "Recently closed" lists the conversations whose
- * chat tabs were last closed in this workspace (the injected recent(), most recent first), up to SHOWN of them, leaving
- * out those open again and those the list no longer has; its row clears it. With it the other two groups are shown even
- * when only one of them has rows.
+ * Conversations open in this window are grouped under "Open in this window" and the rest under "Other conversations".
+ * Above both, "Recently closed" holds up to SHOWN conversations whose chat tabs were closed in this workspace, newest
+ * first, from recent(); conversations open again or no longer listed are left out, and a button on the group's row
+ * clears it.
  */
 
 const RENAME_COMMAND = 'opencodePlus.renameConversation';
@@ -63,8 +62,8 @@ class SessionsView {
    *   vscode?: object,
    *   now?: () => number,
    * }} opts
-   * `idOf` names the conversation of a command argument that is not a row or an id (a chat tab's URI, or nothing for
-   * the tab in front); `titleOf` gives the title of one the list has not shown.
+   * `idOf` returns the conversation id for a command argument that is neither a row nor an id (a chat tab's URI, or
+   * nothing for the tab in front); `titleOf` returns the title of a conversation the list has not shown.
    */
   constructor(opts) {
     this.vscode = opts.vscode || require('vscode');
@@ -142,7 +141,8 @@ class SessionsView {
       : status === 'waiting'
         ? new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.red'))
         : new vscode.ThemeIcon('comment-discussion');
-    /* The extension host may run on another machine in another time zone (Remote-SSH), so the time names its zone. */
+    /* The extension host may run on another machine in another time zone (Remote-SSH), so the time is shown with its
+       zone name. */
     const ago = item.description;
     const when = lastActive(meta)
       ? `${ago === 'now' ? 'just now' : `${ago} ago`} (${new Date(lastActive(meta)).toLocaleString(undefined, { timeZoneName: 'short' })})`
@@ -160,7 +160,7 @@ class SessionsView {
     return item;
   }
 
-  /* Creates the tree view and registers Rename and Delete. Returns one disposable for all of it. */
+  /* Creates the tree view and registers Rename and Delete. */
   register() {
     const vscode = this.vscode;
     this.treeView = vscode.window.createTreeView('opencodePlus.sessions', { treeDataProvider: this });

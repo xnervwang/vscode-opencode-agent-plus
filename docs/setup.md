@@ -4,7 +4,7 @@ Back to the [README](../README.md).
 
 ## Installing OpenCode
 
-**Use OpenCode 2.4.1 or later.** You can install OpenCode 2 with npm, which comes with Node.js. If you don't have npm, install Node.js from [nodejs.org](https://nodejs.org/) first. Then run:
+**Use OpenCode 2.4.1 or later.** If you don't have npm, install [Node.js](https://nodejs.org/), which includes it. To install OpenCode 2, run:
 
 ```sh
 npm install -g @opencode/cli
@@ -12,28 +12,28 @@ npm install -g @opencode/cli
 
 At the time of writing, `@opencode/cli` provides OpenCode 2.4.1. The installer `curl -fsSL https://opencode.ai/install | bash` installs OpenCode 1, whose npm package is `opencode-ai` (1.19.6). Both packages provide the `opencode` command.
 
-OpenCode Plus was tested with OpenCode 1.19.6 and 2.4.1. Earlier releases of OpenCode 2 were not tested.
+OpenCode Plus was tested only with OpenCode 1.19.6 and 2.4.1.
 
 ### What Needs OpenCode 2
 
-You can chat with OpenCode 1. You need OpenCode 2 for these features:
+You can chat with OpenCode 1, but these features require OpenCode 2:
 
 | Feature | Needs |
 | --- | --- |
-| Work plan, plan bar, [conversation brief](features.md#conversation-brief) and time-zone note | OpenCode 2 |
-| Rename | OpenCode 2 |
+| Work plan, plan bar, [conversation brief](features.md#conversation-brief) and time-zone note to the model | OpenCode 2 |
+| Renaming conversations | OpenCode 2 |
 | Rewind | OpenCode 2 |
-| Showing subagent progress and keeping subagent conversations out of conversation lists | OpenCode 2 |
-| Retry notices | OpenCode 2 |
-| Questions from the model as forms | OpenCode 2.4.1 or later. In earlier versions, the model's question tool is off. |
+| Showing subagent progress and keeping subagents' own conversations out of conversation lists | OpenCode 2 |
+| Notices while OpenCode retries a request after a provider error | OpenCode 2 |
+| Questions from the model as forms | OpenCode 2.4.1 or later. In earlier versions, the tool the model uses to ask a question as a form is off. |
 
 The chat page shows controls for slash commands, image paste, mode and effort only when the running version of OpenCode offers them.
 
 ## How OpenCode Plus Finds OpenCode
 
-If you set `opencodePlus.opencode.path` in your User or Remote settings, OpenCode Plus uses that path. It must point to an executable file. Let any running turn finish before you change the setting, because changing it restarts OpenCode ([When Settings Start OpenCode Again](settings.md#when-settings-start-opencode-again)).
+If you set `opencodePlus.opencode.path` in your User or Remote settings, OpenCode Plus uses that path. It must point to an executable file. Let any running turn finish before you change the setting, because changing it [restarts OpenCode](settings.md#settings-that-restart-opencode).
 
-If you leave the setting empty, OpenCode Plus looks for `opencode` in this order. On Windows, it also looks for `opencode.exe` and `opencode.cmd`.
+With the setting empty, OpenCode Plus searches for `opencode` in the following locations, in order. On Windows, it also looks for `opencode.exe` and `opencode.cmd`.
 
 1. Each folder on `PATH`.
 2. Installer folders on all platforms: `~/.opencode/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, `~/.volta/bin`, `~/.local/share/pnpm`.
@@ -41,13 +41,13 @@ If you leave the setting empty, OpenCode Plus looks for `opencode` in this order
    - macOS and Linux: `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`.
    - Windows: `%APPDATA%\npm`, `%LOCALAPPDATA%\opencode\bin`.
 
-If OpenCode Plus cannot find OpenCode, it shows you how to install it and asks you to reload the VS Code window.
+When OpenCode Plus shows installation instructions because it can't find OpenCode, follow them and reload the VS Code window as prompted.
 
 ## When OpenCode Starts, Stops and Updates
 
-Each VS Code window starts its own OpenCode process when a conversation or the Conversations view first needs it. Conversations open in that window share the process. The window runs `opencode acp`, OpenCode's editor mode, which uses the Agent Client Protocol to communicate with the extension. The process stops after the window has had no conversations open for 10 minutes.
+When a conversation or the Conversations view first needs OpenCode, the VS Code window starts one process and shares it across its conversations. The window runs `opencode acp`, OpenCode's editor mode, which uses the Agent Client Protocol to communicate with the extension. The process stops after the window has had no conversations open for 10 minutes.
 
-OpenCode Plus turns off automatic updates for the OpenCode process it starts. Otherwise, OpenCode 1 could update itself in the background to OpenCode 2, which reads a different configuration. When you want to update OpenCode, use npm, then reload the VS Code window.
+OpenCode Plus turns off automatic updates for the OpenCode process it starts. Otherwise, OpenCode 1 could update itself in the background to OpenCode 2, which uses a different configuration format. To update OpenCode 2, run `npm install -g @opencode/cli@latest`; for OpenCode 1, run `npm install -g opencode-ai@latest`. Then reload the VS Code window.
 
 ## Installing OpenCode Plus
 
@@ -55,9 +55,9 @@ You need VS Code 1.96 or later. Search for OpenCode Plus in the Extensions view 
 
 ### Python for the Work Plan
 
-The work plan needs Python 3.7 or later. OpenCode Plus looks for Python when it starts. If it can't find a suitable version, you'll see a message in Agent Plus's Work plan view. If VS Code is in Restricted Mode because you haven't trusted the workspace, OpenCode Plus does nothing, including setting up the work plan, until you trust it.
+At startup, OpenCode Plus looks for Python 3.7 or later, which the work plan requires. If it can't find a suitable version, you'll see a message in Agent Plus's Work plan view. In Restricted Mode, OpenCode Plus waits until you trust the workspace before it runs or sets up the work plan. In the Conversations view, select Manage Workspace Trust to open VS Code's workspace trust editor.
 
-On Windows, OpenCode Plus offers to download python.org's embeddable Python 3.12.7 (about 11 MB). You can start the download yourself with `OpenCode Plus: Download Python for Work Plans`. If you install Python yourself, run `OpenCode Plus: Look for Python Again for Work Plans` to repeat the search.
+On Windows, OpenCode Plus offers to download python.org's embeddable Python 3.12.7 (about 11 MB). You can start the download yourself with `OpenCode Plus: Download Python for Work Plans`. On macOS and Linux, install Python 3.7 or later with your system's package manager or from python.org. OpenCode Plus looks for `python3` and then `python` on `PATH` on those platforms. If you install Python yourself, run `OpenCode Plus: Look for Python Again for Work Plans`.
 
 ### Your First Conversation
 
@@ -67,11 +67,11 @@ Send your first message. If you haven't set a model for new conversations, OpenC
 
 ## Amazon Bedrock
 
-You can give OpenCode Bedrock credentials through OpenCode Plus or configure OpenCode directly. OpenCode connects to Bedrock through the AWS credential chain, the sources AWS checks for credentials in order. Bedrock models appear under the `amazon-bedrock` provider, with IDs such as `amazon-bedrock/us.xai.grok-4.7`.
+OpenCode connects to Bedrock through the AWS credential chain. Bedrock models appear under the `amazon-bedrock` provider, with IDs such as `amazon-bedrock/us.xai.grok-4.7`.
 
 ### Through OpenCode Plus Settings
 
-Set your AWS profile and Region in the User settings of the VS Code Settings editor (in a Remote-SSH window, in its Remote settings), or store a Bedrock API key with the Command Palette. OpenCode Plus passes only the values you set. If you leave a setting empty, OpenCode keeps using the value from its own configuration or environment.
+In the VS Code Settings editor, set your AWS profile and Region under User (Remote in a Remote-SSH window), or use the Command Palette to store a Bedrock API key. OpenCode Plus passes only the values you set, so OpenCode uses its own configuration or environment for any setting you leave empty.
 
 | OpenCode Plus setting or command | Environment variable OpenCode receives |
 | --- | --- |
@@ -79,11 +79,13 @@ Set your AWS profile and Region in the User settings of the VS Code Settings edi
 | `opencodePlus.bedrock.region` | `AWS_REGION` |
 | `OpenCode Plus: Set Amazon Bedrock API Key` | `AWS_BEARER_TOKEN_BEDROCK` |
 
-OpenCode Plus keeps the API key in VS Code's secret storage. To remove it, run `OpenCode Plus: Clear Amazon Bedrock API Key`. Changing the profile, Region or stored key restarts OpenCode, so let a running turn finish first ([When Settings Start OpenCode Again](settings.md#when-settings-start-opencode-again)).
+OpenCode Plus keeps the API key in VS Code's secret storage on the computer where you see the VS Code window. In a Remote-SSH window, OpenCode Plus runs on the remote machine, reads the key from VS Code, and passes it to OpenCode as `AWS_BEARER_TOKEN_BEDROCK`.
+
+To remove it, run `OpenCode Plus: Clear Amazon Bedrock API Key`. Changing the profile, Region or stored key [restarts OpenCode](settings.md#settings-that-restart-opencode), so let a running turn finish first.
 
 ### Through OpenCode's Own Configuration
 
-To use an AWS profile, set its name and Region in `~/.config/opencode/opencode.json`. Use the example for your OpenCode version, replace `<profile>` with your AWS profile name, and change `us-east-1` if you use another Region.
+To use an AWS profile, set its name and Region in `~/.config/opencode/opencode.json`. In the example for your OpenCode version, enter your AWS profile name in place of `<profile>` and your Region if it differs from `us-east-1`.
 
 OpenCode 2:
 
@@ -123,18 +125,22 @@ You can also use the environment VS Code starts with. Set the variables for your
 
 ## Other Model Providers
 
-Set up your provider in OpenCode by following [OpenCode's provider documentation](https://opencode.ai/docs/providers/). OpenCode Plus starts OpenCode with your configuration and shows the models OpenCode lists, including your provider's models. The extension's profile, Region and API key settings apply only to Amazon Bedrock.
+With OpenCode 1 or 2, run `opencode auth login` on the machine where OpenCode runs to sign in to your provider and save its credentials. Follow [OpenCode's provider documentation](https://opencode.ai/docs/providers/) for provider-specific setup. The extension starts OpenCode with your configuration and shows its model list, which includes your provider's models. The extension's profile, Region and API key settings apply only to Amazon Bedrock.
 
 ## Checking the Connection
 
-Run `OpenCode Plus: Test OpenCode Connection` from the Command Palette. Before you open a conversation in the current window, the test can only tell you whether OpenCode is installed. Once you open a conversation, OpenCode lists its models and the test can report their counts. For example: "OpenCode 2.4.1 is connected: 120 models, 40 of them on Amazon Bedrock." To see model names, open the model dropdown in any conversation ([Models, Modes and Reply Figures](features.md#models-modes-and-reply-figures)).
+Run `OpenCode Plus: Test OpenCode Connection` from the Command Palette. The test checks only whether OpenCode is installed until you open a conversation in the current window, at which point it can report counts from OpenCode's model list. For example: "OpenCode 2.4.1 is connected: 120 models, 40 of them on Amazon Bedrock." To see model names, open the model dropdown in any conversation ([Models, Modes and the Line Under Each Reply](features.md#models-modes-and-the-line-under-each-reply)).
 
-OpenCode 1 lists only providers it can sign in to. OpenCode 2 lists Bedrock models even if your credentials do not work, so **a model count alone does not confirm that Bedrock accepts your credentials.** If Bedrock refuses them, you see the error when you send your first message to a Bedrock model. Run the test again to see the refusal. Its "How to fix" button lists both ways to set up [Amazon Bedrock](#amazon-bedrock) credentials.
+OpenCode 1 lists only providers it can sign in to, but OpenCode 2's model list includes Bedrock models even if your credentials do not work. If Bedrock refuses them, you see the error when you send your first message to a Bedrock model. Run the test again to see Bedrock's error. The test result's "How to fix" button lists both ways to set up [Amazon Bedrock](#amazon-bedrock) credentials.
 
 ## Remote-SSH
 
-OpenCode Plus is a workspace extension: in a Remote-SSH window, VS Code installs and runs it on the remote machine. OpenCode runs there too, so **install OpenCode and Python on the remote machine.** Keep your OpenCode configuration and your AWS profile or provider credentials there. The files you see in the `@` list and the image files shown in replies come from the remote machine.
+OpenCode Plus is a workspace extension: in a Remote-SSH window, VS Code installs and runs it on the remote machine. OpenCode runs there too, so **install OpenCode and Python there.**
 
-The chat page runs on your own computer and reports its time zone. If it differs from the remote machine's time zone, OpenCode Plus can tell the model yours so it gives times in your zone. It sends the note once and repeats it after a compaction, when the date changes on either machine, or when your UTC offset changes (for example, when daylight saving time starts or ends or when you connect from a computer in another time zone). The note requires OpenCode 2 ([What Needs OpenCode 2](#what-needs-opencode-2)). Agent Plus's [Token Mode](features.md#token-mode) controls whether the note is sent. In Custom mode, `opencodePlus.tellOpenCodeYourTimeZone` controls it.
+Keep your OpenCode configuration and your AWS profile or provider credentials on the remote machine. If you store a Bedrock API key with `OpenCode Plus: Set Amazon Bedrock API Key`, it stays in VS Code's secret storage on your own computer ([Through OpenCode Plus Settings](#through-opencode-plus-settings)). The files you see in the `@` list and the image files shown in replies come from the remote machine.
+
+The chat page runs on your own computer and reports its time zone. When it differs from the remote machine's time zone, OpenCode Plus can tell the model to use yours for times in its replies.
+
+OpenCode Plus sends the model a note with your time zone once, then repeats it after a compaction, when the date changes on either machine, or when your UTC offset changes. The note requires [OpenCode 2](#what-needs-opencode-2). Whether OpenCode Plus sends the note depends on Agent Plus's [Token Mode](features.md#token-mode), with `opencodePlus.tellOpenCodeYourTimeZone` deciding this in Custom mode.
 
 If you lose the connection, the old window's extension host (the process that runs extensions for that window) can keep running on the remote machine and hold its conversations open. VS Code stops that process five minutes after a new window connects to the same server. To continue a conversation the old window still holds, see [Chat Tabs and Windows](features.md#chat-tabs-and-windows).

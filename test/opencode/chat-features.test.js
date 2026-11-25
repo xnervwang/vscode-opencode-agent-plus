@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * What the chat page offers on OpenCode 2.4.1, against recordings: slash commands, compaction, images and files sent
+ * Chat page features on OpenCode 2.4.1, tested against recordings: slash commands, compaction, images and files sent
  * with a message, the question tool's forms, and a subagent's progress under the call that started it.
  */
 const nodeTest = require('node:test');
@@ -53,7 +53,7 @@ const until = async (fn, ms = 5000) => {
 };
 const prompts = (agent) => agent.received.filter((m) => m.method === 'session/prompt').map((m) => m.params.prompt);
 
-test('2.x: the client says it takes compaction updates, forms and child updates', async (t) => {
+test('2.x: the client declares compaction updates, forms and child-session updates in its capabilities', async (t) => {
   const { oc, agents } = setup(t, 'v2-cmds.jsonl');
   await oc.createSession(CWD, { model: GROK });
   const caps = agents[0].received.find((m) => m.method === 'initialize').params.clientCapabilities;
@@ -139,7 +139,7 @@ test('a selection goes as text when OpenCode takes no embedded context; a file l
   assert.equal(fileBlocks([{ path: '/w/a b#c.txt' }], true).prompt[0].uri, 'file:///w/a%20b%23c.txt');
 });
 
-test('2.x: a replayed message keeps its image and file, and the selection OpenCode wrote into its text is one again', async (t) => {
+test('2.x: a replayed message keeps its image and file, and the selection OpenCode wrote into its text becomes a selection attachment again', async (t) => {
   const { oc } = setup(t, 'v2-attach-load.jsonl');
   const s = await oc.openSession(ATTACH, { cwd: CWD });
   const users = (await s.history()).filter((e) => e.type === 'userMessage');
@@ -214,7 +214,7 @@ test('2.x: a question still open when the turn is stopped is cancelled', async (
   assert.equal(s.respondQuestion('q1', { action: 'accept', content: {} }), false, 'nothing left to answer');
 });
 
-test("2.x: a subagent's progress comes as subagent events naming the call that started it; its request names it", async (t) => {
+test("2.x: a subagent's progress comes as subagent events that name the call that started it, and a permission request from it names the subagent", async (t) => {
   const { oc } = setup(t, 'v2-subagent-progress.jsonl');
   const s = await oc.createSession(CWD, { model: GROK });
   const events = [];
@@ -242,7 +242,7 @@ test("2.x: a subagent's progress comes as subagent events naming the call that s
   assert.equal(result.display.childId, CHILD, "the call's result names the session too");
 });
 
-test("2.x: drawn, the subagent's call carries its steps and state, and its request says where it came from", async (t) => {
+test("2.x: in the view model, the call that started a subagent holds its steps and state, and a permission request from the subagent carries the subagent's id", async (t) => {
   const vm = require('../../src/ui/view-model');
   const { oc } = setup(t, 'v2-subagent-progress.jsonl');
   const s = await oc.createSession(CWD, { model: GROK });

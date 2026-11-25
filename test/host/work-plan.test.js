@@ -115,7 +115,7 @@ test('with no Python the plan shows a row saying so, and looking again clears it
   plan.dispose();
 });
 
-test('OpenCode 1 is told once per workspace and version, and a row above the plan keeps saying it; OpenCode 2 never', () => {
+test('on OpenCode 1 the notice that the work plan needs OpenCode 2 shows once per workspace and version, and a row above the plan keeps it; on OpenCode 2 neither shows', () => {
   const { plan, said } = make();
   assert.equal(plan.checkVersion({ major: 2, text: '2.4.1' }).workPlan, true);
   assert.deepEqual(said, []);
@@ -123,7 +123,7 @@ test('OpenCode 1 is told once per workspace and version, and a row above the pla
   const s = plan.checkVersion({ major: 1, text: '1.19.6' });
   assert.equal(s.workPlan, false);
   plan.checkVersion({ major: 1, text: '1.19.6' });
-  assert.deepEqual(said, ['The work plan needs OpenCode 2. This is OpenCode 1.19.6. Update OpenCode to keep a work plan in these conversations.']);
+  assert.deepEqual(said, ['The work plan needs OpenCode 2, and this is OpenCode 1.19.6. Update OpenCode to keep a work plan in these conversations.']);
   const row = plan.planNotice();
   assert.equal(row.title, 'Work plans need OpenCode 2');
   assert.equal(row.description, 'OpenCode 1.19.6 is in use');
@@ -132,7 +132,7 @@ test('OpenCode 1 is told once per workspace and version, and a row above the pla
   assert.equal(plan.planNotice(), null);
   plan.dispose();
 
-  /* A reload is a new extension host with the same workspace state: not said again for the same version. */
+  /* A reload is a new extension host with the same workspace state: the notice is not shown again for the same version. */
   const store = new Map();
   const memo = { get: (k, d) => (store.has(k) ? store.get(k) : d), update: async (k, v) => { store.set(k, v); } };
   const said2 = [];

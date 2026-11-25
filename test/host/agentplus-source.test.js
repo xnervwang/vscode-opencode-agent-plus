@@ -135,7 +135,7 @@ test('reveal, shows and openHere', async () => {
   assert.strictEqual(await failing.source.reveal(A), false);
 });
 
-test('deliverAnswer types one delivery once and lets one that did not arrive be retried', async () => {
+test('deliverAnswer sends each delivery id once, and a delivery that was not received can be sent again', async () => {
   const rows = { [A]: { sessionId: A } };
   const manager = fakeManager(rows);
   const { source } = make(manager);

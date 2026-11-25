@@ -4,13 +4,11 @@
 
 'use strict';
 /*
- * The conversations open in this window: session id -> its session object from the backend (src/host/backend.js,
- * the OpenCode server behind it), the panels showing it, and what Agent Plus and the session list draw from it:
- * working / waiting (with the tool asked about) / stopped, a reply not seen yet, and when the user last wrote and the
- * agent last replied. The session object's own fields give the state a conversation is opened in; from then on its
- * AgentEvents do, and later session lists only bring titles and times. A lock (src/host/locks.js), when given, keeps
- * a conversation to one window: each window runs its own OpenCode process, and two of them driving one session would
- * talk over each other.
+ * The conversations open in this window. Each has its session object from the backend (src/host/backend.js), the
+ * panels showing it, and the state that Agent Plus and the Conversations view read through snapshot(). That state
+ * starts from the session object's own fields; after that its AgentEvents update it, and later session lists bring only
+ * titles and times. A lock (src/host/locks.js), when given, keeps a conversation to one window: each window runs its
+ * own OpenCode process, and two of them driving one session would talk over each other.
  */
 const { EventEmitter } = require('events');
 
@@ -54,7 +52,6 @@ function subscribe(conv, fn) {
   return () => {};
 }
 
-/* A backend session's state as this module keeps it. */
 function stateOfInfo(info) {
   const s = info && info.status;
   if (s === 'working' || s === 'busy') return 'working';
@@ -107,7 +104,6 @@ function createSessionManager(deps) {
     return out;
   }
 
-  /* What the conversation waits on once a request is answered: the newest one still open. */
   function stillAsking(e) {
     const last = [...e.asking.values()].pop();
     if (last) { e.waitingTool = last.tool; e.waitingKind = last.kind; } else if (e.state === 'waiting') { e.state = 'working'; e.waitingTool = ''; e.waitingKind = ''; }
@@ -202,7 +198,6 @@ function createSessionManager(deps) {
     fire(id);
   }
 
-  /* Titles and times from a fresh backend session list, for the conversations open here. */
   function update(infos) {
     for (const info of Array.isArray(infos) ? infos : []) {
       const e = info && entries.get(info.id);
@@ -227,7 +222,7 @@ function createSessionManager(deps) {
     list: () => [...entries.values()].map(snapshot),
     snapshot: (id) => (entries.has(id) ? snapshot(entries.get(id)) : null),
     attach(id, panel) { const e = entries.get(id); if (e) e.panels.add(panel); },
-    /* The last panel going closes the conversation here and stops its turn: closing the tab is how the user stops it. */
+    /* The last panel to go closes the conversation here and aborts a running turn: users close the tab to stop one. */
     detach(id, panel) {
       const e = entries.get(id);
       if (!e) return;
@@ -236,14 +231,14 @@ function createSessionManager(deps) {
     },
     panelOf(id) { const e = entries.get(id); return e && e.panels.size ? [...e.panels][e.panels.size - 1] : null; },
     seen(id) { const e = entries.get(id); if (e && e.unseen) { e.unseen = false; fire(id); } },
-    /* Sends, or queues while a turn runs. Throws when it is not open here. */
+    /* A turn in progress queues the text. */
     send(id, text) {
       const e = entries.get(id);
       if (!e) throw new Error('the conversation is not open in this window');
       const r = e.conversation.send(text);
       if (r && typeof r.catch === 'function') r.catch((err) => log(`send to ${id} failed: ${(err && err.message) || err}`));
     },
-    /* The window is going: lets go of every conversation, stopping running turns with `abort`. */
+    /* For the window's shutdown: closes every conversation, aborting running turns when `abort` is set. */
     disposeAll({ abort = false } = {}) { for (const id of [...entries.keys()]) close(id, { abort }); if (locks) locks.releaseAll(); },
     onDidChange: changed.event,
     dispose() { changed.dispose(); },

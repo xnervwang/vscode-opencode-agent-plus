@@ -96,7 +96,7 @@ test('tab icons: the logo in each theme colour, a green or red dot for working a
     assert.doesNotMatch(read(files.stopped.dark), /circle cx="19"/);
     assert.match(read(files.working.dark), new RegExp(`fill="${DOTS.working}"`));
     assert.match(read(files.waiting.light), new RegExp(`fill="${DOTS.waiting}"`));
-    /* The logo's own colour, whether the icon is drawn with fills or strokes. */
+    /* The logo is in the theme's icon colour, whether it is drawn with fills or strokes. */
     assert.match(read(files.waiting.light), /(fill|stroke)="#424242"/);
     assert.match(read(files.waiting.dark), /(fill|stroke)="#c5c5c5"/);
     assert.doesNotMatch(read(files.working.dark), /currentColor/);

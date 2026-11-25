@@ -3,7 +3,7 @@
 // All rights reserved.
 
 'use strict';
-/* Writes into a conversation's own folder are allowed once without asking; everything else is asked as before. */
+/* Writes into a conversation's own folder are allowed once without asking; every other request still asks the user. */
 const nodeTest = require('node:test');
 const test = (name, opts, fn) => (fn ? nodeTest(name, { timeout: 15000, ...opts }, fn) : nodeTest(name, { timeout: 15000 }, opts));
 const assert = require('node:assert/strict');
@@ -74,7 +74,6 @@ test('a symbolic link cannot lead a quiet write out of the folder', { skip: proc
   const folderOf = () => own;
   assert.equal(quiet.answer(ask(SID, writeCall(`${own}/out/a.svg`)), folderOf), null, 'a linked folder');
   assert.equal(quiet.answer(ask(SID, writeCall(`${own}/f.txt`)), folderOf), null, 'a linked file');
-  /* The folder named through a link is the same folder. */
   fs.symlinkSync(root, path.join(outside, 'root-link'));
   const viaLink = path.join(outside, 'root-link', 'scratch', SID);
   assert.deepEqual(quiet.answer(ask(SID, writeCall(`${viaLink}/a.svg`)), folderOf), { outcome: { outcome: 'selected', optionId: 'once' } });
@@ -101,7 +100,7 @@ async function writeTurn(oc) {
 }
 const answers = (agent) => agent.received.filter((m) => !m.method && m.result && m.result.outcome).map((m) => m.result.outcome);
 
-test('through createOpenCode: writes in the folder quietFolder names are answered without a permission event', async (t) => {
+test('through createOpenCode: writes in the folder that quietFolder names are answered without a permission event', async (t) => {
   const { oc, agents, logged } = setup(t, { quietFolder: (id) => (id === SID ? WS : null) });
   const events = await writeTurn(oc);
   assert.equal(events.filter((e) => e.type === 'permission').length, 0);
@@ -110,7 +109,7 @@ test('through createOpenCode: writes in the folder quietFolder names are answere
   assert.equal(logged.filter((l) => /allowed without asking/.test(l)).length, 2);
 });
 
-test('through createOpenCode: another folder, no quietFolder, or OpenCode\'s own policy asks as before', async (t) => {
+test('through createOpenCode: another folder, no quietFolder, or OpenCode\'s own policy still asks the user', async (t) => {
   for (const more of [{ quietFolder: () => '/work/elsewhere' }, {}, { quietFolder: () => WS, permissions: false }]) {
     const { oc, agents } = setup(t, more);
     const events = await writeTurn(oc);

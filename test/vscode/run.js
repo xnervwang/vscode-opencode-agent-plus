@@ -13,8 +13,8 @@
  * test/vscode/LOOK.md explains. `fake` (the default) puts test/vscode/fake-backend.js behind the chat; `opencode` uses
  * the real backend with the OpenCode at --opencode and the user's AWS profile `self`, for a run against a real model.
  * With OpenCode 2 the page's mode and effort pickers are switched and the next turns checked against what OpenCode
- * recorded, a subagent's session stays out of the list while the turn OpenCode starts when it finishes shows in the page,
- * the model adds a row to the work plan with the plugin's tool, Agent Plus's Work plan view shows it,
+ * recorded, a subagent's session stays out of the list and the turn OpenCode starts after the subagent finishes shows in
+ * the page, the model adds a row to the work plan with the plugin's tool and Agent Plus's Work plan view shows it,
  * and with the token mode switched to Interface the next message gets no plan; then a command picked from the / list
  * compacts the conversation, a pasted image (with Claude Haiku 4.5), a file picked with @ and an editor selection go with
  * a message, a subagent's progress shows on its card, and the question tool's form is answered in the page; the plan bar
@@ -26,9 +26,10 @@
  * on the Background line until it ends, Esc stops a turn, the info box and the MCP list show, and a fork opens from the
  * tab's menu while the Conversations view splits into its two groups. After the reload a replayed message keeps the time
  * it was sent. The icons are shot in the activity bar in both themes, in the Extensions view, and on Agent Plus's rows
- * once a second source is registered (Agent Plus draws a source's logo only then). With OpenCode 1 the notice that the work plan needs OpenCode 2 is shown
- * once, the new controls show only what it offers, and its tab offers no Rename but Fork. The plugin writes what it does to
- * <out>/plugin.jsonl (OPENCODE_PLUS_PLAN_LOG).
+ * once a second source is registered (Agent Plus draws a source's logo only then). With OpenCode 1 the notice that the
+ * work plan needs OpenCode 2 is shown once, the / and @ lists, question forms and compaction line show only what it
+ * offers, and its tab offers Fork but not Rename. The plugin writes what it does to <out>/plugin.jsonl
+ * (OPENCODE_PLUS_PLAN_LOG).
  * --restricted runs test/vscode/lib/restricted.js instead: the folder untrusted, then trusted.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
@@ -88,8 +89,8 @@ function solidPng(r, g, b, size = 32) {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
-/* An empty git repository written by hand (no git is run): OpenCode keeps file snapshots, and so can rewind files, only
-   in one. */
+/* An empty git repository, made without running git: OpenCode keeps file snapshots, and so can rewind files, only
+   inside a git repository. */
 function emptyGitRepo(dir) {
   const g = path.join(dir, '.git');
   for (const d of ['objects/info', 'objects/pack', 'refs/heads', 'refs/tags', 'info']) fs.mkdirSync(path.join(g, d), { recursive: true });
@@ -98,7 +99,7 @@ function emptyGitRepo(dir) {
   fs.writeFileSync(path.join(g, 'info', 'exclude'), '');
 }
 
-/* A time the page writes (MM/DD HH:MM:SS, the page's local time) as epoch milliseconds, in the year of `near`. */
+/* Converts a time the page shows (MM/DD HH:MM:SS, the page's local time) to epoch milliseconds, in the year of `near`. */
 function pageTime(text, near) {
   const m = /(\d\d)\/(\d\d) (\d\d):(\d\d):(\d\d)/.exec(String(text || ''));
   if (!m) return 0;
@@ -286,14 +287,14 @@ async function main() {
     return { items, renamed: true };
   };
 
-  /* ---------- the fourth batch's steps, shared by the runs ---------- */
+  /* ---------- steps the fake and the real runs share ---------- */
 
   /* The chat page's links to other conversations: [{ session, source, text, tip }]. */
   const convLinks = (f) => f.evaluate(() => [...document.querySelectorAll('#log a.conv-link')].map((a) => ({ session: a.dataset.session, source: a.dataset.source, text: a.textContent, tip: a.title })));
   const activeUri = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
   const closeChat = (id) => call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeplus-session:/" + arg);
     await vscode.window.tabGroups.close(tabs); return true;`, id).catch(() => false);
-  /* Clicks the page's first link to conversation `id`; resolves to the id of the chat tab then in front. */
+  /* Clicks the page's last link to conversation `id`; resolves to the id of the chat tab in front after the click. */
   const followLink = async (f, id) => {
     await f.evaluate((sid) => { const a = [...document.querySelectorAll('#log a.conv-link')].reverse().find((x) => x.dataset.session === sid);
       const l = document.getElementById('log');
@@ -322,8 +323,9 @@ async function main() {
   /* Whether the page itself is scrolled (only its log should be), and by how much it is taller than its frame. */
   const pageScroll = (f) => f.evaluate(() => ({ scrolled: document.scrollingElement.scrollTop, top: Math.round(document.getElementById('top').getBoundingClientRect().top),
     over: document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight }));
-  /* A hover label the pointer left (a tab's, or a button's whose row went away) gives way to the activity bar's, which
-     goes with the pointer; moving into a chat page alone does not end it, as the workbench hears nothing in there. */
+  /* Clears a hover label the pointer left behind (a tab's, or one from a button whose row went away) by hovering the
+     activity bar, whose label goes when the pointer does; moving into a chat page alone does not clear it, as the
+     workbench hears nothing in there. */
   const dropHover = async () => {
     await page.hover('.activitybar .action-item [aria-label^="OpenCode Plus"]', { timeout: 3000 }).catch(() => {});
     await sleep(1200);
@@ -347,7 +349,7 @@ async function main() {
     check(!!closed && !!back, 'the Outline button hides the column and shows it again', { closed, back });
     return o;
   };
-  /* What the subagent filter shows: which of the subagent items are drawn, and its button. */
+  /* Which subagent items the page draws, and the state of the Subagents button. */
   const subagentView = (f) => f.evaluate(() => {
     const shown = (e) => !!e && getComputedStyle(e).display !== 'none' && !!e.getClientRects().length;
     const b = document.getElementById('subBtn');
@@ -357,7 +359,7 @@ async function main() {
       hidden: [...document.querySelectorAll('#log .sub-hide')].map(shown),
       waiting: [...document.querySelectorAll('#log .permission:not(.settled), #log .question:not(.settled)')].filter((e) => e.querySelector('.from-sub:not([hidden])')).map(shown) };
   });
-  /* Recently closed: its group lists `titles` (each start of a title); its row's button empties it. */
+  /* Recently closed: its group lists `titles` (each the start of a title), and the button on its row empties it. */
   const recentStep = async (titles, name, expect) => {
     await call('await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
     const group = await until(() => page.evaluate((want) => {
@@ -390,7 +392,7 @@ async function main() {
     }, 10000);
     check(visible && clicked && cleared, "the group's Clear button empties Recently closed, and the group goes", { visible, clicked, cleared });
   };
-  /* Find Conversation: part of `id` typed in its pick finds that conversation alone; Enter opens it. */
+  /* Find Conversation: typing part of `id` in its pick leaves only that conversation; Enter opens it. */
   const findStep = async (id, name, expect) => {
     await dropHover();
     await call(`vscode.commands.executeCommand("opencodePlus.findConversation"); return true;`);
@@ -426,7 +428,7 @@ async function main() {
     return;
   }
 
-  /* When the real model's first message was sent, for its time after the reload. */
+  /* When the real model's first message was sent, to compare with the time the page shows for it after the reload. */
   let firstSentAt = 0;
   try {
     await w.hostUp();
@@ -494,7 +496,7 @@ async function main() {
       const toast = await until(() => page.evaluate(() => [...document.querySelectorAll('.notification-toast, .notifications-toasts')].some((e) => /The work plan needs OpenCode 2/.test(e.textContent))), 10000);
       check(n === 1 && !!toast, 'on OpenCode 1 the notice "The work plan needs OpenCode 2" is shown once', { told: n, toast });
       await shot('02b-needs-opencode-2', { features: ['work plan notice on OpenCode 1'],
-        expect: 'A notification at the bottom right says "The work plan needs OpenCode 2. This is OpenCode 1.19.6. Update OpenCode to keep a work plan in these conversations."' });
+        expect: 'A notification at the bottom right says "The work plan needs OpenCode 2, and this is OpenCode 1.19.6. Update OpenCode to keep a work plan in these conversations."' });
     }
     if (!real) {
       // 3. A message gets a reply; the permission request is answered from the page.
@@ -518,7 +520,7 @@ async function main() {
           if (allow) {
             await shot('03b-diff-title-bar', { features: ['diff title bar answers'],
               expect: 'A diff editor "sum.js (proposed change)" is open, the old line on the left and the new one on the right; its title bar, at the right end of the tab row, has a check, a double check and a cross icon (Allow Once, Allow in This Project, Deny) before the usual editor actions.' });
-            /* The title bar is drawn again as context keys change, so the button is looked up as it is clicked. */
+            /* VS Code redraws the title bar as context keys change, so the button is looked up at the moment it is clicked. */
             await page.locator('.editor-actions [aria-label="Allow Once"]').first().click();
             /* The chat page was hidden behind the diff, so VS Code drew it again when the diff closed. */
             await until(() => call('return !vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((t) => /proposed change/.test(t.label));'), 10000);
@@ -537,7 +539,7 @@ async function main() {
           expect: 'The edit_file card says it was allowed once, and the reply ends with "Fixed: sum subtracted instead of adding." and a code block; below the reply a line of figures such as a duration, ctx and the model name.',
           part: '#workbench\\.parts\\.editor' });
 
-        // 4z. Rename from the chat tab's menu: the tab, the page and the list follow.
+        // 4z. Rename from the chat tab's menu: the tab, the page and the list show the new title.
         const fakeLabel = (await tabOf(sessionId) || {}).label || '';
         const r = await renameFromTab(fakeLabel, 'Renamed in the fake run', '04z-tab-menu');
         const fakeRenamed = await until(async () => {
@@ -616,9 +618,9 @@ async function main() {
         await sleep(800);
         chat = await frameWith(page, '#input', 20000);
 
-        // 4s. Find Conversation: part of the fork's id finds it; Enter opens it.
+        // 4s. Find Conversation: typing part of the fork's id finds it; Enter opens it.
         if (await findStep(forkId, '04s-find-conversation',
-          'A quick pick at the top titled "Find a Conversation", its box holding a few letters and digits of a session id, and one row: "Renamed in the fake run (fork)" with "active … ago" and, below, the full ses_… id and the folder, the typed part highlighted.')) {
+          'A quick pick at the top titled "Find a conversation", its box holding a few letters and digits of a session id, and one row: "Renamed in the fake run (fork)" with "active … ago" and, below, the full ses_… id and the folder, the typed part highlighted.')) {
           await closeChat(forkId);
           await sleep(800);
           chat = await frameWith(page, '#input', 20000);
@@ -628,7 +630,7 @@ async function main() {
         await outlineStep(chat, '04u-outline',
           'Right of the conversation a column headed "YOUR MESSAGES" lists the two user messages, numbered 1 ("Hello there, please fix the failing test") and 2 ("Say: The copy is …"); the log is scrolled to the first message, which has a thin focus-coloured outline; the header has an "Outline" button drawn pressed, left of the round "i".');
 
-        // 4t. The subagent filter, on what a subagent brings (posted to the page the way the extension posts it).
+        // 4t. The subagent filter, on subagent items posted to the page the way the extension posts them.
         const quiet = await subagentView(chat);
         const SUB = { childId: 'ses_childfake00000000000000', title: 'Look around' };
         await chat.evaluate((sub) => {
@@ -670,8 +672,8 @@ async function main() {
         await chat.press('#input', 'Enter');
         return waitTurn(before, name, tick);
       };
-      /* Waits for the turn begun after `before` figures lines to end, answering Allow once on the way; `tick` runs at
-         each look. */
+      /* Waits until the turn that started after the page had `before` figures lines has ended, answering Allow once on
+         the way; `tick` runs on each check. */
       const waitIcons = [];
       const waitTurn = async (before, name, tick) => {
         await until(async () => (await status()) !== 'idle' || (await figures()) > before, 60000, 200);
@@ -731,7 +733,8 @@ async function main() {
           part: '#workbench\\.parts\\.editor' });
 
         if (line === 1) {
-          // 3z. The second batch's controls on OpenCode 1: what it offers shows, and nothing reports an error.
+          // 3z. On OpenCode 1 the / and @ lists, question forms and compaction line show only what it offers, and nothing
+          // reports an error.
           await chat.fill('#input', '/');
           await sleep(1500);
           const slash = await menuItems();
@@ -745,9 +748,9 @@ async function main() {
             questions: document.querySelectorAll('#log .question').length, compactions: document.querySelectorAll('#log .compaction').length }));
           const told1 = ((await ext('return api.test.told();')) || []).filter((t) => /error|fail/i.test(t));
           check(!!at && at.includes('notes.txt') && !page1.errors.length && !told1.length && !page1.questions && !page1.compactions,
-            'on OpenCode 1 the @ list works, the other new controls show only what it offers, and nothing reports an error', { at, page: page1, told: told1, slash });
-          await shot('04z-v1-controls', { features: ['new controls on OpenCode 1'],
-            expect: 'The chat page as before, the message box empty; its placeholder may add hints such as "@ to add a file"; no error notice, no question form, no compaction line.',
+            'on OpenCode 1 the @ list works, the / list, question form and compaction line show only what it offers, and nothing reports an error', { at, page: page1, told: told1, slash });
+          await shot('04z-v1-controls', { features: ['/ and @ lists, question form and compaction line on OpenCode 1'],
+            expect: 'The chat page with the message box empty; its placeholder may add hints such as "@ to add a file"; no error notice, no question form, no compaction line.',
             part: '#workbench\\.parts\\.editor' });
           const v1Items = await tabMenu((await tabOf(sessionId) || {}).label || '');
           await page.keyboard.press('Escape');
@@ -762,13 +765,13 @@ async function main() {
           await shot('04z2-v1-info', { features: ['session info on OpenCode 1'],
             expect: 'The chat page of OpenCode 1.19.6 with no "Rewind to here" on the user messages; the info box may still be closing.',
             part: '#workbench\\.parts\\.editor' });
-          // 3z3. On OpenCode 1 the outline, the Subagents button and Find Conversation are what they are on 2.
+          // 3z3. On OpenCode 1 the outline, the Subagents button and Find Conversation behave as on OpenCode 2.
           await outlineStep(chat, '04z3-v1-outline',
             'The chat page of OpenCode 1.19.6 with a column "YOUR MESSAGES" on the right listing its user messages, numbered from 1; the header has "Outline" pressed; no "Subagents" button.');
           const v1Subs = await subagentView(chat);
           check(!v1Subs.button, 'with no subagent in the conversation there is no Subagents button', v1Subs);
           await findStep(sessionId, '04z4-v1-find',
-            'A quick pick "Find a Conversation" with a few characters of a session id typed and one row: this conversation\'s title, "open in this window", and below it its ses_… id and folder.');
+            'A quick pick "Find a conversation" with a few characters of a session id typed and one row: this conversation\'s title, "open in this window", and below it its ses_… id and folder.');
           chat = await frameWith(page, '#input', 30000);
         }
 
@@ -812,7 +815,7 @@ async function main() {
              while that turn is awaited too. */
           const watch = async () => {
             const c = ((await ext('return api.test.conversations();')) || []).find((x) => x.sessionId === sessionId);
-            /* Only once the parent's own turn is over: what counts is the turn OpenCode starts after it. */
+            /* Recorded only after the parent's own turn is over: the turn that matters is the one OpenCode starts after it. */
             if (c && (await figures()) > beforeSub) activities.add(c.activity);
             if (!runningShot && await chat.$('#log .tool .child.state-running')) {
               runningShot = true;
@@ -829,7 +832,7 @@ async function main() {
           while (Date.now() < end) {
             await watch();
             for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) { await b.click(); clicked++; await sleep(500); }
-            if ((await notices()).some((t) => /went on without a message from you/.test(t)) && (await status()) === 'idle') { wentOn = true; break; }
+            if ((await notices()).some((t) => /started this turn on its own/.test(t)) && (await status()) === 'idle') { wentOn = true; break; }
             await sleep(500);
           }
           check(wentOn && activities.has('working'), 'for the background subagent OpenCode went on without a message: the page says so, the conversation worked and went back to idle',
@@ -853,7 +856,7 @@ async function main() {
           const fromSub = await chat.evaluate(() => [...document.querySelectorAll('#log .permission .from-sub')].filter((e) => !e.hidden).map((e) => e.textContent));
           check(runningShot && !!card && card.tools.length > 0 && fromSub.length > 0,
             "the subagent's card showed it running and then done with its steps, and its request said it came from the subagent", { runningShot, card, fromSub });
-          /* Opening the steps makes the log longer above its end, which then lies below the view: two pictures. */
+          /* Opening the steps lengthens the log above its end and pushes the end below the view, so this takes two pictures. */
           await chat.evaluate(() => {
             const c = [...document.querySelectorAll('#log .tool .child')].pop();
             const log = document.getElementById('log');
@@ -864,7 +867,7 @@ async function main() {
             part: '#workbench\\.parts\\.editor' });
           await chat.evaluate(() => { const log = document.getElementById('log'); log.scrollTop = log.scrollHeight; });
           await shot('04f2-subagent-reply', { features: ['turn OpenCode started itself'],
-            expect: 'The end of the conversation: the notice "OpenCode went on without a message from you, for a background task (a subagent or a command).", then the reply that the subagent has finished, with its figures line under it; the status line shows no work in progress.',
+            expect: 'The end of the conversation: the notice "OpenCode started this turn on its own, for a background subagent or command.", then the reply that the subagent has finished, with its figures line under it; the status line shows no work in progress.',
             part: '#workbench\\.parts\\.editor' });
 
           // 3f2. The subagent filter: only this conversation's own output, the subagent's progress folded away.
@@ -1039,7 +1042,7 @@ async function main() {
           check(!!form && !!qWaiting && qWaiting.activity === 'waiting' && !!listedQ && !!listedQ.waitingFor && listedQ.waitingFor.kind === 'question',
             "the question tool's form shows in the page, and the conversation waits for an answer to a question", { form: !!form, activity: qWaiting && qWaiting.activity, waitingFor: listedQ && listedQ.waitingFor });
           await shot('12-question', { features: ['question form'],
-            expect: 'A question card with a "Question" badge, the question about red or blue with two round choices (Red, Blue), an own-answer box, and Submit and Cancel buttons; the status line says it waits for an answer to a question.',
+            expect: 'A question card with a "Question" badge, the question about red or blue with two round choices (Red, Blue), an own-answer box, and Submit and Cancel buttons; the status line says it waits for your answer.',
             part: '#workbench\\.parts\\.editor' });
           if (form) {
             await chat.evaluate(() => {
@@ -1057,7 +1060,8 @@ async function main() {
             expect: 'Above it the question tool card (its result folded), then the question card, which now reads "Answered: … Blue": Blue\'s choice is checked and in bold, the other choice and the own-answer box are faded, and there are no buttons; below it the reply "Blue" (or "blue"), with a figures line.',
             part: '#workbench\\.parts\\.editor' });
 
-          // 3l. Rename from the chat tab's menu: the tab, the page, the Conversations list, Agent Plus and OpenCode follow.
+          // 3l. Rename from the chat tab's menu: the tab, the page, the Conversations list, Agent Plus and OpenCode all show the
+          // new title.
           const NEW_TITLE = 'Renamed by the window test';
           const r = await renameFromTab((await tabOf(sessionId) || {}).label || '', NEW_TITLE, '13-tab-menu');
           const renamed = await until(async () => {
@@ -1078,7 +1082,7 @@ async function main() {
             expect: `The chat tab and the page header read "${NEW_TITLE}"; the panel below shows Agent Plus's Conversations view with a row of that title.` });
           await call('await vscode.commands.executeCommand("workbench.action.closePanel"); return true;').catch(() => {});
 
-          // 3m. While it waits for an approval, a delivery through the source is refused and says why; when the turn
+          // 3m. While it waits for an approval, a delivery through the source is refused with the reason; when the turn
           // ends, the latest reply is written beside the plan.
           let refused = null;
           const askText = 'Run the command `echo waiting-check` with the shell tool, then reply with only the word done.';
@@ -1094,7 +1098,7 @@ async function main() {
               }
             }
           });
-          check(!!refused && refused.outcome === 'notReceived' && /^it is waiting for approval of \S+ in its window$/.test(refused.reason || ''),
+          check(!!refused && refused.outcome === 'notReceived' && /^\S+ is waiting for approval in its window$/.test(refused.reason || ''),
             "while the conversation waits for an approval, the source's deliverAnswer refuses the message and names what it waits for", refused);
           const replyFile = path.join(plansDir, `${sessionId}.reply.json`);
           let latest = null;
@@ -1138,7 +1142,7 @@ async function main() {
             expect: `One chat tab, "${NEW_TITLE}", in front with no envelope; its page ends with the reply "five".`,
             part: '#workbench\\.parts\\.editor' });
 
-          // 3o. A permission request answered from its diff's title bar; the files the turn changes are rewound below.
+          // 3o. A permission request answered from its diff's title bar; step 3p rewinds the files this turn changes.
           const notes = path.join(p.folder, 'notes.txt');
           const rewound = path.join(p.folder, 'rewind-me.txt');
           const REWIND_TEXT = 'Use the write tool to create a file named rewind-me.txt containing exactly v1, then use the edit tool to change notes.txt so that it contains exactly: Changed notes. Then reply with only the word done.';
@@ -1156,7 +1160,7 @@ async function main() {
             if (!allow) return;
             await shot('16-diff-title-bar', { features: ['diff title bar answers'],
               expect: 'A diff editor "… (proposed change)" for rewind-me.txt or notes.txt is open; at the right end of the tab row, before the usual editor actions, a check, a double check and a cross icon (Allow Once, Allow in This Project, Deny).' });
-            /* The title bar is drawn again as context keys change, so the button is looked up as it is clicked. */
+            /* VS Code redraws the title bar as context keys change, so the button is looked up at the moment it is clicked. */
             await page.locator('.editor-actions [aria-label="Allow Once"]').first().click();
             viaTitle = await until(() => call('return !vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((t) => /proposed change/.test(t.label));'), 10000);
             /* The chat page was hidden behind the diff, so VS Code drew it again when the diff closed. */
@@ -1184,7 +1188,7 @@ async function main() {
           check(offered && /Rewind the conversation to before this message\?/.test(asking || '') && /rewind-me\.txt: removed/.test(asking || '') && /notes\.txt: changed back/.test(asking || ''),
             'Rewind to here asks first, listing the files that go back', { offered, asking, midway });
           await shot('17-rewind-confirm', { features: ['rewind confirmation'],
-            expect: 'A dialog over the window: "Rewind the conversation to before this message?", saying the message and every one after it leave the conversation, listing rewind-me.txt (removed) and notes.txt (changed back), that Cancel undoes it, and that rewinding is experimental; buttons Rewind and Cancel.' });
+            expect: 'A dialog over the window: "Rewind the conversation to before this message?", saying the message and all messages after it will be removed from the conversation, listing rewind-me.txt (removed) and notes.txt (changed back), that Cancel undoes it, and that rewinding is experimental; buttons Rewind and Cancel.' });
           if (asking) await clickDialog('Cancel');
           const restored = await until(() => (read(rewound) === 'v1' && /^Changed notes/.test(read(notes) || '') ? { rewound: read(rewound), notes: read(notes) } : null), 20000);
           const stillThere = await chat.evaluate((t) => [...document.querySelectorAll('#log .msg.user .bubble')].some((b) => b.textContent === t), REWIND_TEXT);
@@ -1207,7 +1211,7 @@ async function main() {
             part: '#workbench\\.parts\\.editor' });
           await chat.fill('#input', '');
 
-          // 3q. A reply that links a local image shows it.
+          // 3q. A reply that links a local image shows the image.
           const square = path.join(p.folder, 'red-square.png');
           fs.writeFileSync(square, solidPng(220, 40, 40, 48));
           await turn('Reply with exactly the following line and nothing else, and do not use any tool: ![red square](' + square + ')', '18');
@@ -1332,7 +1336,7 @@ async function main() {
 
           // 3y. Find Conversation by part of the fork's id.
           if (forked && await findStep(forked, '23d-find-conversation',
-            'A quick pick at the top titled "Find a Conversation", its box holding a few characters of a session id, and one row: the fork\'s title with "active … ago", and below it the full ses_… id and the folder.')) {
+            'A quick pick at the top titled "Find a conversation", its box holding a few characters of a session id, and one row: the fork\'s title with "active … ago", and below it the full ses_… id and the folder.')) {
             await closeChat(forked);
             await sleep(1000);
             chat = await frameWith(page, '#input', 30000);
@@ -1342,9 +1346,9 @@ async function main() {
           await outlineStep(chat, '23e-outline',
             'Right of the conversation a column headed "YOUR MESSAGES" lists every user message, numbered from 1 ("列出工作目录下的文件" first), each cut to one line; the log is scrolled to the first message, which has a thin focus-coloured outline; the header\'s "Outline" button is pressed.');
 
-          /* Last of these: the first message after compacting gets the work plan's note about the plan again, which a
-             model may answer instead of the message. */
-          // 3g. Slash commands: / lists OpenCode's commands; /compact picked from the list and sent compacts.
+          /* Last of these: the first message after compacting carries the work plan's reminder again, and a model may
+             answer that instead of the message. */
+          // 3g. Slash commands: / lists OpenCode's commands; /compact, picked from the list and sent, compacts the conversation.
           await chat.fill('#input', '/');
           const listedCmds = await until(async () => { const l = await menuItems(); return l.length ? l : null; }, 15000);
           check(!!listedCmds && listedCmds.includes('/compact'), 'typing / lists the slash commands OpenCode offers', listedCmds || []);

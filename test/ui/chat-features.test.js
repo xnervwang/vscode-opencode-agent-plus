@@ -83,7 +83,7 @@ test('compacting shows as one divider: in progress, then done with its summary; 
   assert.equal(vm.reduce(s, { type: 'compaction', status: 'weird' }), s);
 });
 
-test('a question becomes a form: one choice and many choices with their own-answer boxes', () => {
+test("a question becomes a form: a single-choice and a multiple-choice field, each with a box for the user's own answer", () => {
   const fields = vm.formFields(SCHEMA);
   assert.deepEqual(fields.map((f) => [f.key, f.type, f.otherKey]), [['q0', 'choice', 'q0_custom'], ['q1', 'multi', 'q1_custom']]);
   assert.deepEqual(fields[0].options.map((o) => o.value), ['Red', 'Blue']);
@@ -116,7 +116,7 @@ test("the question tool's card is summed up by its questions", () => {
   assert.equal(vm.summarizeInput('question', { questions: [] }), '{"questions":[]}');
 });
 
-test('a question waits for the user, settles once answered, and is let go when the turn ends', () => {
+test('a question waits for the user, settles once answered, and is cancelled when the turn ends', () => {
   let s = begin();
   s = vm.reduce(s, { type: 'question', requestId: 'q1', message: 'Questions', schema: SCHEMA, toolId: 'call_1' }, 20);
   const q = s.items[s.items.length - 1];
@@ -135,7 +135,7 @@ test('a question waits for the user, settles once answered, and is let go when t
   assert.equal(vm.head(p).waitingFor, 'permission');
 });
 
-test("a subagent's progress is drawn on the call that started it; a request from it says which", () => {
+test("a subagent's progress is drawn on the call that started it; a permission request from it names the subagent", () => {
   let s = begin();
   s = vm.reduce(s, { type: 'toolCall', id: 'call_sub', name: 'subagent', input: { description: 'List files' }, at: 11 });
   const sub = (extra) => ({ type: 'subagent', childId: 'ses_c', title: 'List files', status: 'running', toolId: 'call_sub', ...extra });
@@ -223,7 +223,7 @@ test('a message goes with its images, @ files and selections; what does not fit 
     images: [{ mediaType: 'image/png', data: 'iVBORw0KGgo=', name: 'shot.png' }],
     files: [{ path: '/w/notes.txt', name: 'notes.txt' }, { path: '/w/a.js', name: 'a.js', text: 'x = 1', startLine: 3, endLine: 4 }],
   }]);
-  assert.deepEqual(conv.sent[1], ['plain'], 'a bare message goes as before');
+  assert.deepEqual(conv.sent[1], ['plain'], 'a message with nothing attached is sent with its text alone');
   chat.dispose();
 });
 
@@ -258,7 +258,7 @@ test('@ asks the host for files and gets them back under the same number; the se
   assert.equal(changed, null, 'stops listening with the panel');
 });
 
-test("a form's answer is checked, then goes to the conversation; Cancel goes as cancel", async () => {
+test("a form's answer is checked, then sent to the conversation; Cancel sends a cancel", async () => {
   const conv = conversation();
   const { panel, chat } = panelFor(conv);
   panel.fromPage({ type: 'ready' });
@@ -281,7 +281,7 @@ test("a form's answer is checked, then goes to the conversation; Cancel goes as 
   chat.dispose();
 });
 
-test('the page finds what is typed after / and @, and puts the pick in place', () => {
+test('the page finds the word typed after / or @, and replaces it with the item picked', () => {
   assert.deepEqual(composer.slashToken('/comp', 5), { start: 0, end: 5, query: 'comp' });
   assert.equal(composer.slashToken('/compact now', 12), null, 'past the command name');
   assert.equal(composer.slashToken('say /compact', 12), null, 'only at the start');
@@ -326,7 +326,7 @@ test('files for @ are ranked by name, then path, then letters in order; excludes
   assert.equal(calls, 2);
 });
 
-test("the selection is the last one made in a file editor still shown; VS Code is listened to only while asked", async () => {
+test("the selection is the last one made in a file editor still shown; the tracker listens to VS Code only while it has listeners of its own", async () => {
   const sel = (a, b, c, d) => ({ start: { line: a, character: b }, end: { line: c, character: d }, isEmpty: a === c && b === d });
   const doc = { uri: { scheme: 'file', fsPath: '/w/src/a.js' }, getText: () => 'line three\nline four\n' };
   const editor = { document: doc, selection: sel(2, 0, 4, 0) };

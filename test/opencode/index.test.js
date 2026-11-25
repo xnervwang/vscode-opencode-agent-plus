@@ -215,7 +215,7 @@ test('the process stops once no conversation has been open for idleStopMs', asyn
   assert.equal(oc.info(), null);
 });
 
-test('a missing opencode comes back as the error that says how to install it', async (t) => {
+test('a missing opencode fails createSession and listSessions with the notFound error that says how to install it', async (t) => {
   const { OpenCodeError } = require('../../src/opencode/server');
   const oc = createOpenCode({ root: os.tmpdir(), findOpenCode: () => { throw new OpenCodeError('notFound', 'OpenCode was not found. Install it with ...'); } });
   t.after(() => oc.dispose());

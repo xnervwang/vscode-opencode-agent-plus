@@ -81,7 +81,7 @@ test('in Restricted Mode nothing starts: no OpenCode, no conversation, no file, 
   assert.deepStrictEqual(fs.readdirSync(HOME), [], 'still nothing written');
   for (const part of ['fake-backend.js', 'src/opencode/index.js']) assert.strictEqual(loaded(part), false, `${part} is still not loaded`);
 
-  /* The Conversations view is an empty list, under which package.json's Restricted Mode text shows. */
+  /* The Conversations view is an empty list, so VS Code shows package.json's Restricted Mode text in it. */
   assert.strictEqual(control.state.trees['opencodePlus.sessions'], undefined, 'the real view is not made');
   const stub = control.state.treeProviders['opencodePlus.sessions'];
   assert.ok(stub && !stub.disposed);
@@ -113,7 +113,7 @@ test('in Restricted Mode nothing starts: no OpenCode, no conversation, no file, 
 });
 
 test('once trust is granted it starts without a reload, and the chat tab already open gets its conversation', async () => {
-  /* A conversation OpenCode (here the fake backend) already keeps, which the restored tab names. */
+  /* The fake backend already keeps the conversation that the restored tab names. */
   fs.writeFileSync(path.join(HOME, 'fake-backend.json'), JSON.stringify({ sessions: { [SESSION]: {
     id: SESSION, title: 'Kept from before', cwd: HOME, lastActiveAt: Date.now(), lastUserAt: 0, lastReplyAt: 0, model: 'fake/fake-small', events: [] } } }));
   control.grantTrust();

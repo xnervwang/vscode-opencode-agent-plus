@@ -39,7 +39,7 @@ const context = {
 };
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 const uriOf = (id) => vscode.Uri.from({ scheme: 'opencodeplus-session', path: `/${id}` });
-const BUSY = 'Another VS Code window has this conversation open';
+const BUSY = 'This conversation is open in another VS Code window';
 
 test('this window takes back what its earlier extension host holds without asking; another window still asks', async (t) => {
   /* A live process stands in for the earlier extension host; its locks are written as that host would write them. */
@@ -64,7 +64,6 @@ test('this window takes back what its earlier extension host holds without askin
   t.after(() => other.dispose());
   assert.deepStrictEqual(other.acquire(b), { ok: true });
 
-  /* The restored tab of `a` opens it: the earlier host was asked to let go, and no notification asked anything. */
   const provider = control.state.editors['opencodePlus.chat'].provider;
   const panelA = control.panel();
   await provider.resolveCustomEditor(provider.openCustomDocument(uriOf(a)), panelA);
@@ -74,7 +73,6 @@ test('this window takes back what its earlier extension host holds without askin
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, `${a}.lock`), 'utf8')).pid, process.pid);
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, `${a}.lock`), 'utf8')).window, token);
 
-  /* `b`, held by another window, asks as before; declined, the other window keeps it. */
   const panelB = control.panel();
   await provider.resolveCustomEditor(provider.openCustomDocument(uriOf(b)), panelB);
   const said = control.state.said.filter((m) => String(m.message).includes(BUSY));
@@ -86,7 +84,7 @@ test('this window takes back what its earlier extension host holds without askin
   extension.deactivate();
 });
 
-test('an earlier host of this window that does not answer is taken from by force, still without asking', async (t) => {
+test('the lock of an earlier host of this window that does not answer is taken by force, still without asking', async (t) => {
   const ghost = cp.spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });
   t.after(() => { try { ghost.kill('SIGKILL'); } catch (_) { /* gone */ } });
   extension.activate(context);

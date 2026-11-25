@@ -4,19 +4,17 @@
 
 'use strict';
 /*
- * The plan bar above each chat page's input box (media/plan-bar.js, Agent Plus's fragment, drawn by media/chat.js): the
- * summary of the conversation a page shows, from Agent Plus's planSummary() (Plan bar in its docs/protocol.md), and
- * where the bar's two clicks go: agentPlus.showWorkPlanOf for the bar, agentPlus.answerQuestionOf for its red part.
+ * The plan bar above each chat page's input box, which media/chat.js draws with media/plan-bar.js (copied from Agent
+ * Plus). It shows the summary Agent Plus's planSummary() gives for the page's conversation (Plan bar in its
+ * docs/protocol.md).
  *
- * A page follows its own conversation's summary while it is open (follow()); the summaries are asked for, and Agent
- * Plus is listened to, only while some page follows one. Nothing is asked while `on()` is false, nor with an Agent
- * Plus that lacks planSummary: the summary is then null and the page draws no bar. No editor API here.
+ * Agent Plus is asked for summaries, and listened to, only while some page follows one, the bar is switched on
+ * (`on()`) and Agent Plus offers planSummary; otherwise the summary is null and the page draws no bar. No editor API
+ * here.
  */
 const SOURCE = 'opencode-plus';
 
-/*
- * `on()` is true while the bar is switched on; `run(command, arg)` runs a command.
- */
+/* `run(command, arg)` is vscode.commands.executeCommand, passed in so the tests need no editor. */
 function createPlanBar({ on, run, log = () => {} }) {
   let core = null, sub = null, closed = false;
   /* sessionId -> the pages' listeners for its summary */
@@ -55,13 +53,12 @@ function createPlanBar({ on, run, log = () => {} }) {
       hook();
       for (const id of followers.keys()) tell(id);
     },
-    /* The bar was switched on or off. */
     settingChanged() {
       hook();
       for (const id of followers.keys()) tell(id);
     },
     summaryOf,
-    /* A page showing `sessionId` hears of its summary from now on; dispose() when it goes. */
+    /* Calls `fn` with the summary of `sessionId` each time it changes, until the returned object is disposed. */
     follow(sessionId, fn) {
       if (closed || typeof sessionId !== 'string' || !sessionId || typeof fn !== 'function') return { dispose() {} };
       if (!followers.has(sessionId)) followers.set(sessionId, new Set());
@@ -75,7 +72,6 @@ function createPlanBar({ on, run, log = () => {} }) {
         },
       };
     },
-    /* A click on the bar: `part` is 'answer' for its red part, anything else for the bar. */
     async open(sessionId, part) {
       if (closed || typeof sessionId !== 'string' || !sessionId || !usesCore()) return false;
       await run(part === 'answer' ? 'agentPlus.answerQuestionOf' : 'agentPlus.showWorkPlanOf', { sourceId: SOURCE, sessionId });

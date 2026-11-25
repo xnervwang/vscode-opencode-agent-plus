@@ -65,7 +65,7 @@ test('a turn the agent began itself shows as working, then as an unseen reply in
   assert.deepStrictEqual(changes, ['working', 'stopped']);
 });
 
-test('in a tab the user is looking at, it is not unseen', async () => {
+test('in a tab the user is looking at, a turn the agent began itself leaves no unseen reply', async () => {
   const { manager, c } = await managerWith(true);
   c.fire({ type: 'turnStart', turnId: 'o1', at: 100, unsolicited: true });
   c.fire({ type: 'turnEnd', turnId: 'o1', reason: 'endTurn', at: 200 });

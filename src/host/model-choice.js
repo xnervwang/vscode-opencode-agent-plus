@@ -5,9 +5,9 @@
 'use strict';
 /*
  * A session object (src/host/backend.js) that asks the user for a model before the first message of a new
- * conversation when opencodePlus.model names none: OpenCode gives every new session a default model of its own, which may
- * not be one the user wants. The chat page hears of the choice through a { type: 'ui.model', model } event, which
- * src/ui/view-model.js reduces. Everything else passes through.
+ * conversation when the opencodePlus.model setting is empty: OpenCode gives every new session a default model of its
+ * own, which may not be one the user wants. The choice reaches the chat page as a { type: 'ui.model', model } event,
+ * which src/ui/view-model.js reduces. Everything else passes through.
  */
 
 /*
@@ -55,7 +55,7 @@ function withModelChoice(inner, deps) {
     get lastUserAt() { return inner.lastUserAt; },
     get lastReplyAt() { return inner.lastReplyAt; },
     get model() { return chosen; },
-    /* The name of the model the session uses, as <provider>/<model>; '' when not known. */
+    /* As <provider>/<model>. */
     get modelName() {
       if (chosen) return chosen.id;
       try { return typeof inner.getModel === 'function' ? String(inner.getModel() || '') : ''; } catch (_) { return ''; }
@@ -70,10 +70,10 @@ function withModelChoice(inner, deps) {
     async send(text, extra) {
       let ok;
       try { ok = await ensureModel(); } catch (e) {
-        deps.tell(`The message was not sent: the models could not be listed (${(e && e.message) || e}).`);
+        deps.tell(`Couldn't send the message: listing the models failed (${(e && e.message) || e}).`);
         return undefined;
       }
-      if (!ok) { deps.tell('The message was not sent: choose a model first.'); return undefined; }
+      if (!ok) { deps.tell("Couldn't send the message: choose a model first."); return undefined; }
       return inner.send(text, extra);
     },
     abort: pass('abort'),
@@ -93,7 +93,7 @@ function withModelChoice(inner, deps) {
     },
     respondPermission(requestId, decision) { return facade.respond(requestId, decision); },
     history: () => (typeof inner.history === 'function' ? inner.history() : []),
-    reload: () => (typeof inner.reload === 'function' ? Promise.resolve().then(() => inner.reload()) : Promise.reject(new Error('This agent cannot load a conversation again.'))),
+    reload: () => (typeof inner.reload === 'function' ? Promise.resolve().then(() => inner.reload()) : Promise.reject(new Error("This agent doesn't support reloading a conversation."))),
     checkBackground: pass('checkBackground'),
     dispose() {
       unsubscribe();

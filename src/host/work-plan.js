@@ -4,20 +4,20 @@
 
 'use strict';
 /*
- * The work plan as this window runs it: the plugin and the shared scripts copied where OpenCode finds them
- * (src/workplan), what OpenCode starts with for them, the Python they run on, the settings they read from the plans
- * folder, and what the user is told when one of these is missing.
+ * The work plan in this window. The plugin and the shared scripts are copied to where OpenCode finds them
+ * (src/workplan).
  *
  *   config.json   { enabled, brief, tellTimeZone, replyImages } from Agent Plus's token mode (src/shared/token-mode.js):
- *                 Interface turns them off (the plugin is not loaded at all), Essential keeps the plan and the time-zone
+ *                 Interface turns them off and unloads the plugin, Essential keeps the plan and the time-zone
  *                 note without the brief, All keeps all three, and in Custom opencodePlus.workPlan,
  *                 opencodePlus.conversationBrief and opencodePlus.tellOpenCodeYourTimeZone decide. replyImages is on outside
  *                 Interface: the chat page draws the local images a reply links. Written at activation and on every change of those
  *                 settings; the plugin reads it at each user message, so a change applies from the next one.
  *   launcher.json the Python found (src/shared/python-runtime.js). With none, the plugin adds nothing, and a row above
- *                 the plan says so; on Windows python.org's build is offered once per machine (src/shared/python-offer.js).
- *   OpenCode 1    keeps no plan: told once per workspace and OpenCode version when its version is first known (a reload
- *                 starts a new extension host, so memory alone would say it again), and a row above the plan keeps saying it.
+ *                 the plan says so; on Windows python.org's build is offered once per machine and Python version
+ *                 (src/shared/python-offer.js).
+ *   OpenCode 1    keeps no plan. The user hears it once per workspace and OpenCode version (a reload starts a new
+ *                 extension host, so memory alone would say it again), and a row above the plan keeps showing it.
  *
  * In Restricted Mode nothing is copied or written until the workspace is trusted.
  */
@@ -35,7 +35,8 @@ const KEYS = Object.freeze({ workPlan: `${brand.prefix}.workPlan`, conversationB
   timeZone: `${brand.prefix}.tellOpenCodeYourTimeZone` });
 const DOWNLOAD = `${brand.prefix}.downloadPython`;
 const RETRY = `${brand.prefix}.findPython`;
-const WITHOUT = 'Until then the plugin adds nothing to the conversations and their plans stay empty.';
+const WITHOUT = 'Until then the plugin adds nothing to the conversations.';
+const TOLD_KEY = `${brand.prefix}.toldWorkPlanNeedsOpenCode2`;
 
 /*
  * deps:
@@ -45,8 +46,6 @@ const WITHOUT = 'Until then the plugin adds nothing to the conversations and the
  *   log(line)                        optional
  *   find, download                   python-runtime's, replaceable in tests
  */
-const TOLD_KEY = `${brand.prefix}.toldWorkPlanNeedsOpenCode2`;
-
 function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = () => {}, log = () => {}, find = runtime.findPython, download = runtime.download }) {
   const noticed = new vscode.EventEmitter();
   const subs = [noticed];
@@ -58,8 +57,8 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
   let started = false;
   const trusted = () => vscode.workspace.isTrusted !== false;
 
-  /* Whether feature `id` of the token mode runs now. A key Agent Plus lists is read through it; ours are not listed there
-     yet, so outside Custom the mode's table decides and in Custom our setting does. */
+  /* Whether feature `id` of the token mode runs now: outside Custom the mode's table decides, in Custom our own setting
+     does. */
   function runs(id) {
     const key = KEYS[id];
     if (tokenMode.switchOf(key)) return tokenMode.effective(vscode, key) !== false;
@@ -69,7 +68,6 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     return vscode.workspace.getConfiguration(section).get(name, true) !== false;
   }
 
-  /* The image note follows no setting of its own: off only in Interface, which adds nothing to the context. */
   const values = () => ({ enabled: runs('workPlan'), brief: runs('conversationBrief'), tellTimeZone: runs('timeZone'),
     replyImages: !tokenMode.unloadsPlugin(tokenMode.modeNow(vscode)) });
 
@@ -135,7 +133,7 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     const found = await findPython();
     if (!found) {
       await pythonOffer.offer({ ask: (message, ...buttons) => vscode.window.showInformationMessage(message, ...buttons), get: getPython })
-        .catch((e) => log(`offering Python failed: ${e.message}`));
+        .catch((e) => log(`asking whether to download Python failed: ${e.message}`));
     }
   }
 
@@ -158,18 +156,17 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     writeSettings,
     values,
     findPython,
-    /* What OpenCode starts with, added to the settings' own: the plugin's environment, its inline configuration and
-       the conversation's folder for images, written without asking, while the plugin is in place (it is not copied in
-       Restricted Mode, nor when copying failed). */
+    /* Adds the plugin's environment, its inline configuration and each conversation's folder for images (written
+       without asking) to the options OpenCode starts with. Only while the plugin is in place: it is not copied in
+       Restricted Mode, nor when copying failed. */
     launch(options) {
       const o = options || {};
       if (!fs.existsSync(path.join(workplan.pluginDir(), 'index.js'))) return { ...o, quietFolder: null };
       return { ...o, env: { ...(o.env || {}), ...workplan.pluginEnv() }, config: (line) => workplan.configFor(line),
         quietFolder: (id) => workplan.scratchDir(id) };
     },
-    /* Whether the conversations keep a brief: Agent Plus then shows it when a conversation's row is clicked. */
     brief() { const v = values(); return v.enabled && v.brief; },
-    /* Says that this OpenCode keeps no plan, once per workspace and version; `version` is what detect() found. */
+    /* `version` is what detect() found. */
     checkVersion(version) {
       const s = workplan.support(version);
       const text = String((version && version.text) || (version && version.major) || version || '');

@@ -45,7 +45,7 @@ test("without the setting: the backend's default, then the user's pick, which is
   assert.match(s.control.state.picks[0].list[0].detail, /256K context/);
 });
 
-test('a named model that is not connected asks for another; no provider says how to connect one', async () => {
+test('a named model that is not connected asks for another; with no models the message says how to connect a provider', async () => {
   const s = setup();
   s.control.state.config['opencodePlus.model'] = 'gone/model';
   s.control.state.pickAnswer = (list) => list[0];

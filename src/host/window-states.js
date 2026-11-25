@@ -10,7 +10,8 @@
  * Each window writes the ones it has open, in Agent Plus's Conversation shape, to <dir>/<pid>.json (a temporary file,
  * then a rename) whenever they change, and removes the file when it has none or goes away. A reader takes every file
  * whose pid still runs and removes the others, left by a window that crashed. A conversation in two files (two windows
- * should not hold one; see src/host/locks.js) is taken from this window's, else from the file written last.
+ * should not hold one; see src/host/locks.js) is taken from this window's file if it is there, otherwise from the
+ * newest file.
  *
  *   { format: 1, pid, at, conversations: [...] }
  */
@@ -28,7 +29,7 @@ function processAlive(pid) {
 /*
  * deps:
  *   dir                    the folder of the window files
- *   list()                 this window's conversations now (Agent Plus's Conversation shape)
+ *   list()                 this window's conversations now
  *   pid, alive(pid), now(), log(line)   optional
  */
 function createWindowStates(deps) {
@@ -40,7 +41,6 @@ function createWindowStates(deps) {
   let written = '';
   let closed = false;
 
-  /* Writes this window's file when what it holds changed; removes it when there is nothing to hold. */
   function write() {
     if (closed) return false;
     let list = [];

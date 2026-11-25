@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * OPENCODE_PLUS_TEST_BACKEND for the window tests: createOpenCode's shape (src/opencode/index.js) with task three's scripted
- * conversation (test/ui/fake-conversation.js) as each session, so no OpenCode and no model are needed. A session's
+ * OPENCODE_PLUS_TEST_BACKEND for the window tests: createOpenCode's shape (src/opencode/index.js) with the scripted
+ * conversation of test/ui/fake-conversation.js as each session, so no OpenCode and no model are needed. A session's
  * first turn draws every kind of item, a permission request included; a message "Say: <text>" is answered with <text>,
  * for a reply the test writes itself. Sessions and the events each one emitted are kept in
  * <OPENCODE_PLUS_HOME>/fake-backend.json, so a reloaded window finds them again.
@@ -84,7 +84,7 @@ function createOpenCode() {
   };
 
   return {
-    /* Stands in for the OpenCode the extension is built for, so it does not say the work plan needs a newer one. */
+    /* Reports an OpenCode 2, so the extension does not say the work plan needs a newer one. */
     detect: () => ({ path: '/fake/opencode', version: { major: 2, minor: 0, patch: 0, text: '2.0.0-fake' }, line: 2 }),
     listSessions: async () => Object.values(read().sessions).map(row).sort((a, b) => b.lastActiveAt - a.lastActiveAt),
     onDidChangeSessions(fn) { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },

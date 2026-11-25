@@ -44,7 +44,7 @@ test('2.x: a rename runs `opencode api session.update --standalone` and the open
   s.on((ev) => seen.push(ev));
   const changed = [];
   oc.onDidChangeSessions((e) => changed.push(e.sessionId));
-  /* Opening it ran its export, for the times of the replay. */
+  /* Opening the conversation ran `opencode session export`, which dates the replay. */
   assert.deepEqual(calls.map((c) => c.args), [['session', 'export', LOADED, '--standalone']]);
   calls.length = 0;
   await oc.renameSession(LOADED, '  Weekly   report\n draft ');
@@ -59,7 +59,7 @@ test('2.x: a rename runs `opencode api session.update --standalone` and the open
   assert.equal(agents[0].received.filter((m) => m.method === 'session/prompt').length, 0, 'no message goes to the model');
 });
 
-test('2.x: a rename that OpenCode refuses says why; an empty title or a bad id never runs it', async (t) => {
+test("2.x: a rename OpenCode refuses fails with OpenCode's message; an empty title or a bad id runs nothing", async (t) => {
   const calls = [];
   const execFile = (file, args, opts, cb) => {
     calls.push(args);

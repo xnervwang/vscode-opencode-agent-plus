@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The chat page's fourth batch: links to other conversations a reply names, the outline of the user's messages, and the
- * subagent filter; what the page decides without a page (media/composer.js, Agent Plus's kit), and what the panel sends
- * it and does for it.
+ * The chat page's links to other conversations a reply names, the outline of the user's messages, and the subagent
+ * filter: the logic that runs without the page (media/composer.js, Agent Plus's kit), and what the panel sends the page
+ * and opens for it.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -44,7 +44,7 @@ test('the outline lists the user\'s messages, numbered, and the compaction point
   assert.deepEqual(C.outlineRows(undefined), []);
 });
 
-test('the subagent filter hides what subagents did, folds their progress, and keeps a request of theirs that still waits', () => {
+test('the subagent filter hides what subagents did, folds the call that started each, and still shows their requests while they wait', () => {
   const sub = { childId: 'ses_child', title: 'Look around' };
   assert.equal(C.subagentShare({ kind: 'subagent', childId: 'ses_child' }), 'hide', "a subagent's own card");
   assert.equal(C.subagentShare({ kind: 'tool', subagent: sub }), 'hide', 'a tool call a subagent made');
@@ -150,7 +150,7 @@ function fakeLinks() {
   return links;
 }
 
-test('the page gets the conversations it may link to when it loads and when they change, with its own named', async () => {
+test('the page gets the conversations it may link to when it loads and when they change, and is told which one is its own', async () => {
   const links = fakeLinks();
   const { panel, chat } = setup({ links });
   assert.match(panel.webview.html, /<div id="middle">\n<main id="log"[^>]*><\/main>\n<nav id="outline"[^>]*hidden>/);

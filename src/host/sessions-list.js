@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * What the Conversations view (src/ui/sessions-view.js) lists and does: the backend's sessions, with the state this
- * window knows better for those open here; deleting one closes its tab first, and one another window has open is not
- * deleted.
+ * What the Conversations view lists and does: the backend's sessions, with the state this
+ * window knows better for those open here. Deleting a conversation closes its tab first; one that another window has
+ * open is not deleted.
  */
 
 /*

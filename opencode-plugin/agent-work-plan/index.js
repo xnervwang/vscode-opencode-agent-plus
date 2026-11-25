@@ -8,14 +8,15 @@
  * agent-work-plan/ and names that folder in OPENCODE_CONFIG_CONTENT (src/workplan). OpenCode 2 reads `id` and calls
  * setup(ctx); OpenCode 1 calls server(), which only says the plan needs OpenCode 2.
  *
- * What the model is told, and every change to a plan, comes from the shared Python scripts in OPENCODE_PLUS_HOOKS_DIR,
- * run as Claude Code runs its hooks: the plans folder as the first argument, the event as JSON on standard input.
- * Without Python or those scripts nothing is injected and the tools say why.
+ * What the model is told each turn and at the end of one, and every change to a plan, comes from the shared Python
+ * scripts in OPENCODE_PLUS_HOOKS_DIR, run as Claude Code runs its hooks: the plans folder as the first argument, the
+ * event as JSON on standard input. Without Python or those scripts nothing is injected and the tools say why.
  *
- *   prompt       inject-work-plan.py's text for this turn, with tell-time-zone.py's and tell-reply-images.py's (which
- *                run whether or not the plan is on: their own settings in config.json say), kept in the user message's
- *                metadata; run-hooks.py runs the three in one Python process
- *   context      every user message's kept text put back on every request, so the request prefix never changes
+ *   prompt       the text inject-work-plan.py gives for this turn, with the notes from tell-time-zone.py and
+ *                tell-reply-images.py (which run by their own settings in config.json, whether or not the plan is on),
+ *                kept in the user message's metadata; run-hooks.py runs the three in one Python process
+ *   context      the text kept with each user message is added back to every request, so the request prefix never
+ *                changes
  *   compaction   the same, plus the plan file, in the summary request
  *   tools        set_row, add_row, set_summary, set_status, each one run of plan-row.py
  *   events       session.compaction.ended runs resume-work-plan.py and the two notes again; session.usage.updated is recorded;
@@ -36,15 +37,16 @@ const SESSION = /^ses_[0-9A-Za-z]{8,64}$/;
 const PYTHON_TIMEOUT_MS = 15000;
 const OUTPUT_LIMIT = 1024 * 1024;
 const META_KEY = 'agentWorkPlan';
-/* The longest a plan file put in a summary request may be; inject-work-plan.py keeps its own text to the same. */
+/* At most this many characters of the plan file go into a summary request; inject-work-plan.py uses the same limit
+   for its own text. */
 const PLAN_IN_SUMMARY_CHARS = 6000;
-/* The longest a tool call's input is copied into the turn record nudge-work-plan.py reads. */
+/* How much of a tool call's input is copied into the turn record that nudge-work-plan.py reads. */
 const INPUT_CHARS = 4000;
 const MAX_SESSIONS = 64;
 const EVENTS = ['session.compaction.ended', 'session.usage.updated', 'session.execution.succeeded'];
 /* Runs several scripts on one event in one Python process; without it each runs in its own. */
 const RUNNER = 'run-hooks.py';
-/* Said on a user message and after a compaction besides the plan, each by its own setting. */
+/* Notes that run on a user message and after a compaction, besides the plan; each has its own setting. */
 const NOTES = ['tell-time-zone.py', 'tell-reply-images.py'];
 
 const home = () => process.env.OPENCODE_PLUS_HOME || path.join(os.homedir(), '.opencode-plus');
@@ -71,8 +73,8 @@ function enabled() {
   return typeof given.enabled === 'boolean' ? given.enabled : true;
 }
 
-/* Which of the notes config.json leaves on, read the way plan_common.settings reads it: tellTimeZone on and
-   replyImages off when not written, both off once the extension is uninstalled everywhere. */
+/* Which of the notes config.json leaves on: tellTimeZone on and replyImages off when not written, both off once the
+   extension is uninstalled everywhere (as plan_common.settings decides). */
 function notesOn() {
   let given;
   try { given = JSON.parse(fs.readFileSync(path.join(plansDir(), 'config.json'), 'utf8')); } catch (_) { return [NOTES[0]]; }
@@ -82,8 +84,8 @@ function notesOn() {
   return NOTES.filter((n) => (n === NOTES[0] ? given.tellTimeZone !== false : given.replyImages === true));
 }
 
-/* How Python is started: launcher.json beside the scripts (written by the extension where python3 is not the name),
- * else python3. */
+/* How Python is started: launcher.json beside the scripts (the full path of the Python the extension found), else
+ * python3. */
 function launcher(dir) {
   try {
     const words = JSON.parse(fs.readFileSync(path.join(dir, 'launcher.json'), 'utf8')).row;
@@ -92,7 +94,7 @@ function launcher(dir) {
   return ['python3'];
 }
 
-const MISSING_SCRIPTS = 'The work plan is not set up here: the folder of its scripts is missing, so nothing was written.';
+const MISSING_SCRIPTS = 'The work plan\'s scripts folder is missing here, so nothing was written.';
 const MISSING_PYTHON = 'The work plan needs Python 3, which was not found on this machine, so nothing was written.';
 
 /* One run of a shared script. Resolves { stdout, stderr, code } or { missing } and never rejects. */
@@ -141,7 +143,7 @@ async function hookText(script, payload) {
   }
 }
 
-/* Each of `scripts`' additionalContext for `payload`: { name: text }. */
+/* The additionalContext of each script in `scripts` for `payload`, as { name: text }. */
 async function hookTexts(scripts, payload) {
   const dir = hooksDir();
   if (dir && fs.existsSync(path.join(dir, RUNNER))) {
@@ -175,13 +177,13 @@ const WAITING_ON = ['user', 'build', 'someone', 'session', 'other'];
 const BRIEF_WIDTH = { summary: 400, doing: 80, progress: 100, next: 60 };
 const COMMON = {
   note: { type: 'string', description: "Replace the row's note; an empty string removes it." },
-  waiting_on: { type: 'string', enum: [...WAITING_ON, ''], description: 'Who a waiting row waits on; an empty string removes it.' },
+  waiting_on: { type: 'string', enum: [...WAITING_ON, ''], description: 'For a row in the waiting state: who or what it is waiting for (user, build, someone, session or other); an empty string removes it.' },
   question: { type: 'string', description: 'With waiting_on user: the one question the user has to answer.' },
 };
 const TOOLS = [
   {
     name: 'set_row',
-    description: "Put a row of this conversation's work plan in a state, or change its note, description, or who it waits on. The time is read from the clock.",
+    description: "Set the state of a row in this conversation's work plan, or change its note, description, or who it waits on. The tool timestamps each change, so do not supply a time.",
     input: { type: 'object', required: ['row'], additionalProperties: false, properties: {
       row: { type: 'string', description: 'The number in front of the row, such as 3 or 2.1.' },
       state: { type: 'string', enum: STATES, description: "Leave it out to keep the row's state." },
@@ -201,14 +203,14 @@ const TOOLS = [
   },
   {
     name: 'set_summary',
-    description: "Write this conversation's summary, which Agent Plus shows when its row is clicked: what the conversation is for, the stage it has reached, and the decisions made that later work must not forget. Write it for someone coming back to it, in the conversation's language, with no names coined in it. "
-      + `At most ${BRIEF_WIDTH.summary} wide, a CJK character counting 2 and any other 1; a longer one is refused. The time is read from the clock.`,
+    description: "Write this conversation's summary: its purpose, how far it has got, and the decisions that later work must follow. Agent Plus shows it when the conversation's row is clicked. Write it for someone returning to the conversation later, in its language, without names you made up along the way. "
+      + `At most ${BRIEF_WIDTH.summary} wide, a CJK character counting 2 and any other 1; a longer one is refused. The tool timestamps each change, so do not supply a time.`,
     input: { type: 'object', required: ['text'], additionalProperties: false, properties: { text: { type: 'string', description: 'The summary.' } } },
     argv: (a) => ['summary', '--', str(a.text)],
   },
   {
     name: 'set_status',
-    description: 'Write where this conversation stands now, in three parts, for someone who stepped away and has to pick up at once: what you are doing, the latest progress, and who it waits on or the next step. In the conversation\'s language; write none in a part with nothing to say. Widths count a CJK character as 2 and any other as 1, and a part past its limit is refused. The time is read from the clock.',
+    description: 'Write where this conversation stands now, in three parts (doing, progress, next), for someone who stepped away and has to pick up at once. In the conversation\'s language; write none in a part with nothing to say. Widths count a CJK character as 2 and any other as 1, and a part past its limit is refused. The tool timestamps each change, so do not supply a time.',
     input: { type: 'object', required: ['doing', 'progress', 'next'], additionalProperties: false, properties: {
       doing: { type: 'string', description: `What you are doing, at most ${BRIEF_WIDTH.doing} wide.` },
       progress: { type: 'string', description: `The latest progress, at most ${BRIEF_WIDTH.progress} wide.` },
@@ -226,17 +228,17 @@ function opts(a, names) {
 
 /* What a plan tool call returns to the model: plan-row.py's own words, or why it could not run. */
 async function runTool(tool, sessionID, input) {
-  if (!SESSION.test(String(sessionID || ''))) return `This conversation has no session id a work plan can be named by (${sessionID}).`;
+  if (!SESSION.test(String(sessionID || ''))) return `This conversation's id (${sessionID}) is not an OpenCode session id, so it has no work plan.`;
   const args = [planPath(sessionID), ...tool.argv(input && typeof input === 'object' ? input : {})];
   const r = await runScript('plan-row.py', args, '');
   if (r.missing) return r.missing;
-  if (r.killed) return `The work plan command did not finish within ${PYTHON_TIMEOUT_MS / 1000} seconds; nothing may have been written. Run it again.`;
+  if (r.killed) return `The work plan command did not finish within ${PYTHON_TIMEOUT_MS / 1000} seconds, so the change may not have been made. Run it again.`;
   const text = (r.code === 0 ? r.stdout : (r.stderr || r.stdout)).trim();
   log('tool', { tool: tool.name, code: r.code, text: text.slice(0, 300) });
   return text || (r.code === 0 ? 'Done.' : `The work plan command failed (exit ${r.code}).`);
 }
 
-/* Per-session facts the plugin needs between events, for the sessions this plugin instance has seen lately. */
+/* What the plugin remembers about each session between events, for the MAX_SESSIONS it saw most recently. */
 function sessions() {
   const map = new Map();
   return {
@@ -251,8 +253,8 @@ function sessions() {
   };
 }
 
-/* Puts back the text each user message was admitted with. Requests are built afresh each time, so this never doubles.
- * Returns how many messages carried one. */
+/* Adds the text kept in each user message's metadata back to its content. Requests are built afresh each time, so
+ * this never doubles. Returns how many messages had such text. */
 function attach(messages) {
   let n = 0;
   for (const m of Array.isArray(messages) ? messages : []) {
@@ -282,9 +284,9 @@ function clip(value) {
 }
 
 /*
- * The turn record nudge-work-plan.py reads in place of a transcript (shared/plugin/opencode/plan_agent.py there says
- * its shape): the user's own messages, each tool call and the text of each reply in the session's context, oldest
- * first, and the last usage. Returns { lines, reply }.
+ * The turn record nudge-work-plan.py reads in place of a transcript (plan_agent.py among the scripts says its shape):
+ * the user's own messages, each tool call and the text of each reply in the session's context, oldest first, and the
+ * last usage. Returns { lines, reply }.
  */
 function turnRecord(messages, sessionID, s) {
   const plan = planPath(sessionID);
@@ -349,7 +351,8 @@ async function setup(ctx) {
   const windows = new Map();
   const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.OPENCODE_PLUS_PLAN_NUDGE) ? process.env.OPENCODE_PLUS_PLAN_NUDGE : 'note');
 
-  /* The tools are registered while plans are on and withdrawn while they are off; requests made after either take it. */
+  /* The tools are registered while plans are on and withdrawn while they are off; a change applies to the requests
+     made after it. */
   let tools = null;
   let toolsBusy = Promise.resolve();
   const syncTools = () => {
@@ -393,7 +396,6 @@ async function setup(ctx) {
       log('prompt', { sessionID, turnId: s.turnId, chars: notesAfter.length, resumed: !!pending, plan: on });
       return;
     }
-    /* The notes read the context's size from a turn record: here only its last usage. */
     const texts = await withRecord(usageLines(s), (file) => hookTexts(scripts, {
       hook_event_name: 'UserPromptSubmit', session_id: sessionID, turn_id: s.turnId, prompt: said,
       cwd: (ctx.location && ctx.location.directory) || '', transcript_path: file, in_panel: true, ...usageFields(s) }));

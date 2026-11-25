@@ -4,11 +4,7 @@
 
 'use strict';
 /*
- * What the chat page's input does with `/` and `@`, without the page: which word is being typed, what the lists show
- * for it, and the text once one is picked; and the page's other decisions that need no page: what Esc does, which chime
- * a change of state sounds, when the context ring is outlined, how an image in a reply is shown, the Background
- * line's summary, the rows of the outline of the user's messages, and which items the subagent filter hides. The page
- * loads it as window.ChatComposer; the tests require it.
+ * The chat page's logic that needs no DOM, so the tests can require it. The page loads it as window.ChatComposer.
  */
 (function (root, factory) {
   const api = factory();
@@ -25,7 +21,7 @@
     return { start: 0, end: at, query: head.slice(1) };
   }
 
-  /* Commands for a query: names starting with it, then names holding it, then descriptions holding it. */
+  /* Commands matching a query, best first: name prefix, then name substring, then description substring. */
   function filterCommands(commands, query, limit = 30) {
     const q = String(query || '').toLowerCase();
     const list = Array.isArray(commands) ? commands.filter((c) => c && typeof c.name === 'string') : [];
@@ -48,7 +44,7 @@
     return { start: at - m[2].length - 1, end: at, query: m[2] };
   }
 
-  /* The text with the token replaced by `insert` and a space, and where the caret goes. */
+  /* Replaces the token with `insert` and a space (unless one follows already); returns the new text and caret. */
   function insertToken(text, token, insert) {
     const t = String(text || '');
     const rest = t.slice(token.end);
@@ -76,26 +72,27 @@
     return m ? { mediaType: m[1], data: m[2], bytes: Math.floor(m[2].length * 3 / 4) } : null;
   }
 
-  /* What Esc does: close the open box or list first, else stop a turn that runs; null for nothing. */
+  /* What Esc does: close the open box, else close the list, else stop a running turn. Null when there is nothing
+     to do. */
   function escapeAction({ box = false, menu = false, status = 'idle' } = {}) {
     if (box) return 'closeBox';
     if (menu) return 'closeMenu';
     return status && status !== 'idle' ? 'abort' : null;
   }
 
-  /* The chime for a change from head `was` to `now` ({ status, pending, waitingFor }): a new request is a permission
-     or a question, a turn going idle is done; null for none, and for the first head a page is given. */
+  /* The chime for a change from head `was` to `now` ({ status, pending, waitingFor }): 'permission' or 'question' for a
+     new request, 'done' for a turn going idle. Null otherwise, and for the first head after a reset. */
   function chimeKind(was, now) {
     if (!was || !now) return null;
     if ((now.pending || 0) > (was.pending || 0)) return now.waitingFor === 'question' ? 'question' : 'permission';
     return was.status !== 'idle' && now.status === 'idle' ? 'done' : null;
   }
 
-  /* Whether the ring is outlined: 15% of the window or less left. */
+  /* The ring is outlined once 15% of the window or less is left. */
   const ringLow = (pct) => typeof pct === 'number' && pct >= 0 && 100 - pct <= 15;
 
-  /* How an image in a reply is shown: 'data' as it is, 'local' read by the extension, 'link' a link to it (a web address
-     is never fetched; a relative path names no folder). */
+  /* How an image in a reply is shown: 'data' as it is, 'local' read by the extension, else 'link' (a web address is
+     never fetched; a relative path names no folder). */
   function imageKind(src, localOk) {
     const s = String(src || '');
     if (/^data:image\/(?:png|jpeg|gif|webp|svg\+xml)[;,]/i.test(s)) return 'data';
@@ -118,7 +115,7 @@
   const COMPACTION_WORDS = { running: 'Compacting…', completed: 'Compacted', failed: 'Compacting failed', cancelled: 'Compacting cancelled' };
   const OUTLINE_CHARS = 80;
   /* The outline beside the log: the user's messages, numbered, and the points where the conversation was compacted, in
-     the order of `items` (the page's items: { id, kind, text, at, status, hidden }). */
+     the order of `items` ({ id, kind, text, at, status, hidden }). */
   function outlineRows(items) {
     const out = [];
     let n = 0;

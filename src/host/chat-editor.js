@@ -4,17 +4,17 @@
 
 'use strict';
 /*
- * The chat page as a read-only custom editor, opencodePlus.chat, of opencodeplus-session:/<session id>: each conversation has
- * its own URI, so a tab knows its conversation and VS Code reopens the tabs after a reload. There is no
+ * The chat page is a read-only custom editor (view type opencodePlus.chat) for opencodeplus-session:/<session id>
+ * URIs. The session id is in the URI, so each tab knows its conversation and VS Code can reopen the tabs after a reload. There is no
  * file behind the URI; the provider hands each webview panel to the chat panel of src/ui/chat-panel.js.
  */
 const vscode = require('vscode');
 const { sessionOfUri } = require('./agentplus-source');
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const BUSY_PAGE = 'Another VS Code window has this conversation open, or had it open before it lost its connection. '
-  + 'Choose "Take over here" in the notification to continue it in this window.';
-const TAKING_BACK_PAGE = 'Opening the conversation this window had open before it reloaded…';
+const BUSY_PAGE = 'This conversation is open in another VS Code window, which may have lost its connection. '
+  + 'Choose "Take over here" in the notification to continue it.';
+const TAKING_BACK_PAGE = 'Reopening this conversation from before the window reloaded…';
 const page = (text) => `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none';"></head>
 <body><p>${esc(text)}</p></body></html>`;
@@ -26,7 +26,7 @@ const page = (text) => `<!DOCTYPE html><html><head><meta charset="utf-8">
  *                            dispose(), or nothing
  *   focus(sessionId)         the panel came to the front
  *   busy(sessionId, pid)     another window runs it: offer to take it over; resolves true when this window may now
- *                            open it, and the tab then shows it
+ *                            open it
  *   ownWindow(sessionId)     optional: the holder is this window's own host from before a reload, which busy takes
  *                            back without asking
  *   label(snapshot)          optional: the tab's title for the conversation's snapshot (its title with an envelope
@@ -47,7 +47,7 @@ class ChatEditorProvider {
     let gone = false;
     const subs = [];
     subs.push(panel.onDidDispose(() => { gone = true; }));
-    if (!id) { panel.webview.html = page('This tab does not name a conversation.'); return; }
+    if (!id) { panel.webview.html = page('This tab has no valid conversation id.'); return; }
     let r = await manager.open(id);
     if (!gone && !r.ok && r.pid && this.deps.busy) {
       let own = false;
@@ -76,7 +76,6 @@ class ChatEditorProvider {
       manager.seen(id);
       try { this.deps.focus(id); } catch (_) { /* nobody listening */ }
     };
-    /* The tab's title and icon, and the page's title when the conversation's own events did not bring it there. */
     let icon;
     const retitle = () => {
       const s = manager.snapshot(id);

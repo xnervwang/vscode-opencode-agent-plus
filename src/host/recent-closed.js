@@ -4,10 +4,11 @@
 
 'use strict';
 /*
- * The chat tabs closed in this workspace, most recent first, for the Recently closed group at the top of the
+ * Remembers the chat tabs closed in this workspace, most recent first, for the Recently closed group at the top of the
  * Conversations view (src/ui/sessions-view.js). They are kept in the workspace's state, so they outlast a reload. A tab
- * VS Code closes because the window goes away is not a closing: the extension host is gone by then and hears nothing.
- * Nothing more is decided here: the view leaves out the ones open again, and those its list no longer has.
+ * VS Code closes because the window goes away is not recorded: the extension host has already stopped and gets no
+ * event. The view filters the list: it leaves out tabs that are open again and conversations its own list no longer
+ * has.
  */
 const KEY = 'opencodePlus.recentlyClosed';
 /* More than the view shows, so one that is open again does not push an older one out. */
@@ -17,7 +18,6 @@ const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 
 const valid = (e) => !!e && typeof e.id === 'string' && SESSION_ID.test(e.id) && Number.isFinite(e.at);
 
-/* `list` with `id` closed at `now`: first, once. */
 function record(list, id, now = Date.now()) {
   const old = Array.isArray(list) ? list.filter(valid) : [];
   if (typeof id !== 'string' || !SESSION_ID.test(id)) return old.slice(0, KEEP);
@@ -27,9 +27,7 @@ function record(list, id, now = Date.now()) {
 const without = (list, id) => (Array.isArray(list) ? list.filter((e) => valid(e) && e.id !== id) : []);
 
 /*
- * `memo` is a vscode.Memento (the workspace's state); `log(line)` optional. get() is the list, most recent first;
- * add(id) records a closing, remove(id) forgets one (a deleted conversation), clear() forgets them all; onDidChange(fn)
- * hears of each change.
+ * `memo` is a vscode.Memento (the workspace's state); `log(line)` optional. remove(id) is for a deleted conversation.
  */
 function createRecentClosed({ memo, now = Date.now, log = () => {} }) {
   let list = [];

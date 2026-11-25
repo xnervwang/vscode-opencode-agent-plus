@@ -6,13 +6,13 @@
 /*
  * The command Find Conversation: a quick pick of every conversation OpenCode keeps (subagents' left out), the most
  * recently active first, matched as the user types against the title, the session id and the folder; the one picked
- * opens. A part of an id finds the conversation, which the Conversations view cannot do.
+ * opens. Typing part of a session id finds the conversation, which the Conversations view cannot do.
  */
 const { age } = require('../ui/sessions-view');
 
 const lastActive = (r) => r.lastActiveAt || r.lastReplyAt || r.lastUserAt || r.createdAt || 0;
 
-/* The quick pick's items for `rows` (SessionInfo), with `openHere(id)` saying which are open in this window. */
+/* `openHere(id)` says whether a conversation is open in this window. */
 function pickItems(rows, { now = Date.now(), openHere = () => false } = {}) {
   return (Array.isArray(rows) ? rows : []).filter((r) => r && typeof r.id === 'string' && r.id)
     .sort((a, b) => lastActive(b) - lastActive(a))
@@ -29,13 +29,10 @@ function pickItems(rows, { now = Date.now(), openHere = () => false } = {}) {
     });
 }
 
-/*
- * Shows the pick. `list()` resolves to the sessions; `open(id)` opens one. Resolves to the id opened, or '' when
- * nothing was picked.
- */
+/* Resolves to the id opened, or '' when the pick was dismissed. */
 async function findConversation({ vscode, list, open, openHere, now = Date.now }) {
   const qp = vscode.window.createQuickPick();
-  qp.title = 'Find a Conversation';
+  qp.title = 'Find a conversation';
   qp.placeholder = 'Type part of a title, a session id or a folder';
   qp.matchOnDescription = true;
   qp.matchOnDetail = true;

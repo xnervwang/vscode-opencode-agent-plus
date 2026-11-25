@@ -22,20 +22,20 @@
  * answers it and no usage_update follows. Such a turn is reported as a turnStart with `unsolicited: true` and ends
  * once nothing more has come for a while (see OWN_QUIET_MS).
  *
- * The mode and effort config options are offered as options() / setOption() when OpenCode lists them.
+ * The mode and effort that OpenCode lists for a session are read with options() and set with setOption().
  *
- * What else OpenCode offers comes in as it offers it, not by version: the slash commands of available_commands_update
- * (commands()), images and embedded files as promptCapabilities say (attachments()), compaction updates once the client
- * declares session.compaction, a subagent's progress (child_update) and questions its question tool asks as
- * elicitation/create forms once the client declares elicitation.form (respondQuestion()). Answering such a form with
+ * The rest is used when OpenCode announces it, whatever its version. Slash commands come in available_commands_update
+ * (commands()), and images and embedded files are sent as promptCapabilities allow (attachments()). Compaction updates
+ * need the client capability session.compaction, and a subagent's progress comes in child_update. The question tool
+ * asks with elicitation/create forms once the client declares elicitation.form (respondQuestion()); answering one with
  * cancel or decline makes 2.4.1 end the turn as cancelled.
  *
  * Opening a conversation also runs OpenCode's export of it (`session export` on 2.x, `export` on 1.x), alongside
  * session/load, for the times the replay lacks (src/opencode/times.js); when it fails the replay is shown as it is.
- * Forking uses session/fork where OpenCode offers it. Rewinding (2.x, experimental /api) stages the revert, which puts the
- * files back at once and lists them; the caller then commits it or clears it, which puts them back again. A shell
- * command the model moved to the background is reported as a `background` event while its process runs; OpenCode says
- * nothing over ACP when it ends, so the process is looked for when a turn starts or ends and when asked (checkBackground).
+ * Rewinding (2.x, experimental /api) stages the revert, which puts the files back at once and lists them; the caller
+ * then commits it or clears it, which puts them back again. A shell command the model moved to the background is
+ * reported as a `background` event while its process runs; OpenCode says nothing over ACP when it ends, so
+ * checkBackground() looks for the process when a turn starts or ends and when the chat page asks.
  */
 const fs = require('fs');
 const path = require('path');
@@ -58,8 +58,8 @@ const CHILD_UPDATE = 'opencode/session/child_update';
 const SHOWN_OPTIONS = Object.freeze(['mode', 'effort']);
 /*
  * How long a turn OpenCode started itself may stay silent before it counts as over: shorter after reply text, which
- * ends a turn, than after anything else. A running tool, an unanswered permission request or a scheduled retry keeps
- * it open. Measured on 2.4.1: the steps of such a turn follow each other within a second.
+ * ends a turn, than after anything else. A running tool, an unanswered permission request or question, or a scheduled
+ * retry keeps it open. Measured on 2.4.1: the steps of such a turn follow each other within a second.
  */
 const OWN_QUIET_MS = 20000;
 const OWN_AFTER_TEXT_MS = 4000;
@@ -70,10 +70,10 @@ const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 /* Command lists kept for sessions not open yet: 2.4.1 sends one right after answering session/new or session/load. */
 const COMMANDS_KEPT = 50;
 const CHILD_STATUS = Object.freeze({ created: 'running', running: 'running', completed: 'done', interrupted: 'stopped', failed: 'failed' });
-/* What of a subagent's own stream its card shows. */
+/* The events of a subagent's own stream that its card shows. */
 const CHILD_EVENTS = new Set(['text', 'reasoning', 'toolCall', 'toolResult']);
 const SUBAGENT_TOOLS = new Set(['subagent', 'task']);
-/* How long opening a conversation waits for its export once session/load has answered. */
+/* Opening a conversation waits this long for its export after session/load has answered. */
 const EXPORT_WAIT_MS = 5000;
 const EXPORT_BUFFER = 64 * 1024 * 1024;
 const ANSI = /\x1b\[[0-9;?]*[ -\/]*[@-~]/g;
@@ -133,7 +133,7 @@ function modelValue(m) {
   return typeof m.id === 'string' ? m.id : '';
 }
 
-/* Whether a process with this id still runs; EPERM means it does, as someone else's. */
+/* Whether a process with this id still runs. EPERM also means it runs, as another user's process. */
 function processAlive(pid) {
   if (!(pid > 0)) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return !!(e && e.code === 'EPERM'); }
@@ -149,7 +149,7 @@ function parsePaths(text) {
   return out;
 }
 
-/* Where Bedrock is configured, per OpenCode's config dialect. */
+/* The help text for reaching Bedrock, with the config example in the dialect of OpenCode `major`. */
 function bedrockHelp(major) {
   const config = major >= 2
     ? '{ "providers": { "amazon-bedrock": { "settings": { "profile": "<profile>", "region": "us-east-1" } } } }'
@@ -175,7 +175,8 @@ function bedrockHelp(major) {
  *                  allowed once without asking (quiet-writes.js)
  *   root, idleStopMs, now, log
  *   newSessionTimeoutMs  how long session/new may take (60 s)
- *   ownQuietMs, ownAfterTextMs   when a turn OpenCode started itself counts as over (OWN_QUIET_MS, OWN_AFTER_TEXT_MS)
+ *   exportWaitMs   overrides EXPORT_WAIT_MS
+ *   ownQuietMs, ownAfterTextMs   override OWN_QUIET_MS and OWN_AFTER_TEXT_MS
  *   findOpenCode, startAcp, execFile, isAlive(pid)   test seams
  */
 function createOpenCode(opts = {}) {
@@ -241,7 +242,7 @@ function createOpenCode(opts = {}) {
   }
 
   /* Session id -> its parent session's id, '' for a root. Other windows add to the same file, so it is read again
-     before each list and merged before each write; the newest KINDS_KEPT are kept. */
+     before each list and merged before each write; it holds the newest KINDS_KEPT ids. */
   const kindsFile = path.join(root, 'opencode-sessions.json');
   function readKinds() {
     try {
@@ -330,7 +331,7 @@ function createOpenCode(opts = {}) {
     if (method === 'session/request_permission') {
       const h = handles.get(params.sessionId);
       if (!h) return { outcome: { outcome: 'cancelled' } };
-      /* Only under our rules: with OpenCode's own policy left alone, what it asks about is the user's to answer. */
+      /* Only under our rules: with `permissions: false` every request goes to the user. */
       const quiet = settings.permissions ? quietWrites.answer(params, settings.quietFolder) : null;
       if (quiet) {
         log(`allowed without asking: ${(params.toolCall && params.toolCall.name) || 'a tool'} writing in the conversation's own folder`);
@@ -354,7 +355,7 @@ function createOpenCode(opts = {}) {
       if (child && parent && !isChild(child)) { noteKinds([[child, parent]]); fireChanged(child); }
       const h = params && (handles.get(params.rootSessionId) || handles.get(params.parentSessionId));
       if (!h) return;
-      /* A subagent's permission request draws its tool in the parent; how that tool ends comes only from here. */
+      /* A subagent's permission request draws its tool in the parent; only these updates say how that tool ends. */
       if (params.type === 'update' && params.update) h.childTool(params.update);
       h.childUpdate(params);
       return;
@@ -439,7 +440,7 @@ function createOpenCode(opts = {}) {
   const foundNow = () => (proc && proc.found ? proc.found : find({ configured: settings.binaryPath, env: { ...process.env, ...settings.env } }));
 
   /* Runs `opencode <args>` (subcommandArgs adds --standalone on 2.x); resolves { stdout, stderr }, or rejects with an
-     OpenCodeError of `code` saying what OpenCode said. */
+     OpenCodeError of `code` carrying OpenCode's error message. */
   function runSub(found, args, code, { timeout = 30000, maxBuffer = 8 * 1024 * 1024 } = {}) {
     return new Promise((resolve, reject) => {
       execFile(found.path, server.subcommandArgs(found.version, args), { timeout, maxBuffer, env: server.subcommandEnv(settings.env), windowsHide: true }, (err, stdout, stderr) => {
@@ -459,7 +460,7 @@ function createOpenCode(opts = {}) {
       .catch((e) => { log(`the export of ${id} was not JSON: ${e.message}`); return null; });
   }
 
-  /* The times lookup of a session's export, waited for at most `waitMs` after `after` settles. */
+  /* Waits for the export at most `waitMs` after `after` settles; resolves with its times lookup, or null. */
   async function timesAfter(exporting, after, waitMs) {
     try { await after; } catch (_) { /* the caller handles it */ }
     let t = null;
@@ -528,7 +529,7 @@ function createOpenCode(opts = {}) {
       h.waitingKind = waitingKind;
       fireChanged(id);
     }
-    /* The status once an answer has come: waiting on the newest request still open, else working or idle. */
+    /* The status once an answer has come: waiting on the newest request still open, otherwise working or idle. */
     function settleStatus() {
       const open = [...asks.values(), ...questions.values()].sort((a, b) => a.seq - b.seq).pop();
       if (open) setStatus('waiting', open.tool, open.kind);
@@ -569,7 +570,7 @@ function createOpenCode(opts = {}) {
       optionsKey = key;
       emit([{ type: 'options', options: opts }]);
     }
-    /* The effort a turn runs with, for the figures under its reply; OpenCode's 'default' is left unsaid. A value chosen
+    /* The effort a turn runs with, for the figures under its reply; '' for OpenCode's 'default'. A value chosen
        here and not yet answered counts: the message that follows goes only after it has been set. */
     function effortNow() {
       const o = h.config.find((x) => x.id === 'effort');
@@ -616,7 +617,8 @@ function createOpenCode(opts = {}) {
       own.timer = setTimeout(() => { if (h.own === own) ownEnd(); }, own.afterText ? ownAfterTextMs : ownQuietMs);
       if (typeof own.timer.unref === 'function') own.timer.unref();
     }
-    /* What an update says about the turn: tools running, a retry waiting, the last thing being reply text. */
+    /* Notes from an update which tools are running, whether a retry is waiting and whether the latest output is reply
+       text. */
     function ownNote(u) {
       const own = h.own;
       if (!own) return;
@@ -629,7 +631,8 @@ function createOpenCode(opts = {}) {
       if (k === 'agent_message_chunk' || k === 'agent_thought_chunk' || k === 'tool_call' || k === 'tool_call_update') own.afterText = k === 'agent_message_chunk';
       ownArm();
     }
-    /* Whether an update, coming while no turn runs here, is OpenCode working: output, a new tool call, a retry. */
+    /* Whether an update that comes while no turn runs here shows OpenCode working: output, a new tool call, a retry,
+       a compaction starting. */
     function startsOwn(u) {
       const k = u.sessionUpdate;
       if (k === 'agent_message_chunk' || k === 'agent_thought_chunk') return !!(u.content && u.content.type === 'text' && u.content.text);
@@ -661,7 +664,7 @@ function createOpenCode(opts = {}) {
       if (c.toolId) ev.toolId = c.toolId;
       return ev;
     }
-    /* The subagent a tool call id of the form `<child session id>:<call id>` belongs to. */
+    /* Which subagent a tool call belongs to, from an id of the form `<child session id>:<call id>`; null if none. */
     function subagentOf(toolCallId) {
       const i = typeof toolCallId === 'string' ? toolCallId.indexOf(':') : -1;
       if (i <= 0) return null;
@@ -678,8 +681,8 @@ function createOpenCode(opts = {}) {
       c.toolId = toolId;
       emit([subagentEvent(cid, c)]);
     }
-    /* Before that, the newest subagent call not yet linked whose description is the subagent's title (OpenCode titles
-       the child session with it), else the newest not yet linked. */
+    /* Before that, a guess among the subagent calls not linked yet: the newest whose description equals the
+       subagent's title (OpenCode titles the child session with it), else the newest. */
     function guessTool(cid, title) {
       const linked = new Set([...children.values()].map((c) => c.toolId).filter(Boolean));
       const calls = m.toolCalls().filter((t) => SUBAGENT_TOOLS.has(t.name) && !linked.has(t.id)).reverse();
@@ -755,7 +758,8 @@ function createOpenCode(opts = {}) {
     }
 
     async function runOne(item) {
-      /* The user writing ends a turn OpenCode started itself; OpenCode takes the message into it or starts the next. */
+      /* A message from the user ends the turn OpenCode started on its own; on OpenCode's side the message joins that
+         turn or starts the next one. */
       if (h.own) ownEnd();
       h.running = item;
       const turnId = `t${now().toString(36)}-${++turnSeq}`;
@@ -800,8 +804,8 @@ function createOpenCode(opts = {}) {
         subs.add(listener);
         return () => { subs.delete(listener); };
       },
-      /* Resolves with the turnEnd event once this message's turn is over; never rejects. `extra` is { images, files }
-         (an array is taken as the images, the older form). */
+      /* Resolves with the turnEnd event once this message's turn is over; never rejects. `extra` is { images, files },
+         or an array taken as the images. */
       send(text, extra) {
         const x = Array.isArray(extra) ? { images: extra } : (extra && typeof extra === 'object' ? extra : {});
         const prompt = [{ type: 'text', text: String(text || '') }];
@@ -884,16 +888,16 @@ function createOpenCode(opts = {}) {
       },
       /* The slash commands OpenCode offers this conversation, as it last listed them: [{ name, description }]. */
       commands() { return h.commandList.slice(); },
-      /* What a message may carry besides text, as OpenCode said when it started. */
+      /* What a message may carry besides text: images when OpenCode's promptCapabilities allow them, files and
+         selections always. */
       attachments() { return { images: promptCaps.image === true, files: true, selection: true }; },
       /* The saved conversation as AgentEvents, for the UI to redraw (empty for one created in this window). */
       history() { return Promise.resolve(h.events.slice()); },
-      /* Looks for the processes of the commands running in the background now; those gone are reported done. */
       checkBackground() { checkBackground(); },
       /* Loads the conversation again from OpenCode (after a rewind) and resolves with its history, as history() gives
          it. Refused while a turn runs. */
       async reload() {
-        if (h.running || h.own) throw new server.OpenCodeError('busy', 'The conversation is working; wait for the turn to end, or stop it.');
+        if (h.running || h.own) throw new server.OpenCodeError('busy', 'Wait for the turn to end, or stop it.');
         const p = await ensure();
         const r = await replayInto(p, h);
         noteConfig(r && r.configOptions);
@@ -956,7 +960,7 @@ function createOpenCode(opts = {}) {
         }
       },
       takeConfig(configOptions) { noteConfig(configOptions); },
-      /* A title set from outside this conversation's stream (a rename). */
+      /* The title a rename set, which this conversation's stream does not report. */
       retitle(t) { if (t && t !== h.title) emit([{ type: 'title', title: t }]); },
       childTool(u) {
         if (u && (u.sessionUpdate === 'tool_call_update' || u.sessionUpdate === 'tool_call') && typeof u.toolCallId === 'string' && m.toolName(u.toolCallId)) h.onUpdate(u);
@@ -1036,19 +1040,19 @@ function createOpenCode(opts = {}) {
   const opening = new Map();
   let pathsCache = null;
 
-  /* The OpenCode to rewind `id` with: 2.x, and the conversation not in a turn here. */
+  /* The OpenCode to rewind `id` with; throws unless it is 2.x and the conversation is not in a turn here. */
   function rewindable(id) {
     if (!SESSION_ID.test(String(id || ''))) throw new server.OpenCodeError('badRequest', `Not a conversation id: ${String(id).slice(0, 80)}`);
     const found = foundNow();
     if (!found.version || found.version.major < 2) throw new server.OpenCodeError('unsupported', 'Rewinding needs OpenCode 2.');
     const h = handles.get(id);
-    if (h && (h.running || h.own)) throw new server.OpenCodeError('busy', 'The conversation is working; wait for the turn to end, or stop it, before rewinding.');
+    if (h && (h.running || h.own)) throw new server.OpenCodeError('busy', 'Stop the turn or wait for it to end before rewinding.');
     return found;
   }
 
   /*
-   * Replays session `h.id` into `h.events` with session/load, its export running alongside for the times; resolves with
-   * session/load's answer. The live mapper is left as it is.
+   * Replays session `h.id` into `h.events` with session/load, and runs its export at the same time to date the events;
+   * resolves with session/load's answer. The live mapper is left as it is.
    */
   async function replayInto(p, h) {
     const rm = mapper.createMapper({ now });
@@ -1110,7 +1114,7 @@ function createOpenCode(opts = {}) {
       return { path: found.path, version: found.version, line: (found.version && found.version.major) || 1 };
     },
 
-    /* Starts OpenCode now instead of on first use; resolves with what it reported. */
+    /* Starts OpenCode now instead of on first use; resolves { path, version, line, agent, capabilities }. */
     async start() {
       const p = await ensure();
       return { path: p.found.path, version: p.found.version, line: (p.found.version && p.found.version.major) || 1, agent: p.info.agent, capabilities: p.info.capabilities };
@@ -1206,7 +1210,7 @@ function createOpenCode(opts = {}) {
       if (!SESSION_ID.test(String(id || ''))) throw new server.OpenCodeError('badRequest', `Not a conversation id: ${String(id).slice(0, 80)}`);
       if (!t) throw new server.OpenCodeError('badRequest', 'A title cannot be empty.');
       const found = proc && proc.found ? proc.found : find({ configured: settings.binaryPath, env: { ...process.env, ...settings.env } });
-      if (!found.version || found.version.major < 2) throw new server.OpenCodeError('unsupported', 'OpenCode 1 has no way to rename a conversation; OpenCode 2 has.');
+      if (!found.version || found.version.major < 2) throw new server.OpenCodeError('unsupported', 'Renaming a conversation needs OpenCode 2.');
       const args = server.subcommandArgs(found.version, ['api', 'session.update', '--param', `sessionID=${id}`, '-d', JSON.stringify({ title: t })]);
       await new Promise((resolve, reject) => {
         execFile(found.path, args, { timeout: 30000, env: server.subcommandEnv(settings.env), windowsHide: true }, (err, stdout, stderr) => {
@@ -1227,11 +1231,11 @@ function createOpenCode(opts = {}) {
       return !!(c && c.fork);
     },
 
-    /* A copy of the whole conversation as a new one (session/fork copies every message); resolves { id, cwd }. */
+    /* Copies the whole conversation into a new one with session/fork; resolves { id, cwd }. */
     async forkSession(id) {
       if (!SESSION_ID.test(String(id || ''))) throw new server.OpenCodeError('badRequest', `Not a conversation id: ${String(id).slice(0, 80)}`);
       const p = await ensure();
-      if (!sessionCaps(p).fork) throw new server.OpenCodeError('unsupported', 'This OpenCode cannot fork a conversation.');
+      if (!sessionCaps(p).fork) throw new server.OpenCodeError('unsupported', 'This version of OpenCode cannot fork conversations.');
       const h = handles.get(id);
       let cwd = h ? h.cwd : '';
       if (!cwd) {
@@ -1240,7 +1244,7 @@ function createOpenCode(opts = {}) {
         cwd = s.cwd;
       }
       const r = await p.conn.request('session/fork', { sessionId: id, cwd, mcpServers: [] }, { timeoutMs: newSessionTimeoutMs });
-      if (!r || typeof r.sessionId !== 'string' || !r.sessionId) throw new server.OpenCodeError('forkFailed', 'OpenCode gave no conversation for the fork.');
+      if (!r || typeof r.sessionId !== 'string' || !r.sessionId) throw new server.OpenCodeError('forkFailed', 'OpenCode did not return the forked conversation.');
       noteModels(r.configOptions, false);
       noteKinds([[r.sessionId, '']]);
       fireChanged(r.sessionId);
@@ -1253,17 +1257,17 @@ function createOpenCode(opts = {}) {
     },
 
     /*
-     * Rewinds `id` to before its user message `messageId`, first part: OpenCode puts the files the turns since changed
-     * back at once and lists them. Resolves { messageId, tracked, files: [{ file, status, additions, deletions, patch }] };
-     * `tracked` is false where OpenCode keeps no snapshots of the folder (no git repository), and then only the
-     * conversation goes back. rewindCommit() removes the messages, rewindClear() puts the files back again.
+     * Stages the rewind of `id` to before its user message `messageId` (see the top of this file). Resolves
+     * { messageId, tracked, files: [{ file, status, additions, deletions, patch }] }; `tracked` is false where OpenCode
+     * keeps no snapshots of the folder (no git repository), and then only the conversation goes back. rewindCommit()
+     * removes the messages, rewindClear() puts the files back again.
      */
     async rewindStage(id, messageId) {
       const found = rewindable(id);
-      if (!/^msg_[0-9A-Za-z]{8,64}$/.test(String(messageId || ''))) throw new server.OpenCodeError('badRequest', 'That message has no id OpenCode knows.');
+      if (!/^msg_[0-9A-Za-z]{8,64}$/.test(String(messageId || ''))) throw new server.OpenCodeError('badRequest', 'That message cannot be rewound to: it has no OpenCode message id.');
       const r = await runSub(found, ['api', 'session.revert.stage', '--param', `sessionID=${id}`, '-d', JSON.stringify({ messageID: messageId })], 'rewindFailed');
       let v;
-      try { v = JSON.parse(r.stdout); } catch (_) { throw new server.OpenCodeError('rewindFailed', 'OpenCode did not say what the rewind restores.'); }
+      try { v = JSON.parse(r.stdout); } catch (_) { throw new server.OpenCodeError('rewindFailed', 'OpenCode\'s reply to the rewind could not be read.'); }
       const d = (v && v.data) || {};
       const files = (Array.isArray(d.files) ? d.files : []).filter((f) => f && typeof f.file === 'string').map((f) => ({
         file: f.file, status: String(f.status || 'modified'), additions: Number(f.additions) || 0, deletions: Number(f.deletions) || 0,
@@ -1279,21 +1283,22 @@ function createOpenCode(opts = {}) {
       await runSub(rewindable(id), ['api', 'session.revert.clear', '--param', `sessionID=${id}`], 'rewindFailed');
     },
 
-    /* The user's own messages of a session as OpenCode stored them, oldest first: [{ id, text, at }]. */
+    /* A session's user messages from OpenCode's export, oldest first: [{ id, text, at }]. */
     async userMessages(id) {
       const look = times.lookupOf(await exportOf(foundNow(), id));
       if (!look) throw new server.OpenCodeError('exportFailed', 'OpenCode did not list the conversation\'s messages.');
       return look.users;
     },
 
-    /* What `opencode mcp list` prints: the MCP servers OpenCode's configuration gives it, and how each is doing. */
+    /* What `opencode mcp list` prints: the configured MCP servers and the state of each. */
     async mcpList() {
       const found = foundNow();
       const r = await runSub(found, ['mcp', 'list'], 'mcpFailed', { timeout: 60000 });
       return `${r.stdout}${r.stderr && r.stderr.trim() ? `\n${r.stderr}` : ''}`.replace(ANSI, '').trim();
     },
 
-    /* OpenCode's folders as `opencode debug paths` names them, with `db`, the session database, where it is there. */
+    /* OpenCode's folders as `opencode debug paths` names them. When it leaves out `db`, the session database, and
+       <data>/opencode.db exists, `db` is that file. */
     async dataPaths() {
       const found = foundNow();
       const key = `${found.path}\0${(found.version && found.version.text) || ''}`;
@@ -1333,8 +1338,8 @@ function createOpenCode(opts = {}) {
 
     /*
      * Whether Bedrock is usable and what to tell the user when not. state: 'listed' (OpenCode offers Bedrock models;
-     * 1.x only lists providers it can sign in to, 2.x lists them before trying), 'authFailed' (a Bedrock turn was
-     * refused for credentials since), 'notListed', or 'unknown' (no session opened yet).
+     * 1.x only lists providers it can sign in to, 2.x lists them before trying), 'authFailed' (a Bedrock turn failed
+     * on credentials and none has succeeded since), 'notListed', or 'unknown' (no session opened yet).
      */
     bedrockStatus() {
       const models = api.listModels();

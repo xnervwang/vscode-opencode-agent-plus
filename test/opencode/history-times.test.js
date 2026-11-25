@@ -53,7 +53,6 @@ test('the export is read for times: 2.x and 1.x shapes, user messages and tool c
   assert.equal(v2.calls.get('call_f08503fa05bf5cb7a81e0fc99ac1d34d').created > 0, true);
   const v1 = times.lookupOf(JSON.parse(fixture('v1-export.json')));
   assert.deepEqual(v1.users.map((u) => u.text), ['Reply with the word KESTREL only.']);
-  /* A 1.x reply chunk names a part; it takes its part's own time. */
   assert.deepEqual(v1.messages.get('prt_20dacbfcd001aAEP8SjIdqjzvd'), { created: 1795525754829, done: 1795525754832 });
   assert.equal(v1.messages.get('msg_20dacb8000012mg2thfzifdIMr').done, 1795525754845);
   assert.equal(times.lookupOf({ nope: 1 }), null);
@@ -76,9 +75,7 @@ test('2.x: opening a conversation dates its replay from the export, not from the
   const tools = exp.messages.flatMap((m) => (m.content || []).filter((p) => p.type === 'tool'));
   const calledAt = Object.fromEntries(events.filter((e) => e.type === 'toolCall').map((e) => [e.id, e.at]));
   for (const p of tools) assert.equal(calledAt[p.id], p.time.created, p.id);
-  /* Every event with a time has one from the export, none from the moment of opening. */
   for (const e of events) if (typeof e.at === 'number') assert.ok(e.at < before, `${e.type} at ${e.at}`);
-  /* A turn ends when the last reply it holds was completed. */
   const ends = events.filter((e) => e.type === 'turnEnd');
   const lastDone = Math.max(...exp.messages.filter((m) => m.type === 'assistant' && m.time.created < users[1].time.created).map((m) => m.time.completed || 0));
   assert.equal(ends[0].at, lastDone);
@@ -92,7 +89,7 @@ test('2.x: a failed export leaves the replay as it was, and says nothing to the 
   assert.ok(events.filter((e) => e.type === 'userMessage').every((e) => e.at >= before));
 });
 
-test('2.x: reload() loads the conversation again, dated again, and is refused while a turn runs', async (t) => {
+test('2.x: reload() loads the conversation again with times from a new export, and is refused while a turn runs', async (t) => {
   const { oc, agents, calls } = setup(t, 'v2-bgshell.jsonl', { exported: { [BG]: fixture('v2-bg-export.json') } });
   const s = await oc.openSession(BG, { cwd: CWD });
   s.on((ev) => { if (ev.type === 'permission') s.respondPermission(ev.requestId, 'allowOnce'); });
@@ -133,7 +130,7 @@ test('2.x: a shell command moved to the background is reported running, then don
   assert.equal(running.length, 1);
   assert.deepEqual({ id: running[0].id, kind: running[0].kind, title: running[0].title, status: running[0].status, pid: running[0].pid },
     { id: 'call_f08503fa05bf5cb7a81e0fc99ac1d34d', kind: 'shell', title: 'sleep 20; echo bg-done', status: 'running', pid: 79883 });
-  /* OpenCode starts a turn of its own when the command ends: then the process is looked for. */
+  /* The process is gone. When the command ends OpenCode starts a turn of its own, which makes the extension check the process. */
   up = false;
   await until(() => seen.some((e) => e.type === 'background' && e.status === 'done'));
   const own = seen.find((e) => e.type === 'turnStart' && e.unsolicited);
@@ -175,7 +172,7 @@ test('unplaced replay events take the time of the one before, and a turn without
   assert.deepEqual(times.fillTimes(events, metas, null).map((e) => e.at), events.map((e) => e.at));
 });
 
-test('1.x: a reply named by its message, created before the reasoning parts ahead of it, is not dated before them', () => {
+test('1.x: a reply part known only by its message id is not dated before the reasoning ahead of it, though the message was created first', () => {
   const look = times.lookupOf(JSON.parse(fixture('v1-export.json')));
   const events = [
     { type: 'turnStart', turnId: 'replay-1', at: 9e12 },

@@ -27,7 +27,7 @@ function inner() {
 
 const GROK = { id: 'amazon-bedrock/us.xai.grok-4.7', providerId: 'amazon-bedrock' };
 
-test("a new conversation's first message waits for the user's pick, which the page hears about", async () => {
+test("a new conversation's first message waits until the user picks a model, and a ui.model event tells the page", async () => {
   const c = inner();
   const told = [];
   let asked = 0;
@@ -56,7 +56,7 @@ test('a dismissed picker or a failed list sends nothing and says why', async () 
   const broken = withModelChoice(inner(), { needsChoice: true, choose: async () => { throw new Error('expired token'); }, tell: (t) => told.push(t) });
   await broken.send('hi');
   assert.deepStrictEqual(c.sent, []);
-  assert.deepStrictEqual(told, ['The message was not sent: choose a model first.', 'The message was not sent: the models could not be listed (expired token).']);
+  assert.deepStrictEqual(told, ["Couldn't send the message: choose a model first.", "Couldn't send the message: listing the models failed (expired token)."]);
 });
 
 test('a saved conversation, or a model picked in the page, needs no question', async () => {

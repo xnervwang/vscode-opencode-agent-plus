@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The third batch as extension.js wires it, with the window tests' fake backend: the reader's zone written for the
- * plugin, the info box's rows, the chimes' setting shared by the pages, forking from the list, the Conversations view's
- * groups, the MCP list in an output channel, and a diff's title bar on a request already answered.
+ * Through extension.js with the window tests' fake backend: the reader's time zone written for the plugin, the info
+ * box's rows, the chimes' setting shared by the pages, forking from the list, the Conversations view's groups, the MCP
+ * list in an output channel, and a diff's title bar on a request already answered.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -35,7 +35,7 @@ const context = {
 };
 const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-test('the third batch through extension.js', async () => {
+test('through extension.js: the time zone, the info box, the chimes, Fork from the list, the view\'s groups, the MCP list, and a diff whose request was answered', async () => {
   const api = extension.activate(context);
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
@@ -62,7 +62,7 @@ test('the third batch through extension.js', async () => {
   assert.match(rows[3].value, /fake-backend\.json$/);
   assert.strictEqual(rows[4].value, 'All features');
 
-  /* The chimes: on until muted, kept, and every page told. */
+  /* The chimes are on until muted; the setting is kept, and every page is told. */
   assert.strictEqual(panel.webview.posted.filter((m) => m.type === 'sound').pop().on, true);
   panel.fromPage({ type: 'setSound', on: false });
   await settle();
@@ -70,7 +70,7 @@ test('the third batch through extension.js', async () => {
   assert.strictEqual(memo.get('opencodePlus.sound'), false);
   assert.strictEqual(panel.webview.posted.filter((m) => m.type === 'sound').pop().on, false);
 
-  /* Fork, from the list's row: a new conversation in a tab of its own, and the entries shown from then on. */
+  /* Fork from the list's row: a new conversation opens in a tab of its own, and from then on the view shows its groups. */
   const tree = control.state.trees['opencodePlus.sessions'].opts.treeDataProvider;
   const before = await tree.getChildren();
   assert.strictEqual(before.length, 1);
@@ -89,7 +89,6 @@ test('the third batch through extension.js', async () => {
   assert.strictEqual(control.state.shownChannel, 'OpenCode Plus: MCP Servers');
   assert.ok(control.state.log.some((l) => /opencode mcp add/.test(String(l))));
 
-  /* A diff's title bar on a request no longer open says so. */
   const said = control.state.said.length;
   assert.strictEqual(await control.state.handlers['opencodePlus.diffAllowOnce'](vscode.Uri.from({ scheme: 'opencodePlus-diff', path: '/p9/after/a.js' })), false);
   assert.match(control.state.said[said].message, /already been answered/);

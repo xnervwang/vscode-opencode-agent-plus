@@ -89,7 +89,7 @@ test('permission answers, diffs, queueing and stop reach the right place', async
   await settle(5);
   const [cmd, left, right, title] = vscode.rec.commands.find((c) => c[0] === 'vscode.diff');
   assert.equal(cmd, 'vscode.diff');
-  /* The request is open, so its diff's title bar gets the buttons: its right side is listed for them. */
+  /* The request is open, so its diff's title bar gets the buttons: the diff's right-hand path goes into the context key that shows them. */
   assert.deepEqual(vscode.rec.commands.filter((c) => c[0] === 'setContext').pop(), ['setContext', OPEN_DIFFS_KEY, ['/perm-1/after/sum.js']]);
   assert.equal(left.scheme, DIFF_SCHEME);
   assert.equal(left.path, '/perm-1/before/sum.js');

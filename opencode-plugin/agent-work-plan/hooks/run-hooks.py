@@ -8,8 +8,9 @@
     run-hooks.py <plans folder> <script>... < event.json
 
 The OpenCode Plus plugin calls this on a user message and after a compaction, for the work plan, the time-zone note and
-the reply-image note together, instead of starting Python once for each. Each script's main() runs as it would started
-on its own: the plans folder as its first argument, the event on standard input, what it prints taken as its output.
+the reply-image note together, instead of starting Python once for each. Each script's main() runs as if the script
+had been started on its own: it gets the plans folder as its first argument and the event on standard input, and what
+it prints is taken as its answer.
 Prints {"texts": {"<script>": "<its additionalContext, or empty>"}}; a script that is missing, fails or says nothing
 gives "". This file is the plugin's own, not one of the scripts copied from Agent Plus.
 """

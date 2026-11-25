@@ -65,7 +65,7 @@ test("describe: one sentence for each state, and OpenCode's help with ours when 
   assert.deepStrictEqual(cfg.describe({ status: { state: 'listed', models: 179 }, models: new Array(189), found }),
     { level: 'info', text: 'OpenCode 1.19.6 is connected: 189 models, 179 of them on Amazon Bedrock.' });
   assert.deepStrictEqual(cfg.describe({ status: { state: 'unknown' }, models: [], found }),
-    { level: 'info', text: 'OpenCode 1.19.6 is installed. It lists its models once a conversation has been opened.' });
+    { level: 'info', text: 'OpenCode 1.19.6 is installed. Its models show up once you open a conversation.' });
   const failed = cfg.describe({ status: { state: 'authFailed', error: 'AWS default credential chain failed', help: 'H1\nH2' }, models: [1], found });
   assert.deepStrictEqual(failed, { level: 'error', text: 'Amazon Bedrock refused the credentials: AWS default credential chain failed.', detail: `H1\nH2\n${OUR_WAY}` });
   assert.strictEqual(cfg.describe({ status: { state: 'notListed', help: 'H' }, models: [1, 2], found }).text, 'OpenCode 1.19.6 lists 2 models, none on Amazon Bedrock.');

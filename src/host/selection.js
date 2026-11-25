@@ -4,9 +4,10 @@
 
 'use strict';
 /*
- * The selection in a file editor of this window, for the chat page's button that sends it along. The chat tab is an
- * editor itself, so no text editor is active while the user is in it; the last non-empty selection of a file editor
- * still visible is the one meant. VS Code's listeners are added only while a chat panel listens.
+ * The chat page has a button that sends the lines selected in a file along with the message; this finds that
+ * selection. The chat tab is an editor itself, so no text editor is active while the user is in it; the selection used
+ * is the last non-empty one in a file editor that is still visible. VS Code's listeners are added only while a chat
+ * panel listens.
  */
 const path = require('path');
 
@@ -59,14 +60,13 @@ function createSelectionTracker({ vscode, maxChars = MAX_CHARS, settleMs = SETTL
   }
 
   return {
-    /* { label } of the selection there is now, or null. */
     describe() {
       const ed = last && visible(last) && usable(last) ? last : null;
       if (!ed) return null;
       const { startLine, endLine } = lines(ed.selection);
       return { label: `${path.basename(ed.document.uri.fsPath)}:${startLine}${endLine > startLine ? `-${endLine}` : ''}` };
     },
-    /* The selection with its text, as contracts.js FileRef plus its label; null when there is none. */
+    /* What the button sends: a contracts.js FileRef with the selected text, plus the label. */
     current() {
       const ed = last && visible(last) && usable(last) ? last : null;
       if (!ed) return null;

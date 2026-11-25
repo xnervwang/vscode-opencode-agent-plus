@@ -266,12 +266,12 @@ test('the plan tools run plan-row.py on this session\'s plan with every value as
   await stop();
 });
 
-test('a refused change returns plan-row.py\'s own words; a session id of another shape is refused before any run', async () => {
+test("a refused change returns plan-row.py's message; a session id not in OpenCode's shape is refused before anything runs", async () => {
   const env = makeEnv();
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
   assert.equal((await f.tool('set_row').execute({ row: 'refuse' }, { sessionID: SID })).content, 'Refused: no.');
-  assert.match((await f.tool('set_row').execute({ row: '1' }, { sessionID: 'x' })).content, /no session id/);
+  assert.match((await f.tool('set_row').execute({ row: '1' }, { sessionID: 'x' })).content, /is not an OpenCode session id/);
   assert.equal(env.runs().length, 1);
   await stop();
 });
@@ -288,7 +288,7 @@ test('without Python, or without the scripts folder, nothing is injected and the
   const ev2 = prompt(SID, 'msg_2', 'x');
   await f.hooks.prompt(ev2);
   assert.deepEqual(ev2.metadata, { source: 'x' });
-  assert.match((await f.tool('add_row').execute({ state: 'todo', title: 't' }, { sessionID: SID })).content, /folder of its scripts is missing/);
+  assert.match((await f.tool('add_row').execute({ state: 'todo', title: 't' }, { sessionID: SID })).content, /scripts folder is missing/);
   await stop();
 });
 
@@ -469,14 +469,14 @@ test('the plugin is one CommonJS file that requires only Node\'s own modules', (
   assert.equal(plugin.id, 'agent-work-plan');
 });
 
-/* The time-zone and reply-image notes, stand-ins like the others. */
+/* Stand-ins for the time-zone and reply-image notes. */
 const NOTE_SCRIPTS = {
   'tell-time-zone.py': `${RECORDER}
 function main(p) { console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: p.hook_event_name, additionalContext: 'ZONE ' + p.hook_event_name } })); }`,
   'tell-reply-images.py': `${RECORDER}
 function main(p) { if (!p.in_panel) return; console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: p.hook_event_name, additionalContext: 'IMAGES' } })); }`,
 };
-/* run-hooks.py's stand-in: one process for all the scripts it is named, answering each in its { texts } shape. */
+/* run-hooks.py's stand-in: one process answers for every script named on its command line, in run-hooks.py's { texts } shape. */
 const RUNNER_STANDIN = `${RECORDER}
 function main(p, args) {
   const texts = {};
@@ -513,7 +513,7 @@ test('the notes go with every user message, with the plan or without it, and rea
   await f.hooks.prompt(none);
   assert.deepEqual(none.metadata, { source: 'x' });
   assert.equal(env.runs().length, runs);
-  /* Not written, the time zone is on and the images off, as plan_common.py has it. */
+  /* With no config.json the time zone is on and the images off, as plan_common.py defaults them. */
   fs.rmSync(path.join(env.plans, 'config.json'));
   const bare = prompt(SID, 'msg_4', 'bare');
   await f.hooks.prompt(bare);
@@ -536,7 +536,7 @@ test('with run-hooks.py there, one Python process answers for the plan and the n
   await stop();
 });
 
-test('after a compaction the notes are said again, and kept apart from the plan, which a plan turned off drops', async () => {
+test('after a compaction the notes are sent again, separately from the plan, so turning plans off leaves them in', async () => {
   const env = makeEnv();
   for (const [name, text] of Object.entries(NOTE_SCRIPTS)) fs.writeFileSync(path.join(env.hooks, name), text);
   env.config({ enabled: true, tellTimeZone: true, replyImages: true });
@@ -544,7 +544,7 @@ test('after a compaction the notes are said again, and kept apart from the plan,
   const stop = await plugin.setup(f.ctx);
   f.events.push({ type: 'session.compaction.ended', data: { sessionID: SID } });
   await until(() => env.runs().filter((r) => r.payload && r.payload.hook_event_name === 'SessionStart').length >= 3);
-  /* A stand-in logs as it runs, before the plugin has taken in what it printed. */
+  /* A stand-in writes its log line as it runs, before the plugin has read its output. */
   await new Promise((r) => setTimeout(r, 100));
   env.config({ enabled: false, tellTimeZone: true, replyImages: true });
   const ev = prompt(SID, 'msg_9', 'next');

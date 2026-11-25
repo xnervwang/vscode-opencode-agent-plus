@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The times of a replayed conversation. ACP's session/load carries none, so a page drawn from it would date every
+ * Puts times on a replayed conversation. ACP's session/load carries none, so a page drawn from it would date every
  * message at the moment it was opened; OpenCode's export (`opencode session export <id>` on 2.x, `opencode export <id>`
- * on 1.x) has them. Pure: the export comes in as parsed JSON.
+ * on 1.x) has them. It does no I/O: the caller passes the export in as parsed JSON.
  *
  * 2.x exports { info, messages: [{ id, type, time: { created, completed? }, content: [{ type: 'tool', id, time }] }] };
  * 1.x exports { info, messages: [{ info: { id, role, time }, parts: [{ id, type, callID?, time?, state: { time } }] }] }.
@@ -16,7 +16,7 @@
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
 
-/* The message id a replayed chunk's messageId names: 2.x appends `:<kind>:<n>` to the message's own. */
+/* A replayed chunk's messageId without the `:<kind>:<n>` that 2.x appends to the message's own id. */
 const baseId = (mid) => (typeof mid === 'string' ? mid.split(':')[0] : '');
 
 /*
@@ -61,7 +61,7 @@ function lookupOf(exported) {
  * `events` (a replay's AgentEvents) with times from `lookup`; `metas[i]` says what update events[i] came from:
  * { mid, call }. A user message names its own id (messageId); a turn starts when its user message was written and ends
  * when the last reply it holds was completed; text and reasoning take their message's time, tool calls their own, and
- * none goes before the event ahead of it.
+ * no event is dated earlier than the one before it.
  * Events that cannot be placed keep the time of the one before (src/host/history.js). Returns a new array.
  */
 function fillTimes(events, metas, lookup) {
@@ -70,9 +70,8 @@ function fillTimes(events, metas, lookup) {
   const msg = (mid) => lookup.messages.get(mid) || lookup.messages.get(baseId(mid)) || null;
   let start = -1;
   let lastDone = 0;
-  /* The latest time placed so far: an event that cannot be placed takes it, rather than the moment of the replay. A replay
-     comes in the order things happened, so no event goes before the one ahead of it: on 1.x a reply's chunks name their
-     message, created before the reasoning parts that precede them. */
+  /* The latest time placed so far. It is a floor as well: on 1.x a reply's chunks name their message, which was created
+     before the reasoning parts that come ahead of them. */
   let cur = 0;
   const place = (ev, at) => {
     if (at) { ev.at = Math.max(at, cur); cur = ev.at; } else if (cur && 'at' in ev) ev.at = cur;

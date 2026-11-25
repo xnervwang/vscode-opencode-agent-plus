@@ -85,7 +85,7 @@ test('a conversation running in another window is not opened here unless taken o
   const panel = control.panel();
   await open(s.provider, uriOf(A), panel);
   assert.strictEqual(s.shown.length, 0);
-  assert.match(panel.webview.html, /Another VS Code window has this conversation open/);
+  assert.match(panel.webview.html, /This conversation is open in another VS Code window/);
   assert.match(panel.webview.html, /Take over here/);
   assert.match(panel.webview.html, /default-src 'none'/);
   assert.deepStrictEqual(s.busy, [[A, 7777]]);
@@ -105,7 +105,7 @@ test('while this window takes back its own conversation, the tab says it is open
   const panel = control.panel();
   const s = setup({ locked: true, ownWindow: (id) => id === A, onBusy: (other) => { page = panel.webview.html; other.release(A); return true; } });
   await open(s.provider, uriOf(A), panel);
-  assert.match(page, /Opening the conversation this window had open before it reloaded/);
+  assert.match(page, /Reopening this conversation from before the window reloaded/);
   assert.doesNotMatch(page, /Take over here/);
   assert.deepStrictEqual(s.busy, [[A, 7777]], 'busy still does the taking back');
   assert.strictEqual(s.shown.length, 1);
@@ -115,7 +115,7 @@ test('a URI that names no conversation, and a tab closed while it opened', async
   const s = setup();
   const bad = control.panel();
   await open(s.provider, vscode.Uri.from({ scheme: 'opencodeplus-session', path: '/../x' }), bad);
-  assert.match(bad.webview.html, /does not name a conversation/);
+  assert.match(bad.webview.html, /has no valid conversation id/);
 
   const panel = control.panel();
   const p = open(s.provider, uriOf(A), panel);

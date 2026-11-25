@@ -112,7 +112,7 @@ test('without locks a conversation opens all the same', async () => {
   assert.deepStrictEqual(manager.ids(), []);
 });
 
-test('activity follows the turn, waiting carries the tool, a reply nobody looked at is unseen', async () => {
+test('a turn sets the activity to working, a permission request to waiting with its tool, and a reply nobody has looked at is unseen', async () => {
   const { manager, made } = setup();
   await manager.open(A);
   const c = made[0];
@@ -139,7 +139,7 @@ test('activity follows the turn, waiting carries the tool, a reply nobody looked
   assert.strictEqual(manager.snapshot(A).unseen, false);
 });
 
-test('a synthetic user message (text a plugin added) is not the user writing', async () => {
+test("a synthetic user message (text a plugin added) sets neither the time of the user's last message nor the title", async () => {
   const { manager, made } = setup();
   await manager.open(A);
   made[0].fire({ type: 'userMessage', text: 'Work plan reminder', synthetic: true, at: 77 });
@@ -160,7 +160,7 @@ test('two permission requests: waiting until both are settled', async () => {
   assert.strictEqual(manager.snapshot(A).activity, 'working');
 });
 
-test('a reply the user is looking at, and an aborted turn, are not unseen', async () => {
+test('a reply the user is looking at and an aborted turn do not mark the conversation unseen', async () => {
   const looking = setup({ looking: true });
   await looking.manager.open(A);
   looking.made[0].fire({ type: 'turnEnd', reason: 'endTurn', at: 9 });

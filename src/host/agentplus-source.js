@@ -28,7 +28,7 @@ const VIEW_TYPE = `${brand.prefix}.chat`;
 const SCHEME = 'opencodeplus-session';
 const EXTENSION_ID = `${brand.publisher}.${brand.packageName}`;
 
-/* The session id of a opencodeplus-session:/<id> URI, or ''. */
+/* The session id of an opencodeplus-session:/<id> URI, or ''. */
 function sessionOfUri(uri) {
   if (!uri || uri.scheme !== SCHEME) return '';
   const id = String(uri.path || '').replace(/^\/+/, '').split('/')[0];
@@ -67,13 +67,12 @@ function toConversation(s) {
   return out;
 }
 
-/* Why a conversation cannot take a message now, or '': it waits for the user in its window. */
 function waitReason(s) {
   if (!s || s.activity !== 'waiting') return '';
   const w = s.waitingFor || {};
-  if (w.kind === 'question') return 'it is waiting for an answer to a question in its window';
+  if (w.kind === 'question') return 'a question in its window is waiting for an answer';
   const tool = typeof w.tool === 'string' ? w.tool.slice(0, 80) : '';
-  return tool ? `it is waiting for approval of ${tool} in its window` : 'it is waiting for an approval in its window';
+  return tool ? `${tool} is waiting for approval in its window` : 'a tool is waiting for approval in its window';
 }
 
 function emitter() {
@@ -95,7 +94,7 @@ function emitter() {
  * deps:
  *   manager            src/host/session-manager.js
  *   planDir()          the plans folder (src/workplan planDir)
- *   planPath(id)       optional: a conversation's plan file, or null (src/workplan planPath)
+ *   planPath(id)       optional: src/workplan planPath
  *   brief()            optional: whether the conversations keep a brief in their plans now
  *   planNotice()       optional: null or the row Agent Plus shows above the plan (a missing Python, say)
  *   logo()             { light, dark } Uris, or null
@@ -103,7 +102,7 @@ function emitter() {
  *   openHere(sessionId)  Promise<boolean>: open it in this window
  *   trusted()          whether the workspace is trusted
  *   hidden(sessionId)  optional: true for a session not to list (a subagent's, open in a tab restored from before)
- *   allConversations() optional: every window's conversations on this machine, this one's included
+ *   allConversations() optional: every window's conversations on this machine
  *   timeZone()         optional: the reader's IANA time zone, or ''
  *   log(line)          optional
  */
@@ -134,7 +133,6 @@ function createAgentPlusSource(deps) {
 
   const briefOn = () => { try { return deps.brief ? deps.brief() === true : false; } catch (_) { return false; } };
   const hiddenId = (id) => { try { return deps.hidden ? deps.hidden(id) === true : false; } catch (_) { return false; } };
-  /* This window's conversations as Agent Plus reads them. */
   const own = () => deps.manager.list().filter((x) => !hiddenId(x.sessionId)).map(toConversation);
 
   const source = {
@@ -154,7 +152,6 @@ function createAgentPlusSource(deps) {
     onDidFocus: focused.event,
     onDidChangeConversations: changed.event,
 
-    /* The session id for a chat tab of ours, null for any other tab. */
     sessionForTab(tab) {
       if (!isChatTab(tab)) return null;
       return sessionOfUri(tab.input.uri);
@@ -196,7 +193,8 @@ function createAgentPlusSource(deps) {
 
     canDeliver(sessionId) { return trusted() && deps.manager.has(sessionId); },
 
-    /* One delivery id is typed once, also while the first call runs; one that did not arrive can be retried. */
+    /* A repeated deliveryId gets the first call's result instead of typing the text again, also while that call runs;
+       after notReceived the id is dropped, so the caller can retry. */
     deliverAnswer(sessionId, text, opts) {
       const id = opts && typeof opts.deliveryId === 'string' ? opts.deliveryId : '';
       if (!id) return deliver(sessionId, text);
@@ -213,15 +211,14 @@ function createAgentPlusSource(deps) {
 
   return {
     source,
-    /* This window's conversations as listConversations() gives them, for the window state file. */
+    /* The same list as listConversations(), for the window state file. */
     conversations: own,
-    /* A chat panel of ours came to the front with this conversation. */
     focus(sessionId) {
       if (typeof sessionId !== 'string' || !sessionId) return;
       front = sessionId;
       focused.fire({ sessionId });
     },
-    /* Called with the active tab whenever tabs change. */
+    /* `tab` is the active tab. */
     tabsChanged(tab) { if (tab && !isChatTab(tab)) front = ''; },
     refocus() {
       const tab = activeTab();
@@ -236,9 +233,8 @@ function createAgentPlusSource(deps) {
 }
 
 /*
- * Registers `source` with Agent Plus once. Resolves to { accepted, code, reason, registration, core }, `core` the
- * agentPlus interface once accepted. Never throws: without Agent Plus, or refused by it, the extension works as
- * before, outside Agent Plus.
+ * Resolves to { accepted, code, reason, registration, core }, `core` being the agentPlus interface once accepted.
+ * Never throws: without Agent Plus, or refused by it, the extension works on its own.
  */
 async function register(source, { log = () => {} } = {}) {
   const ext = vscode.extensions.getExtension(CORE_ID);
@@ -260,7 +256,7 @@ async function register(source, { log = () => {} } = {}) {
     return { accepted: true, code: '', reason: '', registration: r.registration, core };
   }
   const code = (r && r.code) || 'failed', reason = (r && r.reason) || 'no reason given';
-  log(`Agent Plus did not take the source (${code}): ${reason}`);
+  log(`Agent Plus did not accept the registration (${code}): ${reason}`);
   return { accepted: false, code, reason, registration: null };
 }
 

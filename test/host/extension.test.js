@@ -45,7 +45,6 @@ test('activate registers, and starts nothing', async () => {
   assert.strictEqual(control.state.context['opencodePlus.agentPlus'], false);
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   for (const c of pkg.contributes.commands) assert.ok(control.state.registered.includes(c.command), `${c.command} in package.json is registered`);
-  /* The work plan plugin and its scripts are in place before OpenCode first starts, with the switches it reads. */
   const home = process.env.OPENCODE_PLUS_HOME;
   assert.ok(fs.existsSync(path.join(home, 'opencode-plugin', 'agent-work-plan', 'index.js')));
   assert.ok(fs.existsSync(path.join(home, 'opencode-plugin', 'agent-work-plan', 'hooks', 'plan_agent.py')));
@@ -80,7 +79,6 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(tree.getTreeItem(rows[0]).command.command, 'opencodePlus.openConversation');
 
-  /* Deleting it takes its plan, the files beside it and its scratch folder, and leaves another conversation's. */
   const id = opened[0][0].slice('opencodeplus-session:/'.length);
   const plans = path.join(process.env.OPENCODE_PLUS_HOME, 'plans');
   const scratch = path.join(process.env.OPENCODE_PLUS_HOME, 'scratch');

@@ -4,9 +4,8 @@
 
 'use strict';
 /*
- * The models of the providers OpenCode has connected, and the picker for them. A model is named <provider>/<model> in
- * opencodePlus.model, as OpenCode names it (OpenCode's ModelInfo.id already has that form); the model part alone also
- * matches. The list comes from the backend each time: OpenCode keeps it, and learns a model's context window once the
+ * Lists the models of the providers OpenCode has connected and shows the picker for them. A model is named <provider>/<model> in
+ * opencodePlus.model, the form of OpenCode's ModelInfo.id; the model part alone also matches. The list comes from the backend each time: OpenCode keeps it, and learns a model's context window once the
  * model has been used.
  */
 const brand = require('../brand');
@@ -76,7 +75,7 @@ function createModels({ vscode, listModels, defaultModel }) {
     pick,
     byName,
     forNew,
-    /* From the last list fetched, without fetching. */
+    /* Uses the last list, without asking OpenCode again. */
     cached: (name) => last.find((m) => matches(m, name)) || null,
     fullId,
   };

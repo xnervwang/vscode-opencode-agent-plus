@@ -4,17 +4,17 @@
 
 'use strict';
 /*
- * The conversations a chat page turns into links where a reply names them (media/chat.js), and what a click on one
- * opens.
+ * Conversation links in the chat page (media/chat.js): when a reply names a conversation, the page shows the name as a
+ * link.
  *
- * With an Agent Plus that offers allConversations (its docs/protocol.md), its list gives the conversations of every
- * agent it reads, as in Claude Code Plus. Agent Plus lists only the conversations open in some window, so this
- * extension's own saved conversations are added from its own list. A click on another agent's conversation goes to
- * agentPlus.openConversation, which brings it forward in the window that shows it and opens it through that agent. One of
- * this extension's opens in this window; when another window has it open, agentPlus.openConversation brings that window
- * to the front instead. Without Agent Plus, only this extension's conversations are linked, and open here.
+ * When Agent Plus offers allConversations (its docs/protocol.md), that list gives the conversations of every agent it
+ * reads, as in Claude Code Plus. Agent Plus lists only the conversations open in some window, so this extension's saved
+ * conversations are added from the backend's session list. A click on another agent's conversation goes to
+ * agentPlus.openConversation: Agent Plus brings forward the window that shows it, or has its agent open it. One of this
+ * extension's conversations opens in this window unless another window has it open. Without Agent Plus, only this
+ * extension's conversations are linked, and open here.
  *
- * Lists are read only while some chat page is open (`active()`) and the setting is on (`on()`). No editor API here.
+ * Nothing is read unless a chat page is open and the setting is on. No editor API here.
  */
 const SOURCE = 'opencode-plus';
 const LABEL = 'OpenCode Plus';
@@ -23,7 +23,6 @@ const MAX_TITLE = 300;
 
 const text = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 
-/* The entry a page gets for one conversation, or null when its id is unusable. */
 function entryOf(c, sourceId = '', label = '') {
   if (!c || typeof c.sessionId !== 'string' || !c.sessionId || c.sessionId.length > 200) return null;
   const at = typeof c.lastActiveAt === 'number' ? c.lastActiveAt : Date.parse(c.lastActiveAt || '');
@@ -60,7 +59,7 @@ const ownEntries = (rows) => (Array.isArray(rows) ? rows : []).filter((r) => r &
  *   openCore(target)         runs agentPlus.openConversation with { sourceId, sessionId, title, cwd }
  *   openOwn(sessionId, handOff)
  *                            opens one of this extension's conversations here; with `handOff` true it resolves false
- *                            instead when another window has it open, for Agent Plus to bring that window forward
+ *                            instead when another window has it open
  *   log(line)                optional
  */
 function createConversationLinks(deps) {
@@ -90,12 +89,13 @@ function createConversationLinks(deps) {
     if (reading) return reading;
     ownRead = true;
     reading = Promise.resolve().then(() => deps.own()).then((rows) => { ownList = ownEntries(rows); },
-      (e) => log(`conversation links: listing this extension's conversations failed: ${(e && e.message) || e}`))
+      (e) => log(`conversation links: listing the backend's sessions failed: ${(e && e.message) || e}`))
       .then(() => { reading = null; if (!closed) recompute(); });
     return reading;
   };
   const unhook = () => { if (sub) { try { sub.dispose(); } catch (_) { /* gone */ } sub = null; } };
-  /* Agent Plus is listened to only while its list is wanted: it reads every source's list while someone listens. */
+  /* Subscribes to Agent Plus only while a page wants the list: as long as anyone is subscribed, Agent Plus reads the
+     list of every source. */
   const follow = () => {
     if (closed) return;
     if (!enabled() || !active()) { unhook(); return; }
@@ -107,9 +107,8 @@ function createConversationLinks(deps) {
   };
 
   return {
-    /* The agentPlus interface once this extension is registered with it, or null. */
+    /* Called with the agentPlus interface once registration with Agent Plus succeeds. */
     attach(next) { unhook(); core = next || null; coreList = []; follow(); recompute(); },
-    /* This extension's own list changed. */
     refresh() { if (!closed && enabled() && active()) { follow(); readOwn(); } },
     /* The setting changed, or a page opened or closed. */
     settingChanged() {
@@ -118,7 +117,6 @@ function createConversationLinks(deps) {
       if (wasOn !== null && now !== wasOn) { rev++; fire(); }
       wasOn = now;
     },
-    /* What a page is sent: the list and its revision; empty while the setting is off. */
     current() {
       wasOn = enabled();
       if (!wasOn) return { rev, list: [] };
@@ -126,7 +124,7 @@ function createConversationLinks(deps) {
       return { rev, list };
     },
     onDidChange(fn) { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },
-    /* A link clicked in a page; resolves to 'here', 'agentPlus' or 'nowhere'. */
+    /* Resolves to 'here', 'agentPlus' or 'nowhere'. */
     async open(sourceId, sessionId) {
       if (typeof sourceId !== 'string' || typeof sessionId !== 'string' || !sessionId) return 'nowhere';
       const c = list.find((e) => e.sourceId === sourceId && e.sessionId === sessionId);

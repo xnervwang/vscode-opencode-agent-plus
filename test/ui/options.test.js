@@ -3,7 +3,7 @@
 // All rights reserved.
 
 'use strict';
-/* The mode and effort pickers of the chat page, the effort in a reply's figures, and what the list's tooltip says. */
+/* The chat page's mode and effort pickers, the effort in a reply's figures, and the list's tooltip. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
@@ -47,7 +47,7 @@ function panelFor(conv) {
 
 const optionsPosted = (panel) => panel.posted.filter((m) => m.type === 'options');
 
-test('the page gets the settings when it loads, a changed set when they change, and its choice goes to the conversation', async () => {
+test('the page gets the settings when it loads and each time they change, and a value picked there goes to the conversation', async () => {
   const conv = conversation();
   const { panel, chat } = panelFor(conv);
   assert.match(panel.webview.html, /<select id="mode" class="option" hidden><\/select>/);
@@ -112,7 +112,7 @@ test('a turn the agent began itself is announced; a retry shows until its attemp
   let s = vm.reduce(vm.initialState(), { type: 'turnStart', turnId: 'o1', at: 10, unsolicited: true });
   assert.equal(s.status, 'working');
   assert.equal(s.items[0].kind, 'notice');
-  assert.match(s.items[0].text, /went on without a message from you, for a background task/);
+  assert.match(s.items[0].text, /started this turn on its own, for a background subagent or command/);
   s = vm.reduce(s, { type: 'retry', attempt: 2, waitMs: 2000, error: { kind: 'throttled', message: 'slow down' }, at: 20 });
   assert.deepEqual(s.retry, { attempt: 2, waitMs: 2000, error: 'Throttled: slow down', at: 20 });
   assert.equal(vm.head(s).retry.attempt, 2);

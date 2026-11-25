@@ -5,33 +5,32 @@
 'use strict';
 /*
  * One conversation's chat page in a WebviewPanel that the caller already has (a custom editor's resolveCustomEditor
- * or a serializer gives it). This class sets the panel's options and HTML, keeps the view model (src/ui/view-model.js)
- * from the conversation's events, and answers the page. Creating, titling and restoring the panel is the caller's.
+ * or a serializer gives it). This class sets the panel's options and HTML, builds the view model (src/ui/view-model.js)
+ * from the conversation's events, and answers the page's messages. The caller creates, titles and restores the panel.
  *
  * The panel does not keep its page while hidden; the page asks for the whole view again when it loads ('ready'), and
  * updates are held back while it is hidden. Between loads only the items that changed are posted, at most once per
  * frame.
  *
- * The conversation's settings (its options(): mode, effort) go to the page as they are, in an 'options' message, and
- * again whenever an `options` event says they changed; a conversation without options() shows none. Its slash
- * commands (commands(), `commands` events) and what a message may carry (attachments()) go the same way, as
- * 'commands' and 'caps'. The page asks for workspace files as @ is typed (`findFiles`) and for the editor's selection
- * (`selection`); both are the caller's, and without them the page offers neither.
+ * From the conversation, options() (mode, effort), commands() and attachments() go to the page as 'options',
+ * 'commands' and 'caps', and again on each `options` or `commands` event.
  *
- * The plan bar above the input box draws Agent Plus's summary of the conversation's work plan (`planBar`, the caller's:
- * src/host/plan-bar.js); the page loads Agent Plus's fragment for it (media/plan-bar.js), which brings its own style
- * element, so the page's policy lets inline styles in. Without `planBar`, or with a null summary, there is no bar.
+ * Without one of these constructor options, the page leaves out its feature:
+ *   findFiles  workspace files for @
+ *   selection  the editor's selection, to send with a message
+ *   planBar    Agent Plus's summary of the conversation's work plan (src/host/plan-bar.js), drawn above the input box
+ *              by Agent Plus's fragment (media/plan-bar.js); a null summary hides the bar
+ *   rewind     back to before a user message
+ *   info       the conversation's ids and paths, for the info box
+ *   sound      whether the page chimes; the caller keeps the setting
+ *   loadImage  reads a local image a reply shows and sends it back as a data: URL, so the page's resource roots never
+ *              widen (VS Code reloads a page whose options change)
+ *   links      the conversations a reply may name (src/host/conversation-links.js), which the page turns into links
+ *              ('conversations' { rev, list, self }); a click opens one
  *
- * What else the page offers comes from the caller, and is not offered without it: `rewind` (to before a user message),
- * `info` (the conversation's ids and paths for the info box), `sound` (whether the page chimes, kept by the caller) and
- * `loadImage` (a local image a reply shows, read by the caller and sent back as a data: URL, so the page's resource roots
- * never widen; VS Code reloads a page whose options change). A diff opened from a permission card gets Allow once, Allow
- * in this project and Deny in its editor's title bar (see answerFromDiff); its right side's path is listed under the
- * context key opencodePlus.openDiffs while the request is open.
- *
- * `links` (the caller's: src/host/conversation-links.js) gives the conversations a reply may name, which the page turns
- * into links ('conversations' { rev, list, self }), and opens the one clicked. The page's outline of the user's messages
- * and its subagent filter need nothing from here.
+ * The plan bar's fragment brings its own style element, so the page's policy lets inline styles in. A diff opened from
+ * a permission card gets Allow once, Allow in this project and Deny in its editor's title bar (see answerFromDiff);
+ * its right side's path is listed under the context key opencodePlus.openDiffs while the request is open.
  */
 const path = require('path');
 const fs = require('fs');
@@ -40,7 +39,7 @@ const { PERMISSION_DECISIONS } = require('../contracts');
 
 const DIFF_SCHEME = 'opencodePlus-diff';
 const OPEN_DIFFS_KEY = 'opencodePlus.openDiffs';
-/* What a message may carry: as many images, each of at most this many bytes once decoded. */
+/* Limits per message. Image bytes are counted after base64 decoding; MAX_FILES covers files and selections together. */
 const MAX_IMAGES = 8;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_FILES = 20;
@@ -70,7 +69,7 @@ function releaseDiffProvider() {
   diffDocs.clear();
 }
 
-/* The diffs of requests still open: right side's path -> { panel, requestId }; the title bar buttons answer through it. */
+/* Diffs of permission requests still open: right side's path -> { panel, requestId }. */
 const openDiffs = new Map();
 let diffKeyVscode = null;
 function publishDiffs() {
@@ -84,8 +83,8 @@ function forgetDiffs(panel, requestId) {
 }
 
 /*
- * Answers the permission request whose diff `uri` (its right side) shows; true when one was open. The title bar's
- * buttons call it.
+ * Answers the permission request whose diff has `uri` as its right side. Returns false when no such request is open
+ * or `decision` is not one of PERMISSION_DECISIONS. The title bar's buttons call it.
  */
 function answerFromDiff(uri, decision) {
   const key = uri && typeof uri.path === 'string' ? uri.path : '';
@@ -121,7 +120,8 @@ class ChatPanel {
    *   extensionUri: import('vscode').Uri,
    *   conversation: { on(listener: (ev: object) => void): (Function|{dispose(): void}), send(text: string, extra?: object): unknown,
    *     abort(): unknown, setModel(model: object): unknown, options?(): object[], setOption?(id: string, value: string): unknown,
-   *     commands?(): object[], attachments?(): object, respondQuestion?(requestId: string, answer: object): unknown },
+   *     commands?(): object[], attachments?(): object, respondQuestion?(requestId: string, answer: object): unknown,
+   *     checkBackground?(): unknown, id?: string },
    *   listModels: () => Promise<object[]>,
    *   respond: (requestId: string, decision: string) => unknown,
    *   history?: object[],
@@ -254,7 +254,7 @@ ${md}
 </html>`;
   }
 
-  /* Applies one AgentEvent or ui.* action and schedules a post. onDidChangeState hears of status and title changes. */
+  /* Applies one AgentEvent or ui.* action and schedules a post. */
   dispatch(ev) {
     if (this.disposed) return;
     if (ev && ev.type === 'options') {
@@ -300,7 +300,7 @@ ${md}
     Promise.resolve(this.panel.webview.postMessage({ ...msg, now: this.now() })).catch(() => {});
   }
 
-  /* A new history for the page, as after a rewind: the view is built again from `events` and sent whole. */
+  /* After a rewind: rebuilds the view from `events`, sends it whole, and offers `draft` for the input. */
   replaceHistory(events, draft) {
     if (this.disposed) return;
     const model = this.state.model;
@@ -338,7 +338,7 @@ ${md}
     this.post({ type: 'options', options: this.options });
   }
 
-  /* What the conversation's method `name` returns, or `fallback` when it has none or it fails. */
+  /* Calls the conversation's optional method `name`; `fallback` if it is missing, throws or returns null. */
   read(name, fallback) {
     try {
       const v = typeof this.conversation[name] === 'function' ? this.conversation[name]() : fallback;
@@ -350,7 +350,6 @@ ${md}
     this.post({ type: 'commands', commands: Array.isArray(this.commands) ? this.commands : [] });
   }
 
-  /* Files need the caller's search; a selection needs the caller's editor tracking. */
   postCaps() {
     const a = this.read('attachments', {});
     this.post({ type: 'caps', images: a.images === true, files: a.files === true && !!this.findFiles, selection: a.selection === true && !!this.selection,
@@ -363,7 +362,7 @@ ${md}
     this.post({ type: 'sound', shown: !!this.sound, on });
   }
 
-  /* The user message item `itemId`, with its place among the user's own messages; null when there is none. */
+  /* Finds the user message `itemId` and its 0-based position among the user's messages, or returns null. */
   userItem(itemId) {
     let ordinal = -1;
     for (const it of this.state.items) {
@@ -380,7 +379,7 @@ ${md}
     this.post({ type: 'selection', label });
   }
 
-  /* The conversations a reply may link to; the page leaves out its own. */
+  /* Posts the conversations a reply may link to, with this one as `self` so the page can leave it out. */
   postConversations() {
     if (!this.links) return;
     let got = null;
@@ -395,7 +394,8 @@ ${md}
     this.post({ type: 'planBar', summary });
   }
 
-  /* contracts.js send extra from what the page sent: images it pasted, files it picked, selections it added. */
+  /* Builds send()'s `extra` (contracts.js) from the page's images, @-files and selections, dropping malformed and
+     duplicate entries and anything over the limits. */
   extraOf(msg) {
     const images = (Array.isArray(msg.images) ? msg.images : []).filter((i) => i && typeof i.data === 'string' && /^image\/[\w.+-]+$/.test(String(i.mediaType || ''))
       && Math.floor(i.data.length * 3 / 4) <= MAX_IMAGE_BYTES).slice(0, MAX_IMAGES).map((i) => ({ mediaType: i.mediaType, data: i.data, name: String(i.name || 'image') }));
@@ -457,7 +457,7 @@ ${md}
     switch (msg.type) {
       case 'ready':
         this.ready = true;
-        /* The zone of the machine the page runs on, which is the reader's also over Remote-SSH. */
+        /* The page runs on the user's machine, so this is the user's time zone even over Remote-SSH. */
         if (this.onTimeZone && typeof msg.tz === 'string' && msg.tz.length <= 64 && /^[A-Za-z0-9_+\-/]+$/.test(msg.tz)) {
           try { this.onTimeZone(msg.tz); } catch (_) { /* the caller's */ }
         }
@@ -477,7 +477,7 @@ ${md}
       case 'rewind': {
         const found = this.rewind && this.userItem(String(msg.itemId || ''));
         if (!found) break;
-        if (this.state.status !== 'idle') { this.showError(new Error('The conversation is working; wait for the turn to end, or stop it, before rewinding.')); break; }
+        if (this.state.status !== 'idle') { this.showError(new Error('Stop the turn or wait for it to end before rewinding.')); break; }
         Promise.resolve().then(() => this.rewind({ itemId: found.item.id, messageId: found.item.messageId || '', text: found.item.text, ordinal: found.ordinal }))
           .catch((err) => this.showError(err));
         break;

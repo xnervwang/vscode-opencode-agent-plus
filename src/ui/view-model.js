@@ -11,24 +11,25 @@
  * Items only ever get appended or replaced in place, and every change replaces just the objects it touches, so
  * changedItems() finds what to post to the page by identity. Item `i<n>` sits at index n-1.
  *
- * Besides AgentEvents the reducer takes two actions of the panel's own:
+ * The reducer also takes two actions of the panel:
  *   { type: 'ui.model', model }   the model now in use (ModelInfo, or { id, contextWindow } when not in the list)
  *   { type: 'ui.queued', text }   a message sent while a turn runs; it leaves the queue when its userMessage arrives
  *
  * A subagent's progress is drawn on the tool card of the call that started it (`child` of that item), or on a card
- * of its own (kind 'subagent') when no such call is known; only its last CHILD_ENTRIES steps are kept. A question is
- * an item whose `fields` (formFields) the page draws as a form; formContent turns what the user filled in back into
- * the answer's content.
+ * of its own (kind 'subagent') when no such call is known. Only its last CHILD_ENTRIES steps are kept. A question
+ * item carries `fields` from formFields(), which the page draws as a form; formContent() turns the filled-in form back
+ * into the answer's content.
  *
- * What still runs in the background - subagents not done yet, and shell commands the agent moved to the background
- * (`background` events) - goes to the page in head().background, with the item each one is drawn on.
+ * What still runs in the background goes to the page in head().background, each with the item it is drawn on:
+ * subagents not done yet, and shell commands the agent moved to the background (`background` events).
  */
 
 const MAX_SHOWN = 20000;
 const CHILD_ENTRIES = 60;
 const CHILD_TEXT = 4000;
-/* Such a turn starts when a background task finishes, or when a subagent running in the background asks for permission. */
-const UNSOLICITED_NOTE = 'OpenCode went on without a message from you, for a background task (a subagent or a command).';
+/* Shown on a turn OpenCode starts by itself: after a background task finishes, or when a background subagent asks for
+   permission. */
+const UNSOLICITED_NOTE = 'OpenCode started this turn on its own, for a background subagent or command.';
 const REGION_PREFIX = /^(us|eu|apac|ap|ca|jp|au|us-gov|global)\./;
 
 function initialState() {
@@ -79,9 +80,9 @@ function fmtTokens(n) {
   return String(Math.round(n));
 }
 
-/* `us.xai.grok-4.7` -> `grok-4.7`, `qwen.qwen3-coder-30b-a3b-v1:0` -> `qwen3-coder-30b-a3b`. */
-/* `amazon-bedrock/us.xai.grok-4.7` -> `grok-4.7`: OpenCode's provider part, a Bedrock region and a vendor prefix go;
-   a vendor prefix is letters only, so the dot in `gpt-5.1` stays. */
+/* `amazon-bedrock/us.xai.grok-4.7` -> `grok-4.7`, `qwen.qwen3-coder-30b-a3b-v1:0` -> `qwen3-coder-30b-a3b`: OpenCode's
+   provider part, a Bedrock region, a vendor prefix and a version suffix go. A vendor prefix has only letters and
+   hyphens, so the dot in `gpt-5.1` stays. */
 function shortModel(id) {
   if (!id) return '';
   let s = String(id);
@@ -93,8 +94,8 @@ function contextPct(used, window) {
   return window > 0 && typeof used === 'number' ? Math.round((used / window) * 100) : null;
 }
 
-/* A turn replayed from history may carry no time and no usage (OpenCode's replay has neither): a duration under a
-   second and a context share with no usage are left out rather than shown as 0s and ctx 0%. */
+/* OpenCode's replay of a saved turn has no times and no usage, so a duration under a second and a context share
+   without usage are left out; they would show as 0s and ctx 0%. */
 function figuresText(f) {
   const parts = [f.durationMs >= 1000 ? fmtDuration(f.durationMs) : ''];
   if (f.contextUsed > 0 && f.contextPct != null) parts.push(`ctx ${f.contextPct}%`);
@@ -114,11 +115,11 @@ function oneLine(s, max = 200) {
   return line.length > max ? `${line.slice(0, max)}…` : line;
 }
 
-/* The words after a tool's name on its card: the command, path or pattern it was called with. */
+/* The words after a tool's name on its card: the command, path or pattern it was called with, or the questions of
+   OpenCode's question tool. */
 function summarizeInput(name, input) {
   if (!input || typeof input !== 'object') return '';
   if (typeof input.command === 'string') return oneLine(input.command);
-  /* OpenCode's question tool: the questions it asks. */
   if (Array.isArray(input.questions)) {
     const asked = input.questions.map((q) => q && (q.question || q.header)).filter((q) => typeof q === 'string' && q);
     if (asked.length) return oneLine(asked.join(' · '));
@@ -170,7 +171,7 @@ const END_NOTICES = {
   aborted: ['info', 'Stopped.'],
   maxTokens: ['info', "The reply reached the model's output limit and was cut off."],
   refused: ['error', 'The model declined to answer.'],
-  reasoningOnly: ['info', 'The model returned only reasoning, with no reply.'],
+  reasoningOnly: ['info', "The model's reply had reasoning but no text."],
   toolUse: ['info', 'The turn ended while the model still wanted to call tools.'],
 };
 
@@ -327,7 +328,6 @@ function toolItemOf(s, toolId) {
   return found ? found.id : null;
 }
 
-/* What the page draws of a subagent. */
 function childView(c) {
   return { childId: c.childId, title: c.title, status: c.status, error: c.error, entries: c.entries, dropped: c.dropped, last: c.last };
 }
@@ -347,7 +347,7 @@ function onSubagent(s, ev, at) {
   let host = c.host;
   const hostItem = host ? s.items[indexOf(host)] : null;
   const toolHost = toolItemOf(s, c.toolId);
-  /* Moves to the call that started it once known; a card of its own stays where it was drawn. */
+  /* A subagent already drawn on a card of its own stays there even once its call is known. */
   if (toolHost && toolHost !== host && (!hostItem || hostItem.kind === 'tool')) {
     if (hostItem) s = replace(s, host, { child: null });
     host = toolHost;
@@ -372,9 +372,9 @@ function optionsOf(list) {
 }
 
 /*
- * The fields of a form from the JSON Schema object an agent asks with: text, choice (one of), multi (any of), boolean,
- * number and integer. A string property `<key>_custom` next to a choice or multi `<key>` is that field's own-answer
- * box (`otherKey`), the way OpenCode's question tool asks.
+ * Builds a form's fields from the JSON Schema object an agent's question carries: text, choice (one of), multi (any
+ * of), boolean, number and integer. A string property `<key>_custom` next to a choice or multi `<key>` is that
+ * field's own-answer box (`otherKey`), the way OpenCode's question tool asks.
  */
 function formFields(schema) {
   const props = schema && typeof schema === 'object' && schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
@@ -419,8 +419,9 @@ function formFields(schema) {
 }
 
 /*
- * The answer's content from what the page filled in: values[key] is a string, an array of strings (multi) or a
- * boolean; values[otherKey] the own-answer text. Returns { content, errors }: errors say what to fix, in words.
+ * Builds the answer's content from the form values: values[key] is a string, an array of strings (multi) or a
+ * boolean, and values[otherKey] is the own-answer text. Returns { content, errors }; each error is a sentence for the
+ * user, such as "Count: enter a whole number."
  */
 function formContent(fields, values) {
   const v = values && typeof values === 'object' ? values : {};
@@ -473,7 +474,7 @@ function reduce(s, ev, now) {
   switch (ev.type) {
     case 'turnStart':
       if (s.turn) s = endTurn(s, { reason: 'endTurn' }, at);
-      /* The model the turn runs on, as <provider>/<model>; its context window comes with a later ui.model. */
+      /* turnStart names the model as <provider>/<model>; its context window comes later, with ui.model or usage. */
       if (typeof ev.modelId === 'string' && ev.modelId && (!s.model || s.model.id !== ev.modelId)) {
         s = { ...s, model: { id: ev.modelId, name: ev.modelId, vendor: '', contextWindow: 0 } };
       }
@@ -603,7 +604,7 @@ function reduce(s, ev, now) {
     case 'usage': {
       const cost = typeof ev.costUsd === 'number' && isFinite(ev.costUsd) ? ev.costUsd : null;
       const used = typeof ev.contextUsed === 'number' ? ev.contextUsed : s.contextUsed;
-      /* The window the agent reports for the model this turn runs on, before the model list has learned it. */
+      /* A usage event may carry the context window; it fills in the model's window until the model list has one. */
       const win = typeof ev.contextWindow === 'number' && isFinite(ev.contextWindow) && ev.contextWindow > 0 ? ev.contextWindow : 0;
       s = { ...s, contextUsed: used, retry: null };
       if (win && s.model && !s.model.contextWindow && (!s.turn || !s.turn.modelId || s.turn.modelId === s.model.id)) s = { ...s, model: { ...s.model, contextWindow: win } };
@@ -624,7 +625,7 @@ function reduce(s, ev, now) {
     }
 
     case 'retry':
-      /* Attempt 0: the retry has started, so the countdown goes. */
+      /* Attempt 0 means the retry has started. */
       if (!(ev.attempt > 0)) return { ...s, retry: null };
       return {
         ...s,
@@ -637,7 +638,6 @@ function reduce(s, ev, now) {
       };
 
     case 'turnEnd':
-      /* Stopping drops the messages that waited for the turn. */
       if (ev.reason === 'aborted' && s.queued.length) s = { ...s, queued: [] };
       if (!s.turn) {
         if (ev.reason !== 'error') return s;
@@ -652,7 +652,7 @@ function reduce(s, ev, now) {
       const m = ev.model;
       if (!m || !m.id) return s;
       const model = { id: m.id, name: m.name || '', vendor: m.vendor || '', contextWindow: m.contextWindow || 0 };
-      /* A running turn on this model takes the window, which OpenCode learns from the model's first call. */
+      /* A running turn on this model gets its context window too, which OpenCode learns from the model's first call. */
       const turn = s.turn && (s.turn.modelId === m.id || !s.turn.modelId)
         ? { ...s.turn, modelId: m.id, contextWindow: model.contextWindow || s.turn.contextWindow } : s.turn;
       return { ...s, model, turn };
@@ -684,10 +684,10 @@ function partsText(parts) {
 }
 
 /*
- * Rebuilds the view from a session file's records (contracts.js SessionRecord), as if its events had just happened.
- * A user message with text starts a turn; a message holding only tool results continues the one before. Restored
- * turns end at their last message or usage record. `modelInfo(providerId, modelId)` may give the context window for
- * the ctx figures.
+ * Rebuilds the view from a conversation's history records (contracts.js SessionRecord), as if its events had just happened.
+ * A user message with text starts a turn; tool results also come in user messages, and those stay in the turn
+ * before. Restored turns end at their last message or usage record. `modelInfo(providerId, modelId)` may give the
+ * context window for the ctx figures.
  */
 function fromRecords(records, opts = {}) {
   const lookup = typeof opts.modelInfo === 'function' ? opts.modelInfo : () => null;
@@ -755,7 +755,7 @@ function fromRecords(records, opts = {}) {
 
 /* ---------- what the page gets ---------- */
 
-/* What still runs in the background, oldest first: subagents not done, and commands the agent left running. */
+/* Oldest first, each with the item it is drawn on. */
 function backgroundOf(s) {
   const out = [];
   for (const c of Object.values(s.children)) {

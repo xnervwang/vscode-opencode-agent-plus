@@ -8,7 +8,7 @@
  *
  * A .vsix is a zip with the extension under extension/ and two descriptor files (make-manifest.js); VS Code needs
  * nothing else for a local install. The extension's files are the fixed list in OWN; node_modules contributes only the
- * packages reachable from package.json "dependencies", found the way Node's require finds them, so devDependencies and
+ * packages reachable from package.json "dependencies", looked up the way Node's require() resolves them, so devDependencies and
  * anything installed by hand stay out. Inside those packages, type declarations, source maps, the ES module builds
  * (require() loads the CommonJS ones) and change logs are left out. A package only a web page loads (PAGE_ONLY) brings
  * just the files the page reads and its licence, and none of its own dependencies, which only its Node entry needs.
@@ -66,7 +66,7 @@ function stage(root, dir) {
     if (st.isSymbolicLink()) return;
     const base = path.basename(rel);
     if (st.isDirectory()) {
-      /* __pycache__ is what running the plugin's hooks here leaves beside them. */
+      /* Running the plugin's hooks in this checkout leaves __pycache__ beside them. */
       if (inModules ? SKIP_DIRS.has(base) : base === 'node_modules' || base === '__pycache__') return;
       for (const name of fs.readdirSync(from).sort()) {
         if (inModules && name === 'node_modules') continue;
@@ -103,7 +103,7 @@ if (require.main === module) {
   const args = process.argv.slice(2);
   const outAt = args.indexOf('--out');
   const outArg = outAt >= 0 ? args.splice(outAt, 2)[1] : '';
-  /* The real path: package folders are compared with it after their links are resolved. */
+  /* The root with its links resolved: package folders are compared with it after their own links are resolved. */
   const root = fs.realpathSync(path.resolve(args[0] || path.join(__dirname, '..')));
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const out = path.resolve(outArg || path.join(root, 'build', `${pkg.publisher}.${pkg.name}-${pkg.version}.vsix`));

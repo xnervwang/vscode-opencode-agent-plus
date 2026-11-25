@@ -4,18 +4,18 @@
 
 'use strict';
 /*
- * One lock file per conversation, <dir>/<id>.lock, naming the extension host that runs it, so that a conversation runs
- * in one window at a time. The file is written whole under another name and then hard-linked into place, so a reader
+ * One lock file per conversation, <dir>/<id>.lock, naming the extension host that holds it, so that a conversation is
+ * open in one window at a time. The file is written whole under another name and then hard-linked into place, so a reader
  * never sees half of one. A lock whose process is gone, or that was written before the machine last booted (its pid
  * may be someone else's now), is taken over.
  *
- * A live holder can be asked to let go: the asking window writes <id>.takeover, and the holder, which watches the
- * folder with fs.watch while it holds any lock, hands the request to onTakeover, releases the lock and answers with
- * <id>.letgo naming the asker. Over Remote-SSH a window whose client went away without closing keeps its extension
- * host running for hours, holding its locks; that host still answers.
+ * To take over from a live holder, a window writes <id>.takeover; the holder, which watches the folder with fs.watch
+ * while it holds any lock, hands the request to onTakeover, releases the lock and answers with <id>.letgo naming the
+ * asker. Over Remote-SSH a window whose client went away without closing keeps its extension host running for hours,
+ * holding its locks; that host still answers.
  *
- * A lock also names the VS Code window of its holder (`window`, from windowToken), so that a window reloaded while
- * its old extension host lives on (ownWindow) can take its conversations back without asking.
+ * A lock also names its holder's VS Code window (windowToken), so that a window reloaded while its old extension host
+ * lives on (ownWindow) can take its conversations back without asking.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -64,14 +64,12 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
     } catch (_) { return null; }
   };
   const read = (id) => readJson(file(id));
-  /* Written whole under another name, then renamed into place. */
   const writeWhole = (p, rec) => {
     const tmp = path.join(dir, `.${path.basename(p)}.${pid}.${now()}.tmp`);
     fs.writeFileSync(tmp, JSON.stringify(rec));
     fs.renameSync(tmp, p);
   };
   const unlink = (p) => { try { fs.unlinkSync(p); } catch (_) { /* gone */ } };
-  /* Another live process holds it. */
   const othersLive = (rec) => !!rec && rec.pid !== pid && alive(rec.pid) && !(Number(rec.at) < booted() - BOOT_SLACK_MS);
 
   let onTakeover = null;
@@ -85,15 +83,14 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
     answering.add(id);
     try {
       note(`process ${req.pid} asks to take over ${id}`);
-      try { if (onTakeover) await onTakeover(id, req); } catch (e) { note(`letting go of ${id} failed: ${(e && e.message) || e}`); }
+      try { if (onTakeover) await onTakeover(id, req); } catch (e) { note(`stopping ${id} for the takeover failed: ${(e && e.message) || e}`); }
       release(id);
-      try { writeWhole(path.join(dir, `${id}${LETGO}`), { pid, for: req.pid, at: now() }); } catch (e) { note(`answering the takeover of ${id} failed: ${e.message}`); }
+      try { writeWhole(path.join(dir, `${id}${LETGO}`), { pid, for: req.pid, at: now() }); } catch (e) { note(`replying to the takeover request for ${id} failed: ${e.message}`); }
     } finally {
       answering.delete(id);
     }
   }
 
-  /* Watches only while it holds a lock, so a window with no conversation open has no watcher. */
   function syncWatcher() {
     if (held.size && !watcher) {
       try {
@@ -116,8 +113,8 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
   }
 
   /*
-   * { ok: true } when this process holds the lock now; { ok: false, pid } when another live process does. `force`
-   * takes it from a live holder too, which then no longer owns it but may still be running the conversation.
+   * Returns { ok: true }, { ok: false, pid } when another live process holds the lock, or { ok: false, pid: 0, error }.
+   * `force` takes it from a live holder too, which may still be running the conversation.
    */
   function acquire(id, { force = false } = {}) {
     fs.mkdirSync(dir, { recursive: true });
@@ -150,7 +147,6 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
     return othersLive(rec) ? rec.pid : 0;
   }
 
-  /* Another live process holds the lock for this same window: the extension host it had before it was reloaded. */
   function ownWindow(id) {
     if (!window) return false;
     const rec = read(id);
@@ -167,8 +163,8 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
   function releaseAll() { for (const id of [...held]) release(id); }
 
   /*
-   * Asks the live holder to let go and waits for it, at most `timeoutMs`. Resolves 'free' (nobody else held it),
-   * 'released' (the holder let go, or went away) or 'timeout'.
+   * Waits at most `timeoutMs`. Resolves 'free' (nobody else held it), 'released' (the holder let go, or went away)
+   * or 'timeout'.
    */
   function requestTakeover(id, { timeoutMs = TAKEOVER_WAIT_MS } = {}) {
     const first = holder(id);
@@ -212,7 +208,7 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
     release,
     releaseAll,
     requestTakeover,
-    /* fn(id, request) stops the conversation here; the lock is released and the asker answered once it returns. */
+    /* fn(id, request) stops the conversation here; the lock is released after it returns. */
     onTakeover(fn) { onTakeover = typeof fn === 'function' ? fn : null; },
     held: () => [...held],
     file,

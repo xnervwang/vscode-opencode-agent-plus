@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The fourth batch as extension.js wires it, with the window tests' fake backend: a chat tab closed goes to Recently
- * closed and its group shows in the Conversations view, which its row clears; a deleted conversation leaves it; Find
- * Conversation opens the one picked; a chat page gets the conversations it may link to, and a click on one opens it.
+ * Through extension.js with the window tests' fake backend: a closed chat tab goes to Recently closed, a group in the
+ * Conversations view that the button on its row empties; a deleted conversation leaves that group; Find Conversation
+ * opens the one picked; a chat page gets the conversations it may link to, and a click on one opens it.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -37,7 +37,7 @@ const context = {
 };
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 
-test('the fourth batch through extension.js', async () => {
+test('through extension.js: Recently closed, Find Conversation, and links from a chat page to other conversations', async () => {
   const api = extension.activate(context);
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
@@ -48,7 +48,7 @@ test('the fourth batch through extension.js', async () => {
   const panel = control.panel();
   await provider.resolveCustomEditor(provider.openCustomDocument(vscode.Uri.from({ scheme: 'opencodeplus-session', path: `/${a}` })), panel);
 
-  /* The page is sent every conversation it may link to, its own named so that it is left out. */
+  /* The page is sent every conversation it may link to, and is told which one is its own so that it leaves that one out. */
   panel.fromPage({ type: 'ready' });
   await settle(80);
   const sent = panel.webview.posted.filter((m) => m.type === 'conversations').pop();
@@ -58,7 +58,7 @@ test('the fourth batch through extension.js', async () => {
   assert.ok(sent.list.every((c) => c.sourceId === 'opencode-plus' && c.label === 'OpenCode Plus'));
   assert.deepStrictEqual(api.test.links().map((c) => c.sessionId).sort(), [a, b].sort());
 
-  /* A click on one opens it here, as nothing else has it. */
+  /* A click on a conversation no other window holds opens it in this window. */
   const before = opened.length;
   panel.fromPage({ type: 'openConversation', sourceId: 'opencode-plus', sessionId: b });
   await settle();
@@ -118,7 +118,7 @@ test('package.json declares the two commands, the list\'s search button, the cle
   assert.ok(c.menus['view/title'].some((m) => m.command === 'opencodePlus.findConversation' && m.when === 'view == opencodePlus.sessions && isWorkspaceTrusted'));
   const clear = c.menus['view/item/context'].find((m) => m.command === 'opencodePlus.clearRecentlyClosed');
   assert.deepStrictEqual([clear.when, clear.group], ['view == opencodePlus.sessions && viewItem == opencodePlus.group.recent', 'inline']);
-  /* Rename, Fork and Delete take conversation rows only, which the group's row is not. */
+  /* Rename, Fork and Delete apply only to conversation rows; the group's row is not one. */
   for (const m of c.menus['view/item/context'].filter((x) => /rename|fork|delete/i.test(x.command))) {
     assert.ok(/viewItem =~ \/\^opencodePlus\\\.session\/|viewItem == opencodePlus\.session\b/.test(m.when), m.when);
   }

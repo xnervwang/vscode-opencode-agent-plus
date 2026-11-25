@@ -11,7 +11,8 @@
  *   onDidChangeSessions(fn)      { dispose }
  *   createSession(cwd, opts)     Promise of the new session object
  *   renameSession(id, title)     Promise; OpenCode 1 refuses it
- *   canRename()                  whether renameSession can work here (OpenCode 2); loads the module, starts nothing
+ *   canRename()                  whether this OpenCode can rename (version 2 or later); asking loads the module but does
+ *                                not start OpenCode
  *   deleteSession(id)            Promise
  *   forkSession(id), canFork()   a copy of the whole conversation: Promise of { id, cwd }; whether OpenCode offers it
  *                                (known once it has started)
@@ -19,7 +20,8 @@
  *                                rewinding to before a user message (OpenCode 2): stage restores the files and lists
  *                                them ({ messageId, tracked, files }), commit removes the messages, clear undoes stage
  *   userMessages(id)             Promise of [{ id, text, at }], the user's messages as OpenCode stored them
- *   mcpList(), dataPaths()       Promise of `opencode mcp list`'s text; of OpenCode's folders ({ db, data, ... })
+ *   mcpList()                    Promise of the text `opencode mcp list` prints
+ *   dataPaths()                  Promise of OpenCode's folders ({ db, data, ... })
  *   info()                       the running OpenCode: { path, version, pid, agent, capabilities }, or null
  *   session(id, { cwd })         Promise of the session object: id, cwd, title, status, waitingTool, waitingKind,
  *                                lastUserAt, lastReplyAt, on(listener) of AgentEvents, send(text, { images, files }?),
@@ -33,7 +35,7 @@
  *
  * SessionInfo (normInfo): { id, title, cwd, createdAt, lastActiveAt, status: 'working' | 'waiting' | 'idle',
  * waitingFor?: { kind, tool }, lastUserAt, lastReplyAt }, times in epoch milliseconds. The module is required on first use,
- * not at activation; `options` go to its factory (createOpenCode) as they are.
+ * not at activation.
  */
 const num = (v) => {
   const n = typeof v === 'string' && !/^\d+$/.test(v) ? Date.parse(v) : Number(v);
@@ -60,8 +62,8 @@ function normInfo(s) {
   return out;
 }
 
-/* `options` (an object, or a function returning one when the module is loaded) go to the module's factory; `load`
-   replaces require for the tests. */
+/* `options` (an object, or a function returning one when the module is loaded) go to the module's factory
+   (createOpenCode) as they are; `load` replaces require for the tests. */
 function createBackend({ options = {}, load } = {}) {
   let made = null;
   const get = () => {
@@ -87,7 +89,6 @@ function createBackend({ options = {}, load } = {}) {
   };
 
   return {
-    /* Whether the module has been loaded, which also says whether its server may be running. */
     get started() { return !!made; },
     listSessions: () => call('listSessions').then((l) => (Array.isArray(l) ? l.map(normInfo).filter(Boolean) : [])),
     onDidChangeSessions(fn) {
@@ -95,7 +96,7 @@ function createBackend({ options = {}, load } = {}) {
       if (made) hook();
       return { dispose: () => listeners.delete(fn) };
     },
-    /* Starts listening once something has started the module, so activation does not start it. */
+    /* Subscribes to the module's session changes. It loads the module, so it is called only after something else has. */
     listen() { try { hook(); } catch (_) { /* not available */ } },
     createSession: (cwd, opts) => call('createSession', cwd, opts || {}),
     renameSession: (id, title) => call('renameSession', id, title),
@@ -122,7 +123,6 @@ function createBackend({ options = {}, load } = {}) {
     defaultModel: () => (made && typeof made.defaultModel !== 'function' ? Promise.resolve(null) : call('defaultModel')),
     bedrockStatus: () => (made && typeof made.bedrockStatus !== 'function' ? Promise.resolve(null) : call('bedrockStatus')),
     detect: () => call('detect'),
-    /* New settings; nothing to do while the module has not been loaded, since it reads them when it is. */
     restart: (next) => (made && typeof made.restart === 'function' ? Promise.resolve().then(() => made.restart(next)) : Promise.resolve()),
     dispose() {
       listeners.clear();

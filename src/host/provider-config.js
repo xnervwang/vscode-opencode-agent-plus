@@ -4,10 +4,10 @@
 
 'use strict';
 /*
- * The settings OpenCode starts with: opencodePlus.opencode.path and .askPermissions, and for Amazon Bedrock
- * opencodePlus.bedrock.profile and .region and an API key kept in VS Code's secret storage only, which reach OpenCode as
- * AWS_PROFILE, AWS_REGION and AWS_BEARER_TOKEN_BEDROCK in its environment. An empty setting adds nothing, so what the
- * user set up in OpenCode or in the environment stays in force. A change starts OpenCode again (backend.restart).
+ * The settings OpenCode starts with: opencodePlus.opencode.path and .askPermissions, and for Amazon Bedrock the settings
+ * opencodePlus.bedrock.profile and .region plus an API key kept only in VS Code's secret storage. OpenCode gets these
+ * three as AWS_PROFILE, AWS_REGION and AWS_BEARER_TOKEN_BEDROCK in its environment. An empty setting adds nothing, so
+ * what the user set up in OpenCode or in the environment stays in force. A change restarts OpenCode (backend.restart).
  */
 const brand = require('../brand');
 
@@ -18,7 +18,7 @@ const OUR_WAY = `Or set "${brand.displayName} › Bedrock: Profile" and "Region"
 /*
  * deps:
  *   vscode, secrets      VS Code's API and the extension's SecretStorage
- *   restart(options)     starts OpenCode again with new options
+ *   restart(options)     backend.restart
  *   log(line)            optional
  */
 function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
@@ -46,7 +46,7 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
     return { binaryPath: s.binaryPath, permissions: s.permissions, env };
   }
 
-  /* The options without the key's value, to tell whether anything changed and to log. */
+  /* The options with the key's value replaced by its length, for comparing and logging. */
   const shape = (o) => JSON.stringify({ ...o, env: Object.fromEntries(Object.entries(o.env).map(([k, v]) => [k, k === 'AWS_BEARER_TOKEN_BEDROCK' ? `<${v.length} chars>` : v])) });
 
   function changed(why) {
@@ -54,11 +54,11 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
     const now = shape(next);
     if (now === last) return;
     last = now;
-    log(`OpenCode settings changed (${why}); it starts again with ${Object.keys(next.env).join(', ') || 'no extra environment'}`);
+    log(`OpenCode settings changed (${why}); restarting it with ${Object.keys(next.env).join(', ') || 'no extra environment'}`);
     Promise.resolve().then(() => restart(next)).catch((e) => log(`restarting OpenCode failed: ${(e && e.message) || e}`));
   }
 
-  /* Reads the key once at activation; `ready` settles when it has been read. */
+  /* The key is read once at activation; `ready` settles then. */
   const ready = Promise.resolve().then(() => secrets.get(SECRET_KEY)).then((v) => { key = v || ''; }, () => { key = ''; })
     .then(() => { const was = last; last = shape(options()); if (was !== null && was !== last) changed('API key read'); });
   last = shape(options());
@@ -76,31 +76,31 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
   async function setApiKey() {
     const value = await vscode.window.showInputBox({
       title: 'Amazon Bedrock API key',
-      prompt: 'Paste an Amazon Bedrock API key. It is kept in VS Code secret storage on this machine and given to OpenCode as AWS_BEARER_TOKEN_BEDROCK.',
+      prompt: 'Paste an Amazon Bedrock API key. It is kept in VS Code\'s secret storage on your computer and given to OpenCode as AWS_BEARER_TOKEN_BEDROCK.',
       password: true,
       ignoreFocusOut: true,
       validateInput: (v) => (String(v || '').trim() ? null : 'Enter a key.'),
     });
     if (!value || !value.trim()) return false;
     await secrets.store(SECRET_KEY, value.trim());
-    vscode.window.showInformationMessage('The Amazon Bedrock API key is saved; OpenCode starts again with it.');
+    vscode.window.showInformationMessage('Amazon Bedrock API key saved. OpenCode is restarting to use it.');
     return true;
   }
 
   async function clearApiKey() {
     await secrets.delete(SECRET_KEY);
-    vscode.window.showInformationMessage('The Amazon Bedrock API key is removed from this machine.');
+    vscode.window.showInformationMessage('Amazon Bedrock API key removed from this machine.');
   }
 
   /*
-   * What OpenCode can reach, in one message: `status` is bedrockStatus() of src/opencode/index.js, `models` the model
-   * list, `found` what detect() gave, or the error it threw.
+   * The Test Connection report. `status` is bedrockStatus() of src/opencode/index.js, `found` what detect() gave, or
+   * `error` what it threw.
    */
   function describe({ status, models, found, error }) {
     if (error) return { level: 'error', text: error.message || String(error) };
     const where = found ? `OpenCode ${found.version && found.version.text ? found.version.text : found.version || ''}`.trim() : 'OpenCode';
     if (!status || status.state === 'unknown') {
-      return { level: 'info', text: `${where} is installed. It lists its models once a conversation has been opened.` };
+      return { level: 'info', text: `${where} is installed. Its models show up once you open a conversation.` };
     }
     const bedrock = status.models || 0;
     if (status.state === 'listed') return { level: 'info', text: `${where} is connected: ${models.length} models, ${bedrock} of them on Amazon Bedrock.` };

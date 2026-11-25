@@ -53,13 +53,13 @@ test('installPlugin writes the plugin only when its content differs, through a t
   assert.deepEqual(fs.readdirSync(first.dir), ['index.js']);
 });
 
-test('installPlugin copies the real plugin by default source', () => {
+test('installPlugin copies the real plugin when no source is given', () => {
   const root = tmp();
   const r = workplan.installPlugin({ root });
   assert.deepEqual(fs.readFileSync(r.file), fs.readFileSync(workplan.sourceFile()));
 });
 
-test('installScripts copies the *.py files, only those that differ, and leaves files only the copy has', () => {
+test('installScripts copies the *.py files that differ and keeps files that exist only in the copy', () => {
   const root = tmp();
   const source = tmp();
   fs.writeFileSync(path.join(source, 'plan-row.py'), 'a');
@@ -77,7 +77,7 @@ test('installScripts copies the *.py files, only those that differ, and leaves f
   assert.equal(fs.readFileSync(path.join(first.dir, 'plan-row.py'), 'utf8'), 'a2');
 });
 
-test('configFor gives OpenCode 2 the plugin folder and the rules to read the plans folder, under every name it has', () => {
+test('configFor gives OpenCode 2 the plugin folder and the rules to read the plans folder, by its given path and its real path', () => {
   const dir = path.join(os.tmpdir(), 'x', 'agent-work-plan');
   const real = fs.realpathSync(tmp());
   const plans = path.join(real, 'home', 'plans');

@@ -120,7 +120,7 @@ test('a replayed history splits into turns at each user message', () => {
   assert.equal(m.update({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'echo' } }).length, 0, 'live user chunks are ignored');
 });
 
-test('models come from the model config option; the context window once usage reported it', () => {
+test("models come from the model config option, and a model's context window from what usage reported for it", () => {
   const { models, current } = modelsFromConfig([{ id: 'model', category: 'model', type: 'select', currentValue: 'opencode/big-pickle', options: [
     { value: 'amazon-bedrock/us.xai.grok-4.7', name: 'Amazon Bedrock/Grok 4.7 (US)' },
     { group: 'g', name: 'Group', options: [{ value: 'opencode/big-pickle', name: 'OpenCode Zen/Big Pickle' }] },
@@ -181,7 +181,7 @@ test('replayed user chunks with one messageId are one message, a new id is a new
   assert.deepEqual(evs.map((e) => e.type), ['turnStart', 'userMessage', 'turnEnd', 'turnStart', 'userMessage', 'turnEnd']);
 });
 
-test('usage carries the context window usage_update reported, on its own event and on the one at the turn\'s end', () => {
+test("the context window a usage_update reports is on its usage event and on the usage event at the turn's end", () => {
   const m = createMapper({ now: clock() });
   m.begin('t1', 'hi', 500, 'amazon-bedrock/us.xai.grok-4.7');
   const first = m.update({ sessionUpdate: 'usage_update', used: 24000, size: 500000 })[0];

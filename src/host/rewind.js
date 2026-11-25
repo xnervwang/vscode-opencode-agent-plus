@@ -6,15 +6,15 @@
 /*
  * Rewinding a conversation to before one of the user's messages (OpenCode 2's /api, which OpenCode calls
  * experimental): which message OpenCode means, and what the confirmation says. The steps themselves are the backend's
- * (src/opencode/index.js): staging puts the files back and lists them, then the user confirms (commit) or not (clear).
+ * (src/host/backend.js rewindStage, rewindCommit, rewindClear).
  */
 
 const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
 
 /*
- * The id of the message the page's `target` ({ messageId, text, ordinal }: its place among the user's own messages) is
- * in OpenCode's list `users` ([{ id, text }], oldest first). A replayed message names its id; a live one is found at its
- * place, and only when the text there is the same (OpenCode may have added a selection's text after it), so a list
+ * `target` is { messageId, text, ordinal }, the ordinal being its place among the user's own messages; `users` is
+ * OpenCode's list ([{ id, text }], oldest first). A replayed message carries its id. A live one is looked up by its
+ * ordinal, and only when the text there is the same (OpenCode may have added a selection's text after it), so a list
  * that has moved on rewinds nothing rather than the wrong message. '' when it cannot be told.
  */
 function messageOf(target, users) {
@@ -32,16 +32,15 @@ function messageOf(target, users) {
 /* What staging does to each file, by the status it reports. */
 const STATUS = Object.freeze({ deleted: 'removed', added: 'restored', modified: 'changed back' });
 
-/* The confirmation for what staging returned ({ tracked, files }): { message, detail }. */
 function confirmation(staged) {
   const files = staged && Array.isArray(staged.files) ? staged.files : [];
-  const lines = ['This message and every message after it leave the conversation.'];
+  const lines = ['This message and all messages after it will be removed from the conversation.'];
   if (staged && staged.tracked === false) {
-    lines.push('', 'Only the conversation goes back: OpenCode keeps no snapshots of files in this folder (it is not a git repository), so the files stay as they are now.');
+    lines.push('', 'Only the conversation is rewound: this folder is not a git repository, so OpenCode keeps no snapshots of its files.');
   } else if (!files.length) {
-    lines.push('', 'No file was changed after it, so no file changes.');
+    lines.push('', 'No files were changed after this message.');
   } else {
-    lines.push('', `These files go back to how they were before it (OpenCode has already put them back; Cancel undoes that):`);
+    lines.push('', `OpenCode has already restored these files to how they were before this message; Cancel undoes that:`);
     for (const f of files.slice(0, 20)) {
       const counts = [f.additions ? `+${f.additions}` : '', f.deletions ? `-${f.deletions}` : ''].filter(Boolean).join(' ');
       lines.push(`  ${f.file}: ${STATUS[f.status] || f.status}${counts ? ` (${counts})` : ''}`);

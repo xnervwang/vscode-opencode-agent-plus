@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * Subagents on OpenCode 2.4.1, against recordings: their sessions kept out of the list, the turn OpenCode starts in the
+ * Subagents on OpenCode 2.4.1, tested against recordings: their sessions kept out of the list, the turn OpenCode starts in the
  * parent when one finishes, a retry, and the mode and effort settings.
  */
 const nodeTest = require('node:test');
@@ -69,7 +69,7 @@ test('2.x: a subagent\'s session is learned from child_update and kept out of th
   assert.deepEqual(saved.parents, { [PARENT]: '', [CHILD]: PARENT });
 });
 
-test('2.x: the turn OpenCode starts in the parent when its subagent finishes is reported, and ends once quiet', async (t) => {
+test('2.x: when a subagent finishes, the turn OpenCode then starts in the parent is reported, and ends once it goes quiet', async (t) => {
   const { oc } = setup(t, 'v2-subagent.jsonl', V2);
   const s = await oc.createSession(CWD, { model: GROK });
   const events = [];
@@ -112,7 +112,7 @@ test('2.x: the turn OpenCode starts in the parent when its subagent finishes is 
   assert.ok(own.some((e) => e.type === 'toolCall' && e.id.startsWith(`${CHILD}:`)), "the subagent's asking tool is drawn");
 
   const view = vm.reduceAll([...mine, ...own], vm.initialState(), 1);
-  assert.ok(view.items.some((it) => it.kind === 'notice' && /went on without a message from you/.test(it.text)), 'the page says why a reply came');
+  assert.ok(view.items.some((it) => it.kind === 'notice' && /started this turn on its own/.test(it.text)), 'the page says why a reply came');
   assert.equal(view.status, 'idle');
 });
 
@@ -153,7 +153,7 @@ test('2.x: sessions nobody here has seen are looked up once with `opencode api -
   assert.equal(oc.isChild(B), true);
 });
 
-test('another window reads what this one learned; 1.x is never looked up; a failed lookup shows them all', async (t) => {
+test('a subagent session another window recorded stays out of the list; 1.x is never looked up; after a failed lookup the rest all show', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-sub-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.writeFileSync(path.join(root, 'opencode-sessions.json'), JSON.stringify({ format: 1, parents: { ses_df3c4ce95ffeUPMXgrnL6AjyQW: 'ses_df3c3e455ffe3KZVShQ00LZ15D' } }));
@@ -247,7 +247,7 @@ test('2.x: a setting changed while a turn runs is sent before the next message',
   assert.equal(methods[i - 1], 'session/set_config_option');
 });
 
-test('2.x: an effort picked just before a message is that turn\'s, though OpenCode has not answered it yet', async (t) => {
+test('2.x: an effort picked just before a message applies to that turn, though OpenCode has not confirmed it yet', async (t) => {
   const { oc, agents } = setup(t, 'v2-options.jsonl', V2);
   const s = await oc.createSession(CWD, { model: GROK });
   const events = [];

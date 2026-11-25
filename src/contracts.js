@@ -4,12 +4,11 @@
 
 'use strict';
 /*
- * Shapes shared by the provider layer, the agent core and the UI. Only JSDoc and frozen constants live here, so every
- * module can require it without pulling in the AWS SDK or the vscode API.
+ * Shapes shared by src/opencode/, src/host/ and src/ui/. Only JSDoc and frozen constants live here, so every module
+ * can require it without pulling in the vscode API.
  */
 
 /**
- * A conversation message in the provider-neutral form the agent keeps. Adapters convert to and from each API.
  * @typedef {{ role: 'user' | 'assistant', content: ContentBlock[] }} Message
  */
 
@@ -22,7 +21,7 @@
  *   { type: 'reasoning', text: string, providerId?: string, opaque?: unknown }
  * )} ContentBlock
  * `image.data` is base64. `reasoning.opaque` is whatever the provider must get back unchanged (a signature, encrypted
- * content); it is only sent back to the provider named by `providerId` and dropped for any other.
+ * content); it is sent back only to the provider named by `providerId`.
  */
 
 /**
@@ -39,7 +38,7 @@
  *   effort?: 'low' | 'medium' | 'high',
  *   cacheLastMessage?: boolean
  * }} ChatRequest
- * `cache: true` on a system part and `cacheLastMessage` mark prompt-cache points; adapters drop them where unsupported.
+ * `cache: true` on a system part, and `cacheLastMessage`, mark prompt-cache points.
  */
 
 /**
@@ -58,7 +57,7 @@
  *   pricing?: { input: number, output: number, cacheRead?: number, cacheWrite?: number },
  *   known: boolean
  * }} ModelInfo
- * `invokeId` is what the API is called with (for Bedrock, the inference profile id when the model needs one).
+ * `invokeId` is the part of `id` after `providerId/`.
  * Prices are USD per million tokens. `known` is false when the numbers are defaults rather than from the catalog.
  */
 
@@ -102,8 +101,7 @@
  */
 
 /**
- * A tool the agent can call. `run` gets the parsed input and a context; it never throws for an ordinary failure, it
- * returns `isError: true` with a message the model can read.
+ * `run` does not throw for an ordinary failure: it returns `isError: true` with a message the model can read.
  * @typedef {{
  *   spec: ToolSpec,
  *   needsPermission(input: object, ctx: ToolContext): PermissionRequest | null,
@@ -132,24 +130,30 @@
 /** @typedef {'allowOnce' | 'allowSession' | 'deny'} PermissionDecision */
 
 /**
- * Events the agent core emits for one conversation; the UI draws from these and nothing else. A userMessage with
- * `synthetic: true` is text a plugin added for the model (a work-plan line, a turn-end note), not something the user typed.
- * `turnStart.modelId` is the model the turn runs on (provider/model) and `effort` the effort it runs with when one is
- * set; `unsolicited: true` marks a turn the agent began itself (a subagent or a background command it waited for has
- * finished), which has no userMessage. `usage.contextWindow` is that model's context window when the agent reports it,
- * so the share in use can be shown before the model list knows the window. `retry` says the agent will try the model
- * again in `waitMs`; attempt 0 says that try has started. `options` carries the conversation's settings anew whenever
- * they change, and `commands` the slash commands the agent offers (a message `/<name> args` runs one).
- * `userMessage.attachments` names what was sent with the text. `compaction` reports the agent compacting the
- * conversation: 'running', then 'completed' with the summary it wrote, or 'failed' / 'cancelled'. `subagent` reports a
- * subagent of this conversation: its session `childId`, its title and status, `toolId` the call of this conversation
- * that started it once known, and `event` one text, reasoning, toolCall or toolResult event of its own stream.
- * `permission.subagent` and `toolCall.subagent` name the subagent a request came from. `question` is a form the agent
- * asks the user to fill in (`schema` a JSON Schema object of string, enum, array-of-enum, number, integer and boolean
- * properties), answered with respondQuestion(); `questionSettled` says how. A replayed userMessage carries `messageId`,
- * the agent's id of that message (rewinding goes by it); replayed text and reasoning may carry the `at` of their message.
- * `background` reports work the agent left running after its turn, such as a shell command it moved to the background:
- * 'running' while its process runs, then 'done'.
+ * Events the agent core emits for one conversation; the UI draws from these and nothing else.
+ *
+ *   turnStart        `modelId` is `provider/model`. `unsolicited: true` marks a turn the agent began itself, with no
+ *                    userMessage, after a subagent or a background command it waited for finished.
+ *   userMessage      `synthetic: true` says a plugin added the text for the model: a work-plan line, a turn-end
+ *                    note. `attachments` names what was sent with the text. A replayed one carries `messageId`, the
+ *                    agent's id of that message (rewinding goes by it).
+ *   text, reasoning  a replayed one may carry the `at` of its message.
+ *   usage            when the agent reports `contextWindow`, the share in use can be shown before the model list knows
+ *                    the window.
+ *   retry            the agent will call the model again in `waitMs`; `attempt` 0 says that call has started.
+ *   options          all of the conversation's settings, sent again each time one of them changes.
+ *   commands         the slash commands the agent offers; a message `/<name> args` runs one.
+ *   compaction       the agent compacting the conversation: 'running', then 'completed' with the summary it wrote,
+ *                    or 'failed' / 'cancelled'.
+ *   subagent         a subagent of this conversation: its session `childId`, its title and status, `toolId` the call
+ *                    of this conversation that started it, and `event` one text, reasoning, toolCall or toolResult
+ *                    event of its own. `permission.subagent` and `toolCall.subagent` name the subagent
+ *                    a request came from.
+ *   question         a form the agent asks the user to fill in, answered with respondQuestion(); `questionSettled`
+ *                    says how it was answered. Its `schema` is a JSON Schema object whose properties are strings,
+ *                    enums, arrays of enums, numbers, integers or booleans.
+ *   background       work the agent left running after its turn, such as a shell command it moved to the background:
+ *                    'running' until the process exits, then 'done'.
  * @typedef {(
  *   { type: 'turnStart', turnId: string, at: number, modelId?: string, effort?: string, unsolicited?: true } |
  *   { type: 'userMessage', text: string, at: number, synthetic?: boolean, attachments?: Attachment[], messageId?: string } |
@@ -174,8 +178,8 @@
  */
 
 /**
- * Something sent along with a message's text, as the chat page names it: an image, a file the agent reads itself, or a
- * selection sent with its text.
+ * Something sent along with a message's text, as the chat page names it: an image, a file the agent reads itself,
+ * or a selection.
  * @typedef {{ kind: 'image' | 'file' | 'selection', name: string, path?: string }} Attachment
  */
 
@@ -186,19 +190,21 @@
  */
 
 /**
- * A setting of one conversation the agent offers, such as OpenCode's mode (build / plan) or effort.
+ * A per-conversation setting the agent offers, such as OpenCode's mode (build / plan) or effort.
  * @typedef {{ id: string, name: string, value: string, values: Array<{ value: string, name: string, description?: string }> }} ConfigOption
  */
 
 /**
  * A conversation as the agent core hands it to the UI (src/opencode/index.js makes them; src/host/backend.js lists
- * what the host relies on). `send` resolves with the turnEnd of its message's turn and never rejects; a message sent
- * while a turn runs waits for it; `extra` may also be the images array alone. `options()` lists the settings the agent
- * offers for this conversation, [] when none, and `setOption` changes one from the next turn on. `commands()` lists its
- * slash commands as last offered, `attachments()` what a message may carry besides text. `respondQuestion` answers a
- * `question` event, false when that request is no longer open; `waitingKind` says what a waiting conversation waits on.
- * `reload` loads it again from the agent (after a rewind) and resolves with its history; `checkBackground` looks again
- * whether the work it left in the background still runs.
+ * what the host relies on).
+ *
+ *   send             resolves with the message's turnEnd and never rejects. A message sent while a turn runs waits
+ *                    for that turn. `extra` may also be the images array alone.
+ *   options          returns [] when the agent offers no settings.
+ *   setOption        changes a setting from the next turn on.
+ *   commands         its slash commands as the agent last offered them.
+ *   respondQuestion  answers a `question` event; false when that request is no longer open.
+ *   reload           used after a rewind.
  * @typedef {{
  *   id: string, cwd: string, title: string, status: 'working' | 'waiting' | 'idle', waitingTool: string,
  *   waitingKind: '' | 'permission' | 'question',
@@ -222,7 +228,6 @@
  */
 
 /**
- * One line of a session file (`<sessionsDir>/<id>.jsonl`), appended in order.
  * @typedef {(
  *   { kind: 'meta', format: 1, id: string, cwd: string, createdAt: number, providerId: string, modelId: string, title?: string } |
  *   { kind: 'message', at: number, message: Message } |

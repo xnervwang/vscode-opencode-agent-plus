@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The extension's side of the work plan on OpenCode: puts the OpenCode plugin (opencode-plugin/agent-work-plan) and
- * the shared Python scripts where a running OpenCode keeps finding them, and says what to add to OpenCode's launch.
+ * The extension's side of the work plan on OpenCode: copies the OpenCode plugin (opencode-plugin/agent-work-plan) and
+ * the shared Python scripts to a fixed folder, and says what to add to OpenCode's launch.
  * No vscode API here.
  *
  * Copies go under paths.root() rather than being used from the extension's folder: that folder is named by version
@@ -21,12 +21,12 @@ const paths = require('../paths');
 const PLUGIN_ID = 'agent-work-plan';
 /* An OpenCode session id, on 1.x and 2.x alike; the plugin and the shared scripts name plans by it. */
 const SESSION_ID = /^ses_[0-9A-Za-z]{8,64}$/;
-const NEEDS_V2 = 'The work plan needs OpenCode 2.';
+const NEEDS_V2 = 'The work plan needs OpenCode 2';
 /* What the shared hooks keep for one conversation in the plans folder, <session id><suffix>: the plan and the *_SUFFIX
    files of plan_common.py. */
 const SIDE_SUFFIXES = Object.freeze(['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz', '.images-told',
   '.compacted', '.briefed', '.injected']);
-/* What this extension itself keeps beside a plan: the latest reply for a steward (src/host/reply-file.js). */
+/* Beside a plan this extension also keeps the latest reply, for a steward (src/host/reply-file.js). */
 const OWN_SUFFIXES = Object.freeze(['.reply.json']);
 
 /* The plugin as it ships in this extension. */
@@ -108,8 +108,8 @@ function spellings(dir) {
 }
 
 /*
- * The inline OpenCode configuration the work plan needs, for OpenCode `version` ({ major } or a number), to be merged
- * over the launch's own (src/opencode acpLaunch `config`: arrays are appended there, so these rules come last and win).
+ * The inline OpenCode configuration the work plan needs for OpenCode `version` ({ major } or a number). It is merged
+ * over the launch's own (src/opencode acpLaunch `config`), where arrays are appended, so these rules come last and win.
  * OpenCode 2 takes the plugin's folder under `plugins`, and two rules that let the model read the plans folder, which
  * is outside every project, without asking: the plan text tells it to read the plan after a compaction. Writing there
  * still asks; the plan tools write without going through a permission. OpenCode matches these rules against canonical
@@ -137,11 +137,12 @@ function pluginEnv({ hooksDir = scriptsDir(), home = paths.root() } = {}) {
 function support(version) {
   const major = majorOf(version);
   if (major >= 2) return { workPlan: true, message: '' };
-  const named = version && version.text ? ` This is OpenCode ${version.text}.` : '';
-  return { workPlan: false, message: `${NEEDS_V2}${named} Update OpenCode to keep a work plan in these conversations.` };
+  const named = version && version.text ? `, and this is OpenCode ${version.text}` : '';
+  return { workPlan: false, message: `${NEEDS_V2}${named}. Update OpenCode to keep a work plan in these conversations.` };
 }
 
-/* For the Agent Plus source: the folder of plan files, and one conversation's plan (null for an id of another shape). */
+/* For the Agent Plus source: the folder of plan files, and one conversation's plan (null when the id is not an OpenCode
+   session id). */
 function planDir() {
   return paths.plansDir();
 }
@@ -151,10 +152,9 @@ function planPath(sessionId) {
 }
 
 /*
- * When the user deletes a conversation: its plan, the files the hooks and this extension keep beside it and its rows
- * moved to closed/.
- * Agent Plus only reads the plans folder, so nothing else clears them. Only names built from a session id of OpenCode's
- * shape are touched. Returns the names removed, relative to `dir`.
+ * Removes a deleted conversation's plan, the files the hooks and this extension keep beside it, and its rows moved to
+ * closed/. Agent Plus only reads the plans folder, so nothing else clears them. Only names built from a session id of
+ * OpenCode's shape are touched. Returns the names removed, relative to `dir`.
  */
 function removePlan(sessionId, dir = planDir()) {
   if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [];
@@ -167,16 +167,16 @@ function removePlan(sessionId, dir = planDir()) {
 }
 
 /*
- * The folder the shared hooks name for one conversation's images (plan_agent.py scratch_dir: <root>/scratch/<id>), or
- * null for an id of another shape. Nothing creates it here; the model does when it first saves an image.
+ * One conversation's image folder, as the shared hooks name it (plan_agent.py scratch_dir: <root>/scratch/<id>), or
+ * null unless `sessionId` matches SESSION_ID. Nothing creates it here; the model does when it first saves an image.
  */
 function scratchDir(sessionId, root = paths.root()) {
   return typeof sessionId === 'string' && SESSION_ID.test(sessionId) ? path.join(root, 'scratch', sessionId) : null;
 }
 
 /*
- * When the user deletes a conversation: its scratch folder and everything in it, which nothing else clears. A symbolic
- * link there is removed, not followed. Returns whether there was something to remove.
+ * Removes a deleted conversation's scratch folder and everything in it. A symbolic link there is removed, not
+ * followed. Returns whether there was something to remove.
  */
 function removeScratch(sessionId, root = paths.root()) {
   const dir = scratchDir(sessionId, root);
@@ -187,9 +187,9 @@ function removeScratch(sessionId, root = paths.root()) {
 }
 
 /*
- * Tells the plugin which Python to start, in launcher.json beside the scripts: `python` is what
- * src/shared/python-runtime.js findPython gave. Its full path is written, since OpenCode starts it without a shell.
- * Returns whether the file changed.
+ * Tells the plugin which Python to start, in launcher.json beside the scripts: `python` is the result of findPython in
+ * src/shared/python-runtime.js. Its full path is written, since OpenCode starts it without a shell. Returns whether the
+ * file changed.
  */
 function writeLauncher(python, dir = scriptsDir()) {
   if (!python || !python.executable) return false;

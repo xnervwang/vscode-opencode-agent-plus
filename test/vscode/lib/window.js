@@ -5,8 +5,8 @@
 'use strict';
 /*
  * One VS Code window for test/vscode/run.js, under xvfb-run on Linux: started with its own user data and extensions
- * folders, driven through Playwright over the DevTools protocol for what is drawn and through helper/ for the vscode
- * API. The DevTools port is 0, so two runs on one machine do not collide; Chromium writes the port it took to
+ * folders, driven through Playwright over the DevTools protocol to read and click what is drawn, and through helper/ to
+ * call the vscode API. The DevTools port is 0, so two runs on one machine do not collide; Chromium writes the port it took to
  * DevToolsActivePort in the user data folder.
  */
 const fs = require('fs');
@@ -97,7 +97,7 @@ async function open({ exe, profile, env, playwright, log, size = '1600x1000', tr
   return { browser, page, call, reload, hostUp, close, proc };
 }
 
-/* The frame of a webview whose page has `selector`, searched across the window's frames. */
+/* Finds, across the window's frames, the webview frame whose page has `selector`. */
 async function frameWith(page, selector, ms = 30000) {
   return until(async () => {
     for (const f of page.frames()) {
