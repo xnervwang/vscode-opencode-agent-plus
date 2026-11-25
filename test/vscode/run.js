@@ -165,6 +165,9 @@ function writeSettings(user, extra) {
     /* Context menus drawn in the page, as Linux and Windows draw them already, so that a tab's menu can be read and
        clicked on macOS too. */
     'window.menuStyle': 'custom',
+    /* macOS runners give VS Code a 1024 by 677 window, where the chat page drops its outline column. Two steps of zoom
+       out give the page about the 1440 by 900 it has on Linux. */
+    ...(process.platform === 'darwin' && process.env.CI === 'true' ? { 'window.zoomLevel': -2 } : {}),
     ...extra,
   }, null, 2));
 }
