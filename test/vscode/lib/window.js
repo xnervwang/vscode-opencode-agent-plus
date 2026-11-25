@@ -7,8 +7,9 @@
  * One VS Code window for test/vscode/run.js, under xvfb-run on Linux: started with its own user data and extensions
  * folders, driven through Playwright over the DevTools protocol to read and click what is drawn, and through helper/ to
  * call the vscode API. The DevTools port is 0, so two runs on one machine do not collide; Chromium writes the port it took to
- * DevToolsActivePort in the user data folder. On Linux and macOS the window is the leader of a process group of its own,
- * which close() ends as a whole; Windows has no such group, so there close() ends the window's process tree.
+ * DevToolsActivePort in the user data folder. On Linux and macOS the process started for the window (xvfb-run, when it
+ * is used) leads a process group of its own, which close() ends as a whole; on Windows close() ends the window's
+ * process tree.
  */
 const fs = require('fs');
 const path = require('path');

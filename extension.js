@@ -10,7 +10,7 @@
  * workspace is trusted (src/host/trust-gate.js).
  *
  *   src/host/chat-editor.js       a chat tab is the custom editor opencodeAgentPlus.chat of opencodeagentplus-session:/<session id>
- *   src/host/chat-group.js        the editor group a conversation opens in: where its chat tabs are, else the main area
+ *   src/host/chat-group.js        the editor group a conversation opens in
  *   src/host/session-manager.js   the conversations open in this window, one window each (src/host/locks.js)
  *   src/host/provider-config.js   the settings OpenCode starts with, the Bedrock API key
  *   src/host/models.js            the models OpenCode offers, and the picker

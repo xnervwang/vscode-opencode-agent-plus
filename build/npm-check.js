@@ -6,12 +6,10 @@
 /*
  * node build/npm-check.js [--prefix <folder>]
  *
- * Installs OpenCode the way the install hint tells users to, `npm install -g @opencode/cli`, into a prefix of its own
- * (a temporary one, removed afterwards, unless --prefix names one), with the version download.js pins. Then the
- * extension's own code finds it in that prefix alone, reads its version, starts `opencode acp`, waits for the answer
- * to initialize, runs one subcommand, and stops it. On Windows npm installs opencode.cmd, which Node does not start
- * without a shell, so this is where findOpenCode's reading of npm's launcher is tried for real. CI runs it on each
- * system.
+ * Installs OpenCode the way the extension's install hint tells users to, `npm install -g @opencode/cli`, at the version
+ * src/opencode/download.js pins, into a separate npm prefix. On Windows npm installs opencode.cmd, which Node does not
+ * start without a shell, so this checks that the extension's findOpenCode reads npm's launcher and starts the
+ * opencode.exe behind it. CI runs this script on Linux, macOS and Windows.
  */
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -54,12 +52,10 @@ async function fail(text) {
 }
 const watchdog = setTimeout(() => fail('Gave up after 15 minutes.'), 15 * 60 * 1000);
 
-/* A failed check: the message alone is printed. */
 function check(ok, text) {
   if (!ok) throw Object.assign(new Error(text), { check: true });
 }
 
-/* npm is npm.cmd on Windows, which needs a shell; there its JavaScript is run with this Node instead. */
 function npm() {
   if (process.platform !== 'win32') return ['npm'];
   const cli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
@@ -79,17 +75,17 @@ function npm() {
 
   oc = createOpenCode({
     root: process.env.OPENCODE_AGENT_PLUS_HOME,
-    /* Only this prefix: no installer folder of the machine's, no downloaded copy. */
+    /* The OpenCode npm installed is found before any in the fixed folders findOpenCode searches after PATH. */
     findOpenCode: (o) => server.findOpenCode({ ...o, env: { PATH: binDir }, home, downloaded: '' }),
     idleStopMs: 0,
     log: (line) => console.log(`  log: ${line}`),
   });
   const found = oc.detect();
   console.log(`findOpenCode: ${found.path}, version ${JSON.stringify(found.version)}`);
-  check(path.resolve(found.path).startsWith(path.resolve(prefix) + path.sep), 'findOpenCode did not pick the OpenCode npm installed.');
+  check(path.resolve(found.path).startsWith(path.resolve(prefix) + path.sep), 'findOpenCode did not return the OpenCode that npm installed.');
   if (process.platform === 'win32') {
     check(fs.existsSync(path.join(prefix, 'opencode.cmd')), `npm left no opencode.cmd in ${prefix}.`);
-    check(/\.exe$/i.test(found.path), 'On Windows findOpenCode should give the opencode.exe that opencode.cmd runs.');
+    check(/\.exe$/i.test(found.path), 'On Windows findOpenCode should return the opencode.exe that opencode.cmd runs.');
   }
   check(found.version && found.version.text === download.VERSION, `--version did not report ${download.VERSION}.`);
 
@@ -99,7 +95,7 @@ function npm() {
     + `capabilities ${Object.keys(info.capabilities || {}).join(', ')}`);
   const paths = await oc.dataPaths();
   console.log(`debug paths: ${Object.keys(paths).join(', ')}`);
-  check(!!paths.data, '`opencode debug paths` named no data folder.');
+  check(!!paths.data, '`opencode debug paths` printed no data folder.');
   await oc.dispose();
   oc = null;
   console.log('stopped');

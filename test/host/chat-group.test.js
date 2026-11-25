@@ -20,12 +20,12 @@ test('with no chat tab open, a conversation opens in the first group, not in the
   assert.equal(chatColumn(windowWith([1, []], [2, [], true]), isChat), 1);
 });
 
-test('a group holding only chat tabs comes first, the active one of them before the others', () => {
+test('a group holding only chat tabs comes first, the active one if there are several', () => {
   assert.equal(chatColumn(windowWith([1, [file, chat]], [2, [chat]], [3, [file], true]), isChat), 2);
   assert.equal(chatColumn(windowWith([1, [chat]], [2, [chat], true]), isChat), 2);
 });
 
-test('else a group holding any chat tab, the active one first', () => {
+test('then a group with a chat tab among other tabs', () => {
   assert.equal(chatColumn(windowWith([1, [file]], [2, [file, chat]], [3, [file], true]), isChat), 2);
   assert.equal(chatColumn(windowWith([1, [file, chat]], [2, [chat, file], true]), isChat), 2);
 });

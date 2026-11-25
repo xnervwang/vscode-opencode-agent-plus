@@ -9,11 +9,11 @@
  *   [--vsix <.vsix>] [--restricted | --download | --steward]
  * CI=true node test/vscode/run.js --out <dir> --agent-plus <.vsix> [--vsix <.vsix>] [--cache <folder>] [--restricted]
  *
- * Packs this extension (build/pack-vsix.js), or takes the package --vsix names, installs it and Agent Plus into a profile
- * of its own, starts that VS Code (under xvfb-run on Linux) and goes through the steps below, saving a screenshot of
- * each to <out>/shots with a look.json that
- * test/vscode/LOOK.md explains. `fake` (the default) puts test/vscode/fake-backend.js behind the chat; `opencode` uses
- * the real backend with the OpenCode at --opencode and the user's AWS profile `self`, for a run against a real model.
+ * Packs this extension (build/pack-vsix.js), or uses the .vsix given with --vsix, installs it and Agent Plus into a
+ * profile of its own, starts that VS Code (under xvfb-run on Linux) and goes through the steps below, saving a
+ * screenshot of each to <out>/shots with a look.json that test/vscode/LOOK.md explains. `fake` (the default) puts
+ * test/vscode/fake-backend.js behind the chat; `opencode` uses the real backend with the OpenCode at --opencode and
+ * the user's AWS profile `self`, for a run against a real model.
  * With OpenCode 2 the page's mode and effort pickers are switched and the next turns checked against what OpenCode
  * recorded, a subagent's session stays out of the list and the turn OpenCode starts after the subagent finishes shows in
  * the page, the model adds a row to the work plan with the plugin's tool and Agent Plus's Work plan view shows it,
@@ -40,9 +40,9 @@
  * setting, PATH without a folder holding one): the notification's button downloads OpenCode from GitHub.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
- * With CI=true and no --vscode, the VS Code of VSCODE_VERSION is downloaded with @vscode/test-electron (found the same
- * way) into --cache, by default a folder under RUNNER_TEMP or the system's temporary folder. The fake and the Restricted Mode runs
- * work on Linux, macOS and Windows; on the last two the window opens without xvfb-run.
+ * With CI=true and no --vscode, the version of VS Code in VSCODE_VERSION is downloaded with @vscode/test-electron
+ * (found the same way) into --cache, by default a folder under RUNNER_TEMP or the system's temporary folder. The fake
+ * and the Restricted Mode runs work on Linux, macOS and Windows; on the last two the window opens without xvfb-run.
  *
  * Under `node --test` this file does nothing: the default test patterns pick up every .js under test/.
  */
@@ -63,7 +63,7 @@ const LOCAL = has('--local');
 const EXE = flag('--vscode');
 const VSIX = flag('--vsix');
 const CACHE = flag('--cache');
-/* The VS Code a run without --vscode downloads: the one the local runs use. */
+/* The same VS Code as the local runs use. */
 const VSCODE_VERSION = '1.147.0';
 const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-agent-plus-ui-${Date.now()}`)));
 /* 1.4.0 or later: the plan bar needs Agent Plus's planSummary. Without --agent-plus, the newest package built in a
@@ -162,8 +162,8 @@ function writeSettings(user, extra) {
     'workbench.colorTheme': 'Default Dark Modern', 'chat.disableAIFeatures': true, 'git.enabled': false,
     'window.dialogStyle': 'custom', 'workbench.editor.wrapTabs': true, 'agentPlus.webviewRequestLimit': 'leave',
     'workbench.secondarySideBar.defaultVisibility': 'hidden',
-    /* Context menus drawn in the page, as Linux and Windows draw them already, so that a tab's menu can be read and
-       clicked on macOS too. */
+    /* Draws context menus in the page on macOS too, as on Linux and Windows, so that a tab's menu can be read and
+       clicked. */
     'window.menuStyle': 'custom',
     /* macOS runners give VS Code a 1024 by 677 window, where the chat page drops its outline column. Two steps of zoom
        out give the page about the 1440 by 900 it has on Linux. */
@@ -203,7 +203,7 @@ async function main() {
   const exe = EXE || await need('@vscode/test-electron').downloadAndUnzipVSCode({ version: VSCODE_VERSION,
     cachePath: path.resolve(CACHE || path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'opencode-agent-plus-vscode')) });
 
-  /* The real path: macOS's temporary folder is a link, and Windows's can be given in its short 8.3 form. */
+  /* Resolved, since macOS's temporary folder is a link and Windows's can come in its short 8.3 form. */
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'opencode-agent-plus-ui-')));
   const shots = path.join(OUT, 'shots');
   fs.mkdirSync(shots, { recursive: true });
@@ -606,7 +606,8 @@ async function main() {
         /* Answered from its diff's title bar rather than the page. */
         let fromTitle = false;
         if (asked) {
-          /* A notification (Agent Plus asks for a token mode on its first start) can sit over the card's buttons in a small window, as on macOS runners. */
+          /* Agent Plus asks for a token mode on its first start, and in a small window such as a macOS runner's that
+             notification can cover the card's buttons. */
           await call('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
           await chat.click('#log .permission:not(.settled) button.diff');
           const allow = await page.waitForSelector('.editor-actions [aria-label="Allow Once"]', { timeout: 15000 }).catch(() => null);
@@ -1216,7 +1217,7 @@ async function main() {
           check(!!secondId && !!delivered && delivered.outcome === 'submitted' && !!unread && !unread.active && !!apUnseen && apUnseen.unseen === true,
             'a reply in a tab not in front puts an envelope after its title, and Agent Plus hears it is unseen', { secondId, delivered, unread, apUnseen });
           await shot('15-unread-envelope', { features: ['unread envelope', 'tab state dot'],
-            expect: `Two chat tabs, each with the OpenCode mark of the activity bar icon and no dot (neither conversation is working or waiting): the one in front is a new, empty conversation; the other reads "${NEW_TITLE} 📩", the envelope after its title.`,
+            expect: `Two chat tabs, each with the activity bar's OpenCode mark as its icon and no dot (neither conversation is working or waiting): the one in front is a new, empty conversation; the other reads "${NEW_TITLE} 📩", the envelope after its title.`,
             part: '#workbench\\.parts\\.editor' });
           const all = (await ext('return api.test.source.listAllConversations();')) || [];
           let windowFile = null;
@@ -1587,7 +1588,7 @@ async function main() {
       expect: 'The same title bar in the light theme: the OpenCode mark is dark grey like the buttons beside it and readable on the light bar.',
       unchanged: 'The buttons and their order, apart from the colours of the theme.',
       part: '#workbench\\.parts\\.editor' });
-    check(await setTheme('Default Dark Modern', 'vs-dark'), 'the window switches back to the dark theme after the title bar shots');
+    check(await setTheme('Default Dark Modern', 'vs-dark'), 'the window switches back to the dark theme');
     if (mark) {
       await page.locator(markAt).first().click();
       const other = await until(() => call(`const t = vscode.window.tabGroups.activeTabGroup.activeTab;
@@ -1610,7 +1611,7 @@ async function main() {
     check(before8.groups === 2 && before8.active === 2, 'the window has a split to the right, and it is the active group', before8);
     await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
     const first8 = await until(async () => { const l = await layout(); return l.chat.length ? l : null; }, 30000);
-    check(!!first8 && first8.groups === 2 && first8.chat[0] === 1, 'a new conversation opens in the main editor area, not in the active split, and no split is added', first8);
+    check(!!first8 && first8.groups === 2 && first8.chat[0] === 1, 'a new conversation opens in the main editor area, and no split is added', first8);
     await call('await vscode.window.showTextDocument(global.__splitRight, { viewColumn: vscode.ViewColumn.Two, preview: false }); return true;');
     await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
     const chatsLeft = () => call(`return vscode.window.tabGroups.all.find((g) => g.viewColumn === 1).tabs.filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").length;`);
@@ -1619,7 +1620,7 @@ async function main() {
     check(second8 === 2 && after8.groups === 2, 'with the split in front again, the next conversation joins the first one in the main editor area', { second8, after8 });
     await page.mouse.move(800, 600);
     await shot('08-main-editor-area', { features: ['conversations open in the main editor area'],
-      expect: 'Two editor groups side by side. The left one, the main editor area, has two chat tabs, the one in front showing an empty conversation, and an untitled text tab; the right split has only an untitled text tab.',
+      expect: 'Two editor groups side by side. The left one is the main editor area, with an untitled text tab and two chat tabs; the chat tab in front shows an empty conversation. The right one has only an untitled text tab.',
       part: '#workbench\\.parts\\.editor' });
   } catch (e) {
     check(false, 'the window steps ran to their end', (e && e.stack) || String(e));

@@ -5,8 +5,8 @@
 'use strict';
 /*
  * run-hooks.py, with this machine's Python and the real shared scripts: one process answers for several of them, each
- * as it would answer started on its own. Python is looked for under the names the extension tries (python-runtime.js
- * PYTHONS: `py -3` first on Windows); skipped where none is Python 3.
+ * as it would answer started on its own. It looks for Python as the extension does (python-runtime.js PYTHONS: `py -3`
+ * first on Windows) and is skipped where none is Python 3.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -25,7 +25,7 @@ const python = PYTHONS.find(([cmd, ...pre]) => {
 }) || null;
 const py = (script, args, opts) => cp.spawnSync(python[0], [...python.slice(1), script, ...args], opts);
 /* tell-time-zone.py asks the C library for the time in the user's zone through TZ and time.tzset(), which Python has
-   only on Unix; on Windows it says nothing rather than a time it cannot check. */
+   only on Unix, so on Windows it says nothing. */
 const TELLS_ZONE = process.platform !== 'win32';
 
 function run(plans, names, payload, env = {}) {
@@ -72,7 +72,6 @@ test('the same answers as each script started alone', { skip: !python && 'no Pyt
   const payload = { hook_event_name: 'UserPromptSubmit', session_id: SID, turn_id: 'msg_1', prompt: 'hi', cwd: '/w' };
   const alone = py(path.join(HOOKS, 'tell-time-zone.py'), [plans], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, TZ: 'UTC' } });
   assert.equal(alone.status, 0, alone.stderr);
-  /* A hook with nothing to say prints nothing. */
   const said = alone.stdout.trim() ? JSON.parse(alone.stdout).hookSpecificOutput.additionalContext : '';
   assert.equal(!!said, TELLS_ZONE, said);
   fs.rmSync(path.join(plans, `${SID}.tz`), { force: true });

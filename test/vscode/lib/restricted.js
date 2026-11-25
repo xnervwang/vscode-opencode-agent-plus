@@ -23,7 +23,7 @@ const PROBE = 'ses_restrictedprobe000000001';
 /* Writes the folder's own settings and the program they name; returns the marker file, the program and those settings. */
 function prepareFolder(folder, root) {
   const marker = path.join(root, 'workspace-opencode-ran.txt');
-  /* On Windows a .cmd, the name an npm install of OpenCode has there, though not npm's launcher for an opencode.exe. */
+  /* On Windows an opencode.cmd, named like npm's launcher but running no opencode.exe. */
   const windows = process.platform === 'win32';
   const program = path.join(folder, 'tools', windows ? 'opencode.cmd' : 'opencode');
   fs.mkdirSync(path.dirname(program), { recursive: true });
@@ -39,8 +39,7 @@ function prepareFolder(folder, root) {
 /* The user settings of the run: Workspace Trust on, and no prompt at startup, so the folder opens in Restricted Mode. */
 const TRUST_SETTINGS = { 'security.workspace.trust.enabled': true, 'security.workspace.trust.startupPrompt': 'never' };
 
-/* Every process, as { pid, ppid, name, command }, on macOS from ps and on Windows from Win32_Process. Throws when the
-   table cannot be read, so that an empty one is never taken for "no process". */
+/* Throws when the process table cannot be read, so that an empty one is never taken for "no process". */
 function processTable() {
   if (process.platform === 'win32') {
     const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
@@ -56,7 +55,6 @@ function processTable() {
     .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), name: path.basename(m[3].split(' ')[0]), command: m[3] }));
 }
 
-/* A Windows or ps command line as words: the program without its quotes, then the rest split at spaces. */
 function words(command) {
   const m = /^(?:"([^"]*)"|(\S*))\s*([\s\S]*)$/.exec(command);
   return [m[1] === undefined ? m[2] : m[1], ...m[3].split(/\s+/).filter(Boolean)];
@@ -66,7 +64,7 @@ function words(command) {
  * The OpenCode processes this run's window started (and any run of the folder's program). On Linux, those whose
  * environment has the run's control folder, which window.js gives VS Code, and whose program is an opencode. macOS and
  * Windows do not show another process's environment: there, the descendants of the window's process `windowPid` whose
- * program is an opencode or whose command line names the folder's program, with `env` null.
+ * program is an opencode or whose command line names the folder's program.
  */
 function openCodeProcesses(control, program, windowPid) {
   if (process.platform !== 'linux') {
@@ -98,7 +96,7 @@ async function run(t) {
   const { page, call, ext, check, shot, until, sleep, frameWith, real, prepared } = t;
   const userPath = real ? t.opencode : '';
   const procs = () => openCodeProcesses(t.control, prepared.program, t.windowPid);
-  if (process.platform !== 'linux') console.log(`  note  ${process.platform} does not show another process's environment: OpenCode processes are looked for among the window's descendants only`);
+  if (process.platform !== 'linux') console.log(`  note  ${process.platform} does not show another process's environment: the checks look for OpenCode processes only among the window's descendants`);
   const ran = () => fs.existsSync(prepared.marker);
   const textOf = (sel) => page.evaluate((s) => { const e = document.querySelector(s); return e ? e.textContent : ''; }, sel);
   const sidebar = '#workbench\\.parts\\.sidebar';
@@ -160,7 +158,7 @@ async function run(t) {
   await sleep(5000);
   const before = procs();
   check(before.length === 0, 'no OpenCode process has started', before);
-  if (process.platform === 'win32') console.log("  note  the folder's program is a .cmd that is not npm's launcher for an opencode.exe, which the extension refuses to start in any mode, so on Windows the check below holds even if the extension read the folder's path; the settings and process checks are the ones that tell");
+  if (process.platform === 'win32') console.log("  note  on Windows the folder's program is a .cmd that is not npm's launcher for an opencode.exe, which the extension never starts, so the next check passes even if the extension read the folder's path");
   check(!ran(), "the folder's opencode program was never run", ran() ? fs.readFileSync(prepared.marker, 'utf8') : '');
   const written = fs.existsSync(t.home) ? fs.readdirSync(t.home) : [];
   check(written.length === 0, "nothing was written to the extension's folder (no plugin, plans, locks or window state)", written);

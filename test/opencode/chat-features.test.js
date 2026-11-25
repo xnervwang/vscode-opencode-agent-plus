@@ -20,7 +20,7 @@ const { fakeStarter, loadScript } = require('./fake-agent');
 
 const V2 = { major: 2, minor: 4, patch: 1, text: '2.4.1' };
 const CWD = '/work/project';
-/* An absolute path on this system: on Windows the rooted paths below take the current drive. */
+/* On Windows path.resolve puts the current drive in front of the rooted paths below. */
 const abs = (p) => path.resolve(p);
 const fileUrl = (p) => pathToFileURL(abs(p)).href;
 const GROK = 'amazon-bedrock/us.xai.grok-4.7';
@@ -146,7 +146,7 @@ test('a selection goes as text when OpenCode takes no embedded context; a file l
 });
 
 test('2.x: a replayed message keeps its image and file, and the selection OpenCode wrote into its text becomes a selection attachment again', async (t) => {
-  /* The recording was made on Linux. On Windows its file URL takes a drive, as OpenCode there writes it. */
+  /* The recording was made on Linux; on Windows OpenCode puts a drive in file URLs. */
   const project = fileUrl('/work/project');
   const script = loadScript('v2-attach-load.jsonl').map((l) => JSON.parse(JSON.stringify(l).split('file:///work/project/').join(`${project}/`)));
   const { oc } = setup(t, script);

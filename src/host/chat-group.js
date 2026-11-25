@@ -4,9 +4,8 @@
 
 'use strict';
 /*
- * The editor group a conversation opens in: a group holding only chat tabs (the active one first), else a group holding
- * any chat tab, else the first group, which is the main editor area. It never opens a new split, and the active group
- * alone does not decide, since that is often a split to the right.
+ * The editor group a conversation opens in: one that already holds chat tabs, else the first group, the main editor
+ * area. The active group alone does not decide, since that is often a split to the right, and no new split is opened.
  */
 function chatColumn(vscode, isChatTab) {
   const groups = vscode.window.tabGroups.all.map((g) => {

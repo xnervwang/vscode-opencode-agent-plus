@@ -20,8 +20,7 @@ const MODELS = [
   { id: 'fake/fake-large', invokeId: 'fake-large', providerId: 'fake', name: 'Fake Large', vendor: 'Test', contextWindow: 200000, maxOutputTokens: 8192, known: false },
 ];
 
-/* Windows refuses a read or a rename for a moment while another process, such as a virus scanner, has the file open;
-   there the call is tried again for up to a second. Anywhere else it runs once. */
+/* Windows refuses a read or a rename for a moment while another process, such as a virus scanner, has the file open. */
 const BUSY = new Set(['EBUSY', 'EPERM', 'EACCES']);
 function retried(fn) {
   for (let i = 0; ; i++) {

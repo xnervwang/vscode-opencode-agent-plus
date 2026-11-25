@@ -80,7 +80,7 @@ function isExecutable(p, platform) {
 }
 
 /* The line of npm's .cmd launcher (cmd-shim) that runs the package's program, `"%dp0%\<path from the launcher's
-   folder>" %*`, read the way npm's read-cmd-shim reads it. */
+   folder>" %*`, as npm's read-cmd-shim finds it. */
 const CMD_SHIM_TARGET = /"%(?:~dp0|dp0%)\\([^"]+?)"\s+%[*]/;
 
 function isScript(p, platform) {
@@ -88,10 +88,10 @@ function isScript(p, platform) {
 }
 
 /*
- * The opencode.exe that npm's opencode.cmd runs, or '' when `file` is not such a launcher. Node starts a .cmd or .bat
- * only through cmd.exe (CVE-2024-27980: EINVAL without the shell option), and the arguments this extension passes
- * carry the user's own text, such as a conversation's title in `session.update`; so a script is never started, the
- * program behind npm's launcher is. Both npm packages (@opencode/cli, opencode-ai) name their binary bin/opencode.exe.
+ * The opencode.exe that npm's opencode.cmd runs. Node starts a .cmd or .bat only through cmd.exe (CVE-2024-27980:
+ * EINVAL without the shell option), and the arguments this extension passes carry the user's own text, such as a
+ * conversation's title in `session.update`; so a script is never started, the program behind npm's launcher is. Both
+ * npm packages (@opencode/cli, opencode-ai) name their binary bin/opencode.exe.
  */
 function shimTarget(file, readFile = fs.readFileSync) {
   let text;
@@ -122,7 +122,7 @@ function readVersion(bin) {
  * only then the copy the extension downloaded (`downloaded`, download.js executable()), so that the user's own
  * installation always wins. A configured path that is not there is an error, not a reason to use the download.
  * On Windows a .cmd or .bat found or configured stands for the opencode.exe it runs (shimTarget); one that runs no
- * opencode.exe is passed over, or is an error when configured.
+ * opencode.exe is skipped, or is an error when configured.
  * Returns { path, version } (version may be null when `--version` printed nothing usable) or throws an OpenCodeError
  * whose message tells the user what to do.
  */
@@ -133,7 +133,6 @@ function findOpenCode(opts = {}) {
   const home = opts.home || os.homedir();
   const executable = opts.isExecutable || ((p) => isExecutable(p, platform));
   const version = opts.readVersion || readVersion;
-  /* The program to run for `p`, or '' for a script that runs none. */
   const program = (p) => {
     if (!isScript(p, platform)) return p;
     const exe = shimTarget(p);
@@ -157,7 +156,7 @@ function findOpenCode(opts = {}) {
   const downloaded = opts.downloaded !== undefined ? opts.downloaded : download.executable(undefined, platform);
   if (downloaded && executable(downloaded)) return { path: downloaded, version: version(downloaded) };
   const more = download.available(platform, arch) ? ` ${DOWNLOAD_HINT}` : '';
-  const passed = script ? ` ${script} was passed over: it is a script that does not start an opencode.exe, and the path of opencode.exe can be set in the settings.` : '';
+  const passed = script ? ` ${script} was skipped: it is a script that does not start an opencode.exe.` : '';
   throw new OpenCodeError('notFound', `OpenCode was not found.${passed} ${INSTALL_HINT}${more}`);
 }
 

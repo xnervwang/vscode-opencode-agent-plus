@@ -23,7 +23,7 @@ process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL = '1';
 const { createStewards, handoffText, STALE_MS, ORPHAN_MS } = require('../../src/host/steward');
 const workplan = require('../../src/workplan');
 /* Windows keeps no owner, group and other bits: the mode a file is written with only sets its read-only flag, so it
-   reads back 0o666. The folders these files live in are the user's own there. */
+   reads back 0o666. The folders these files live in belong to the user. */
 const POSIX_MODES = process.platform !== 'win32';
 
 const A = 'ses_stewardhandoff0000000a';

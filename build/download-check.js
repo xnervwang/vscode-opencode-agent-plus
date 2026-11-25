@@ -6,7 +6,8 @@
 /*
  * node build/download-check.js
  *
- * Downloads OpenCode into a temporary folder. CI runs this on each platform in the archive table.
+ * Downloads OpenCode into a temporary folder. CI runs this on six platforms of the archive table; the two musl builds are
+ * not among them.
  */
 const childProcess = require('child_process');
 const fs = require('fs');

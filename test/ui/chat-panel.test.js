@@ -46,7 +46,7 @@ test('sets the webview up with scripts from the extension only; inline styles on
     assert.equal(options.enableScripts, true);
     assert.equal(options.retainContextWhenHidden, undefined);
     const roots = options.localResourceRoots.map((u) => u.path);
-    /* Uri.joinPath adds to a URI's path with '/' on every system. */
+    /* Uri.joinPath uses '/' on every system. */
     assert.deepEqual(roots, [path.posix.join(ROOT, 'media'), path.posix.join(ROOT, 'node_modules/markdown-it/dist/browser')]);
     assert.match(html, /Content-Security-Policy" content="default-src 'none'; img-src https:\/\/fake\.webview data:; style-src https:\/\/fake\.webview 'unsafe-inline'; font-src https:\/\/fake\.webview; script-src https:\/\/fake\.webview;"/);
     assert.match(html, /media\/plan-bar\.js"><\/script>\n<script src="[^"]*media\/chat\.js/, 'the fragment loads before the page script');

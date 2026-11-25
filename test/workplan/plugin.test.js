@@ -611,7 +611,7 @@ test('the steward line after the plan and the steward_handoff tool come with a s
 });
 
 /* Windows keeps no owner, group and other bits: the mode a file is written with only sets its read-only flag, so it
-   reads back 0o666. The folders these files live in are the user's own there. */
+   reads back 0o666. The folders these files live in belong to the user. */
 const POSIX_MODES = process.platform !== 'win32';
 
 /* Stands in for the extension: takes the next request in the plans folder and writes `result` as its answer, or no

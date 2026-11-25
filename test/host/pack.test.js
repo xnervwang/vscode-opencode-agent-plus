@@ -11,11 +11,11 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..', '..');
-/* pack-vsix.js packs with the zip command and these tests read the result with unzip. The .vsix is built on Linux (the
-   vscode and release workflows); Windows runners have neither command. */
+/* pack-vsix.js runs zip, and these tests read its .vsix with unzip. The .vsix is built on Linux (the vscode and
+   release workflows); Windows runners have neither command. */
 const runs = (cmd) => !cp.spawnSync(cmd, ['-v'], { stdio: 'ignore' }).error;
 const NO_PACK = !fs.existsSync(path.join(ROOT, 'node_modules')) ? 'no node_modules'
-  : !(runs('zip') && runs('unzip')) ? 'no zip and unzip commands to pack and read a .vsix with' : false;
+  : !(runs('zip') && runs('unzip')) ? 'no zip and unzip commands' : false;
 
 test('build/pack-vsix.js packs the extension, its run-time packages and nothing else', { skip: NO_PACK }, () => {
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'na-pack-')), 'x.vsix');
