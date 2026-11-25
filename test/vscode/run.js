@@ -1622,6 +1622,117 @@ async function main() {
     await shot('08-main-editor-area', { features: ['conversations open in the main editor area'],
       expect: 'Two editor groups side by side. The left one is the main editor area, with an untitled text tab and two chat tabs; the chat tab in front shows an empty conversation. The right one has only an untitled text tab.',
       part: '#workbench\\.parts\\.editor' });
+
+    // 9. No frame shows a black disc while chat tabs are switched or a new one opens.
+    const chatUris = () => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map((t) => t.input.uri.toString());`);
+    const front = (uri) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === arg);
+      await vscode.commands.executeCommand("vscode.openWith", t.input.uri, "opencodeAgentPlus.chat", { viewColumn: t.group.viewColumn, preview: false });
+      return true;`, uri);
+    const editorBox = await page.evaluate(() => { const r = document.querySelector('#workbench\\.parts\\.editor').getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height, page: window.innerWidth }; });
+    const cdp = await page.context().newCDPSession(page);
+    /* Records what the window draws from just before `action` until `ms` after it. */
+    const record = async (action, ms = 2000) => {
+      const frames = [];
+      const onFrame = (f) => { frames.push({ data: f.data, at: f.metadata.timestamp }); cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {}); };
+      cdp.on('Page.screencastFrame', onFrame);
+      await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1 });
+      await sleep(500);
+      const from = frames.length;
+      await action();
+      await sleep(ms);
+      await cdp.send('Page.stopScreencast').catch(() => {});
+      cdp.off('Page.screencastFrame', onFrame);
+      return frames.slice(from);
+    };
+    /* For each frame, the black or nearly black pixels in the editor area, whose dark theme background is #1f1f1f. Also
+       the pixels in that area's lowest quarter that differ from the background: the page's input box is drawn there. */
+    const paintOf = (frames) => page.evaluate(async ({ frames, box }) => {
+      const counts = [];
+      for (const { data } of frames) {
+        const img = new Image();
+        img.src = `data:image/png;base64,${data}`;
+        await img.decode();
+        const k = img.naturalWidth / box.page;
+        const c = document.createElement('canvas');
+        c.width = Math.round(box.width * k); c.height = Math.round(box.height * k);
+        const g = c.getContext('2d');
+        g.drawImage(img, box.x * k, box.y * k, c.width, c.height, 0, 0, c.width, c.height);
+        const px = g.getImageData(0, 0, c.width, c.height).data;
+        let black = 0, drawn = 0;
+        const low = Math.floor(c.height * 0.75) * c.width * 4;
+        for (let i = 0; i < px.length; i += 4) {
+          if (px[i] <= 10 && px[i + 1] <= 10 && px[i + 2] <= 10) black++;
+          if (i >= low && (Math.abs(px[i] - 31) > 12 || Math.abs(px[i + 1] - 31) > 12 || Math.abs(px[i + 2] - 31) > 12)) drawn++;
+        }
+        counts.push({ black: Math.round(black / (k * k)), drawn: Math.round(drawn / (k * k)) });
+      }
+      return counts;
+    }, { frames, box: editorBox });
+    /* A frame as a screenshot in look.json, like shot() makes. */
+    const keepFrame = (name, data, entry) => {
+      const full = path.join(shots, `${name}-full.png`);
+      fs.writeFileSync(full, Buffer.from(data, 'base64'));
+      const head = fs.readFileSync(full);
+      steps.push({ name, features: entry.features, expect: entry.expect, unchanged: null, image: path.basename(full), full: path.basename(full),
+        previous: previous ? path.basename(previous) : null, width: head.readUInt32BE(16), height: head.readUInt32BE(20), log: [] });
+      previous = full;
+      fs.writeFileSync(path.join(shots, 'look.json'), JSON.stringify(steps, null, 2));
+    };
+    /* The unstyled ring fills the page's width, some 200,000 black pixels here. */
+    const DISC = 1500;
+    const uris9 = await chatUris();
+    check(uris9.length === 2, 'two chat tabs are open', uris9);
+    if (uris9.length === 2) {
+      await front(uris9[1]);
+      let chat9 = await frameWith(page, '#input', 20000);
+      check(!!chat9 && await chat9.evaluate(() => { window.__tabSwitchMark = 9; return true; }), 'a mark is set on the chat page in front');
+      const bare = chat9 ? await chat9.evaluate(() => {
+        const sheets = [...document.styleSheets];
+        for (const s of sheets) s.disabled = true;
+        const size = (el) => { const r = el.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; };
+        const ring = document.querySelector('#ring svg');
+        const out = { ring: ring ? size(ring) : 'none', fills: ring ? [...ring.querySelectorAll('circle')].map((c) => getComputedStyle(c).fill) : [],
+          large: [...document.querySelectorAll('svg')].map(size).filter((s) => s.split('x').some((n) => Number(n) > 24)) };
+        for (const s of sheets) s.disabled = false;
+        return out;
+      }) : null;
+      check(!!bare && bare.ring === '16x16' && bare.fills.length === 2 && bare.fills.every((f) => f === 'none') && !bare.large.length,
+        'with the stylesheet off, the ring stays small and unfilled, and no svg is over 24 pixels', bare);
+      await front(uris9[0]);
+      await sleep(1000);
+      const back = await record(() => front(uris9[1]));
+      const backPaint = await paintOf(back);
+      const backBlack = backPaint.map((x) => x.black);
+      check(back.length > 0 && Math.max(...backBlack) < DISC, 'while switching back to a chat tab, no frame shows a black disc in the editor area', { frames: back.length, black: backBlack });
+      const shownAt = backPaint.findIndex((x) => x.drawn > 500);
+      console.log(`  note  switching back: ${back.length} frames; the page shows in frame ${shownAt + 1}${shownAt >= 0 ? `, ${Math.round((back[shownAt].at - back[0].at) * 1000)} ms after the first` : ''}`);
+      chat9 = await frameWith(page, '#input', 20000);
+      const kept = chat9 ? await chat9.evaluate(() => window.__tabSwitchMark === 9) : false;
+      check(kept, 'switching back shows the same page, mark and all');
+      if (back.length) keepFrame('09-tab-switch-first-frame', back[0].data, { features: ['switching chat tabs'],
+        expect: 'The first frame after switching back to an empty conversation: its tab is in front, and the chat area may still be the plain editor background. No black disc anywhere.' });
+      if (shownAt >= 0) keepFrame('09b-tab-switch-page-shown', back[shownAt].data, { features: ['switching chat tabs'],
+        expect: 'The first frame that shows the conversation\'s page: model picker and small ring at the top, input box at the bottom. No unstyled controls.' });
+      const hiddenText = 'Written while this tab was hidden.';
+      await front(uris9[0]);
+      await sleep(800);
+      const hiddenId = uris9[1].replace(/^opencodeagentplus-session:\//, '');
+      const activity = async () => (((await ext('return api.test.conversations();')) || []).find((x) => x.sessionId === hiddenId) || {}).activity;
+      await ext('await api.test.send(arg.id, arg.text); return true;', { id: hiddenId, text: `Say: ${hiddenText}` });
+      await until(async () => ((await activity()) !== 'stopped' ? true : null), 10000);
+      const endedHidden = await until(async () => ((await activity()) === 'stopped' ? true : null), 120000);
+      check(!!endedHidden, 'the turn in the hidden tab ends before the tab is shown again');
+      await front(uris9[1]);
+      chat9 = await frameWith(page, '#input', 20000);
+      /* Once in the user message and once in the reply. */
+      const late = chat9 ? await until(() => chat9.evaluate((t) => (document.querySelector('#log').textContent.split(t).length - 1 >= 2) || null, hiddenText), 10000) : null;
+      check(!!late, 'the hidden tab\'s reply shows when the tab is back in front');
+      const opened = await record(() => call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");'), 3000);
+      const openedBlack = (await paintOf(opened)).map((x) => x.black);
+      check(opened.length > 0 && Math.max(...openedBlack) < DISC, 'a new conversation opens without a black disc in any frame', { frames: opened.length, black: openedBlack });
+    }
+    await cdp.detach().catch(() => {});
   } catch (e) {
     check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
     try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }

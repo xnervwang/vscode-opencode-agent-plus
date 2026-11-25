@@ -67,7 +67,7 @@ function createTrustGate({ vscode, viewType, viewId, commands, log = () => {} })
       return undefined;
     },
   };
-  subs.push(vscode.window.registerCustomEditorProvider(viewType, provider, { supportsMultipleEditorsPerDocument: false }));
+  subs.push(vscode.window.registerCustomEditorProvider(viewType, provider, { supportsMultipleEditorsPerDocument: false, webviewOptions: { retainContextWhenHidden: true } }));
 
   const trusted = () => vscode.workspace.isTrusted !== false;
   const tell = () => {

@@ -36,6 +36,7 @@ test('activate registers, and starts nothing', async () => {
   }
   assert.ok(control.state.editors['opencodeAgentPlus.chat'], 'the chat editor is registered');
   assert.strictEqual(control.state.editors['opencodeAgentPlus.chat'].opts.supportsMultipleEditorsPerDocument, false);
+  assert.strictEqual(control.state.editors['opencodeAgentPlus.chat'].opts.webviewOptions.retainContextWhenHidden, true, 'a hidden chat tab keeps its page');
   assert.ok(control.state.trees['opencodeAgentPlus.sessions'], 'the Conversations view is created');
   assert.strictEqual(loaded('fake-backend.js'), false, 'the backend is not loaded');
   assert.strictEqual(loaded('@aws-sdk'), false, 'the AWS SDK is not loaded');

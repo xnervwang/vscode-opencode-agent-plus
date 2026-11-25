@@ -8,9 +8,8 @@
  * or a serializer gives it). This class sets the panel's options and HTML, builds the view model (src/ui/view-model.js)
  * from the conversation's events, and answers the page's messages. The caller creates, titles and restores the panel.
  *
- * The panel does not keep its page while hidden; the page asks for the whole view again when it loads ('ready'), and
- * updates are held back while it is hidden. Between loads only the items that changed are posted, at most once per
- * frame.
+ * VS Code keeps a hidden tab's page (retainContextWhenHidden, in src/host/trust-gate.js). Each time the page loads it
+ * asks for the whole view ('ready'); after that, only the items that changed are posted, at most once per frame.
  *
  * From the conversation, options() (mode, effort), commands() and attachments() go to the page as 'options',
  * 'commands' and 'caps', and again on each `options` or `commands` event.
@@ -189,7 +188,7 @@ class ChatPanel {
       subscribe(this.conversation, (ev) => this.dispatch(ev)),
       toOff(webview.onDidReceiveMessage((msg) => this.onMessage(msg))),
       toOff(this.panel.onDidChangeViewState(() => {
-        if (!this.panel.visible) this.ready = false;
+        if (this.panel.visible) this.schedule();
       })),
       toOff(this.panel.onDidDispose(() => this.dispose())),
     ];
@@ -205,6 +204,8 @@ class ChatPanel {
       ? `<script src="${webview.asWebviewUri(this.vscode.Uri.joinPath(mdDir, 'markdown-it.umd.min.js'))}"></script>`
       : '';
     const src = webview.cspSource;
+    /* The ring's size and fill are on its elements too: without them, a page drawn before chat.css applies shows the
+       ring as a black disc as wide as the page. */
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -220,7 +221,7 @@ class ChatPanel {
   <select id="model" title="Model"><option>Loading models…</option></select>
   <select id="mode" class="option" hidden></select>
   <select id="effort" class="option" hidden></select>
-  <span id="ring" class="ring"><svg viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6"></circle><circle class="fill" cx="8" cy="8" r="6"></circle></svg></span>
+  <span id="ring" class="ring"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6" fill="none"></circle><circle class="fill" cx="8" cy="8" r="6" fill="none"></circle></svg></span>
   <button id="subBtn" class="toggle" type="button" aria-pressed="false" hidden>Subagents</button>
   <button id="navBtn" class="toggle" type="button" aria-pressed="false" hidden>Outline</button>
   <button id="infoBtn" class="icon" type="button" title="About this conversation" hidden>i</button>
@@ -280,7 +281,7 @@ ${md}
   }
 
   schedule() {
-    if (!this.ready || this.timer || this.disposed) return;
+    if (!this.ready || !this.panel.visible || this.timer || this.disposed) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       this.flush();
@@ -288,7 +289,7 @@ ${md}
   }
 
   flush() {
-    if (!this.ready || this.disposed) return;
+    if (!this.ready || !this.panel.visible || this.disposed) return;
     const items = vm.changedItems(this.posted, this.state);
     this.posted = this.state;
     this.post({ type: 'update', items, head: vm.head(this.state) });

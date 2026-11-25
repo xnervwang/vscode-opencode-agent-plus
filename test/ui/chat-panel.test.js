@@ -163,7 +163,7 @@ test('a failed model list shows its error and can be retried', async () => {
   chat.dispose();
 });
 
-test('nothing is posted while hidden; showing again redraws the whole view', async () => {
+test('a hidden tab gets nothing until it shows, then what changed; a page that loads gets the whole view', async () => {
   const { panel, conversation, chat } = setup({ turns: [[{ type: 'text', delta: 'hello' }]] });
   panel.fromPage({ type: 'ready' });
   await settle();
@@ -174,11 +174,27 @@ test('nothing is posted while hidden; showing again redraws the whole view', asy
   await settle();
   assert.deepEqual(panel.posted, []);
   panel.show();
+  await settle();
+  assert.equal(panel.posted.some((m) => m.type === 'reset'), false, 'the page is not sent the whole view again');
+  const shown = panel.posted.filter((m) => m.type === 'update').flatMap((m) => m.items.map((i) => i.kind));
+  assert.deepEqual(shown, ['user', 'text', 'figures']);
+  panel.posted.length = 0;
   panel.fromPage({ type: 'ready' });
   await settle();
   const reset = panel.posted.find((m) => m.type === 'reset');
   assert.deepEqual(reset.items.map((i) => i.kind), ['user', 'text', 'figures']);
   chat.dispose();
+});
+
+test('the ring is 16 by 16 with unfilled circles before chat.css applies', () => {
+  const { panel, chat } = setup();
+  try {
+    const ring = /<span id="ring"[^>]*>([\s\S]*?)<\/span>/.exec(panel.webview.html)[1];
+    assert.match(ring, /<svg [^>]*width="16" height="16"/);
+    const circles = ring.match(/<circle [^>]*>/g);
+    assert.equal(circles.length, 2);
+    for (const c of circles) assert.match(c, /fill="none"/);
+  } finally { chat.dispose(); }
 });
 
 test('history loads into the first view; disposing releases the diff provider and the listener', async () => {

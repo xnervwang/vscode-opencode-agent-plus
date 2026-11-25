@@ -104,11 +104,18 @@ async function open({ exe, profile, env, playwright, log, size = '1600x1000', tr
   return { browser, page, call, reload, hostUp, close, proc };
 }
 
-/* Finds, across the window's frames, the webview frame whose page has `selector`. */
+/* Finds the webview frame on screen whose page has `selector`. A hidden tab's page stays loaded, so the first frame
+   with `selector` may be one the user cannot see. */
 async function frameWith(page, selector, ms = 30000) {
+  const shown = async (f) => {
+    let top = f;
+    while (top.parentFrame() && top.parentFrame().parentFrame()) top = top.parentFrame();
+    const el = top.parentFrame() ? await top.frameElement() : null;
+    return !el || await el.isVisible();
+  };
   return until(async () => {
     for (const f of page.frames()) {
-      try { if (await f.$(selector)) return f; } catch (_) { /* detached */ }
+      try { if (await f.$(selector) && await shown(f)) return f; } catch (_) { /* detached */ }
     }
     return null;
   }, ms, 300);
