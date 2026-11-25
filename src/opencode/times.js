@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * Puts times on a replayed conversation, and each turn's usage. ACP's session/load carries neither, so a page drawn from
+ * Adds times and each turn's usage to a replayed conversation. ACP's session/load carries neither, so a page drawn from
  * it would date every message at the moment it was opened and leave the context and cost out of every turn's figures;
  * OpenCode's export (`opencode session export <id>` on 2.x, `opencode export <id>` on 1.x) has both. It does no I/O:
  * the caller passes the export in as parsed JSON.
@@ -21,7 +21,7 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
 /* A replayed chunk's messageId without the `:<kind>:<n>` that 2.x appends to the message's own id. */
 const baseId = (mid) => (typeof mid === 'string' ? mid.split(':')[0] : '');
 
-/* The tokens a message used as OpenCode reports them live: the sum it sends as usage_update's `used`. */
+/* The tokens a message used, counted as OpenCode reports them live (the sum it sends as usage_update's `used`). */
 function usedOf(tokens) {
   if (!tokens || typeof tokens !== 'object') return 0;
   const cache = tokens.cache && typeof tokens.cache === 'object' ? tokens.cache : {};
@@ -134,10 +134,11 @@ function fillTimes(events, metas, lookup) {
 }
 
 /*
- * `events` and `metas` (as for fillTimes) with a usage event put before each turn's turnEnd, from the assistant messages
- * of that turn in `lookup`: those its text and reasoning name, and those after its user message that no other turn
- * names. The cost is theirs added up, the context used that of the last of them, as OpenCode reports a live turn.
- * A turn with none of them is left as it was. Returns { events, metas }, new arrays.
+ * `events` and `metas` (as for fillTimes) with a usage event put before each turn's turnEnd, from the assistant
+ * messages of that turn in `lookup`: those its text and reasoning chunks refer to, and those after its user message
+ * that no other turn refers to. The turn's cost is the sum of their costs and its context use that of the last one, as
+ * OpenCode reports a live turn.
+ * Returns new { events, metas } arrays and leaves a turn with none of them unchanged.
  */
 function fillUsage(events, metas, lookup) {
   const list = Array.isArray(events) ? events : [];

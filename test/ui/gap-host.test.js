@@ -5,8 +5,8 @@
 'use strict';
 /*
  * The chat page's side of the message box and the editor: the helpers in media/composer.js (references in the text,
- * Enter and Ctrl+Enter, a draft after the text, the permission modes, what goes along from the editor, the background
- * pill) and what src/ui/chat-panel.js sends and takes for them.
+ * Enter and Ctrl+Enter, a draft after the text, the permission modes, what goes with a message from the editor, the background
+ * pill) and the messages src/ui/chat-panel.js exchanges with the page for them.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -51,7 +51,7 @@ test('references in the text: a file as @<rel>, lines as @<rel>#L…, each once 
   assert.deepEqual(C.filesInText('picked with @: @src/sum.js', [{ path: '/ws/src/sum.js', rel: 'src/sum.js', name: 'sum.js' }]).length, 1, 'one picked with @ has no token');
 });
 
-test('references go in at the caret, set off by spaces; a draft goes after what the box holds', () => {
+test('references go in at the caret, set off by spaces; a draft is appended after the text already in the box', () => {
   assert.deepEqual(C.insertRefs('see', 3, [{ token: '@a.js' }]), { text: 'see @a.js ', caret: 10 });
   assert.deepEqual(C.insertRefs('see  now', 4, [{ token: '@a.js' }, { token: '@b.js#L2' }]), { text: 'see @a.js @b.js#L2 now', caret: 18 }, 'a space after the caret is not doubled');
   assert.deepEqual(C.insertRefs('', undefined, [{ token: '@a.js' }]), { text: '@a.js ', caret: 6 });
@@ -60,7 +60,7 @@ test('references go in at the caret, set off by spaces; a draft goes after what 
   assert.equal(C.appendDraft('keep', ''), 'keep');
 });
 
-test('Enter sends; with Ctrl+Enter to send, Enter makes a new line and Ctrl or Cmd with Enter sends', () => {
+test('Enter sends; with useCtrlEnterToSend on, Enter makes a new line and Ctrl+Enter or Cmd+Enter sends', () => {
   assert.equal(C.enterAction({ key: 'Enter' }), 'send');
   assert.equal(C.enterAction({ key: 'Enter', shiftKey: true }), null);
   assert.equal(C.enterAction({ key: 'Enter', composing: true }), null, 'an IME choosing a word');
@@ -76,7 +76,7 @@ test('Enter sends; with Ctrl+Enter to send, Enter makes a new line and Ctrl or C
 test('the permission modes: build twice (asking, and editing automatically), then plan and the others', () => {
   const mode = { id: 'mode', value: 'build', values: [{ value: 'build', name: 'Build' }, { value: 'plan', name: 'Plan', description: 'Plans only' }, { value: 'review', name: 'Review' }] };
   const r = C.permissionModes(mode, false);
-  /* OpenCode's own values stay the options' values, so picking 'build' or 'plan' does what it did before. */
+  /* The entries keep OpenCode's own values, so picking 'build' or 'plan' does what it did before. */
   assert.deepEqual(r.entries.map((e) => [e.value, e.name]), [['build', 'Ask before edits'], ['build:auto', 'Edit automatically'], ['plan', 'Plan'], ['review', 'Review']]);
   assert.equal(r.value, 'build');
   assert.equal(C.permissionModes(mode, true).value, 'build:auto');
@@ -93,7 +93,8 @@ test('what goes along from the editor: the selection, else the open file, unless
   assert.equal(C.autoContext(ctx, all, new Set(['/w/a.js:2-3'])), null, 'removed for this message');
   assert.equal(C.autoContext(ctx, all, new Set(), new Set(['/w/a.js:2-3'])), null, 'the same lines were added with the button');
   assert.equal(C.autoContext({}, all), null);
-  /* The pill shows it all the same: lit while it goes, plain when it was removed, added or is only offered. */
+  /* The pill shows the item either way: lit while it goes with the message, plain once removed or added, or when it is
+     only offered. */
   assert.deepEqual(C.contextPill(ctx, all), { item: { kind: 'selection', ...ctx.selection }, goes: true });
   assert.deepEqual(C.contextPill(ctx, all, new Set(['/w/a.js:2-3'])), { item: { kind: 'selection', ...ctx.selection }, goes: false });
   assert.deepEqual(C.contextPill(ctx, all, new Set(), new Set(['/w/a.js:2-3'])), { item: { kind: 'selection', ...ctx.selection }, goes: false, pinned: true });
@@ -111,7 +112,7 @@ test('the background pill counts detached commands, and only OpenCode\'s free mo
   assert.equal(C.onlyFreeModels([]), false);
 });
 
-test('the panel tells the page the composer settings, what the editor offers, and the permission mode; settingsChanged() again', async () => {
+test('the panel sends the page the composer settings, what the editor offers and the permission mode, and sends them again on settingsChanged()', async () => {
   const conv = conversation();
   let settings = { ctrlEnter: false, attachFile: true, attachSelection: true };
   let auto = false;
@@ -128,7 +129,7 @@ test('the panel tells the page the composer settings, what the editor offers, an
   chat.dispose();
 });
 
-test('a message takes along what the page showed from the editor, and the lines its references name', async () => {
+test('a message includes what the page showed from the editor and the lines its references name', async () => {
   const conv = conversation();
   const ctx = { selection: { path: '/w/a.js', name: 'a.js', label: 'a.js:2', key: '/w/a.js:2-2', startLine: 2, endLine: 2 }, file: { path: '/w/b.js', name: 'b.js', label: 'b.js', key: '/w/b.js' } };
   const current = { path: '/w/a.js', name: 'a.js', startLine: 2, endLine: 2, text: 'line two', label: 'a.js:2' };
@@ -145,7 +146,7 @@ test('a message takes along what the page showed from the editor, and the lines 
   assert.deepEqual(conv.sent[1], ['two', { files: [{ path: '/w/b.js', name: 'b.js' }] }]);
   assert.deepEqual(conv.sent[2], ['three'], 'the editor moved on: what the page showed is not there any more');
   assert.deepEqual(conv.sent[3], ['four', { files: [{ path: '/w/c.js', name: 'c.js', text: 'lines 3-5', startLine: 3, endLine: 5 }, { path: '/w/gone.js', name: 'gone.js' }] }],
-    'lines that cannot be read go as the file; a relative path not at all');
+    'lines that cannot be read are sent as the whole file, and a relative path is not sent');
   assert.deepEqual(read, [['/w/c.js', 3, 5], ['/w/gone.js', 1, 1]]);
   chat.dispose();
 });
@@ -167,7 +168,7 @@ test('compose() and focusInput() wait for the page, then go in order after the w
   chat.dispose();
 });
 
-test('the permission mode: Edit automatically and Ask before edits switch to build, Plan to plan with edits asking', async () => {
+test('the permission mode: Edit automatically and Ask before edits switch to build, and Plan switches to plan mode, where edits ask first', async () => {
   const conv = conversation();
   conv.opts = [{ id: 'mode', name: 'Mode', value: 'plan', values: [{ value: 'build', name: 'Build' }, { value: 'plan', name: 'Plan' }] }];
   let auto = false;
@@ -182,7 +183,7 @@ test('the permission mode: Edit automatically and Ask before edits switch to bui
   panel.fromPage({ type: 'setPermissionMode', mode: 'build' });
   await settle();
   assert.equal(auto, false);
-  assert.deepEqual(conv.set, [['mode', 'build']], 'already in build: only the asking changes');
+  assert.deepEqual(conv.set, [['mode', 'build']], 'already in build mode: only whether edits ask changes');
   panel.fromPage({ type: 'setPermissionMode', mode: 'build:auto' });
   panel.fromPage({ type: 'setPermissionMode', mode: 'plan' });
   await settle();
@@ -195,7 +196,7 @@ test('the permission mode: Edit automatically and Ask before edits switch to bui
   chat.dispose();
 });
 
-test('Fork from here goes with the message\'s place while idle; Connect a provider and the model list again', async () => {
+test('Fork from here passes on the message it was picked at while idle; Connect a provider and listing the models again reach the extension', async () => {
   const conv = conversation();
   const forks = [];
   let connects = 0;
@@ -243,7 +244,7 @@ test('detached commands are looked for when the page loads, a turn ends and the 
   chat.dispose();
 });
 
-test('without text a message goes when it has images or a selection added with its button, not on what the editor offers alone', async () => {
+test('a message without text is sent when it has images or a selection added with its button, but not with only what the editor offers', async () => {
   const conv = conversation();
   const ctx = { selection: null, file: { path: '/w/b.js', name: 'b.js', label: 'b.js', key: '/w/b.js' } };
   const { panel, chat } = panelFor(conv, { selection: tracker(ctx) });
@@ -260,14 +261,14 @@ test('without text a message goes when it has images or a selection added with i
   chat.dispose();
 });
 
-test('a queued message without text says what went with it', () => {
+test('a queued message without text is shown as a count of its images and selections', () => {
   assert.equal(C.queuedText({ text: 'next one', images: 1 }), 'next one');
   assert.equal(C.queuedText({ text: '', images: 1 }), '1 image');
   assert.equal(C.queuedText({ text: ' ', images: 2, selections: 1 }), '2 images and 1 selection');
   assert.equal(C.queuedText({ text: '', selections: 3 }), '3 selections');
 });
 
-test('a message sent without text while a turn runs is queued with what went with it', () => {
+test('a message without text sent during a turn is queued with what it carries', () => {
   const sent = [];
   const conversation = { state: () => ({ status: 'working' }), send: async (text, extra) => { sent.push([text, extra]); }, on() { return { dispose() {} }; } };
   const p = Object.create(ChatPanel.prototype);

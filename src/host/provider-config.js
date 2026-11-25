@@ -57,7 +57,7 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {}, baseEn
       }
     }
     const note = bad.join(', ');
-    if (note && note !== skipped) log(`opencode.environment: left out ${note} (a name of letters, digits and _ with a string value is needed)`);
+    if (note && note !== skipped) log(`opencode.environment: left out ${note} (names must be letters, digits and _, and values strings)`);
     skipped = note;
     return out;
   };

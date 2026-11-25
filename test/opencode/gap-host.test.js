@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * The OpenCode side of connecting a provider (the sign-in's command line, the auth methods initialize gives) and of
+ * Tests for the OpenCode side of connecting a provider (the sign-in's command line, the auth methods initialize gives) and of
  * forking from a message (session.fork through /api, its reply as 2.4.1 printed it), and the model list read again
  * after a restart.
  */
@@ -52,12 +52,12 @@ test('the sign-in runs the OpenCode found, with --standalone on 2.x, OpenCode\'s
   assert.equal(l.shellPath, '/opt/oc/bin/opencode', 'never the opencode on PATH that the method names');
   assert.deepEqual(l.shellArgs, ['auth', 'login', '--standalone']);
   assert.deepEqual(login.terminalArgs([{ id: 'x', _meta: { 'terminal-auth': { args: ['auth', 'login', 'anthropic'] } } }]), ['auth', 'login', 'anthropic']);
-  assert.deepEqual(login.terminalArgs([{ id: 'x', _meta: { 'terminal-auth': { args: [1] } } }]), ['auth', 'login'], 'arguments that are not strings are not used');
+  assert.deepEqual(login.terminalArgs([{ id: 'x', _meta: { 'terminal-auth': { args: [1] } } }]), ['auth', 'login'], 'non-string arguments are ignored');
   assert.throws(() => login.loginLaunch({ found: null }), (e) => e.code === 'notFound');
   assert.equal(env.OPENCODE_DISABLE_AUTOUPDATE, undefined, 'the caller\'s object is left as it was');
 });
 
-test('info() carries the auth methods initialize gave', async (t) => {
+test('info() includes the auth methods from initialize', async (t) => {
   const { oc } = setup(t, V2);
   await oc.openSession(ORIGINAL, { cwd: CWD });
   assert.deepEqual(oc.info().authMethods.map((m) => m.id), ['opencode-login']);
@@ -79,7 +79,7 @@ test('2.x: forkBefore asks /api session.fork for the history before the message,
   await assert.rejects(oc.forkBefore('not an id!', MSG), (e) => e.code === 'badRequest');
 });
 
-test('forkBefore says what OpenCode said when the message is not there, and needs OpenCode 2', async (t) => {
+test('forkBefore passes on OpenCode\'s error when the message is not there, and needs OpenCode 2', async (t) => {
   const notFound = JSON.stringify({ _tag: 'MessageNotFoundError', sessionID: ORIGINAL, messageID: 'msg_nopenopenope', message: 'Message not found: msg_nopenopenope' });
   const { oc } = setup(t, V2, () => [Object.assign(new Error('Command failed'), { code: 1 }), notFound, 'HTTP 404 Not Found']);
   await assert.rejects(oc.forkBefore(ORIGINAL, 'msg_nopenopenope'), (e) => e.code === 'forkFailed' && /Message not found/.test(e.message));
@@ -88,7 +88,7 @@ test('forkBefore says what OpenCode said when the message is not there, and need
   await assert.rejects(old.oc.forkBefore(ORIGINAL, MSG), (e) => e.code === 'unsupported');
 });
 
-test('refreshModels loads an open conversation into the OpenCode started again, which lists the models anew', async (t) => {
+test('refreshModels loads an open conversation into the restarted OpenCode, which lists the models again', async (t) => {
   const { oc, agents } = setup(t, V2);
   await oc.openSession(ORIGINAL, { cwd: CWD });
   const before = oc.listModels().length;
@@ -138,7 +138,7 @@ function effortSetup(t, script) {
 const effortOf = (h) => (h.options().find((o) => o.id === 'effort') || {}).value;
 const sets = (a) => a.received.filter((m) => m.method === 'session/set_config_option').map((m) => `${m.params.configId}=${m.params.value}`);
 
-test('the effort chosen is chosen again after a model change, where the new model offers it; OpenCode shows it', async (t) => {
+test('the chosen effort is set again after a model change if the new model offers it, and OpenCode reports it', async (t) => {
   const { GROK, HAIKU, script } = effortScript();
   const { oc, agents } = effortSetup(t, script);
   const h = await oc.openSession(ORIGINAL, { cwd: CWD });
@@ -150,7 +150,7 @@ test('the effort chosen is chosen again after a model change, where the new mode
   assert.equal(effortOf(h), 'low', 'back on Grok, low again');
 });
 
-test('after OpenCode starts again, the model it already has is not set again, which would put the effort on default', async (t) => {
+test('after OpenCode restarts, the model it already has is not set a second time, since that would reset the effort to default', async (t) => {
   const { script } = effortScript();
   const { oc, agents } = effortSetup(t, script);
   const h = await oc.openSession(ORIGINAL, { cwd: CWD });
@@ -158,11 +158,11 @@ test('after OpenCode starts again, the model it already has is not set again, wh
   await h.send('Reply with OK.');
   assert.equal(agents.length, 2);
   assert.ok(agents[1].received.some((m) => m.method === 'session/load'), 'loaded into the new OpenCode');
-  assert.deepEqual(sets(agents[1]), [], 'no model set, so the effort stays');
+  assert.deepEqual(sets(agents[1]), [], 'the model is not set again, so the effort is kept');
   assert.equal(effortOf(h), 'low');
 });
 
-test('a message of images alone goes without an empty text block', async (t) => {
+test('a message with only images is sent without an empty text block', async (t) => {
   const { script } = effortScript();
   const { oc, agents } = effortSetup(t, script);
   const h = await oc.openSession(ORIGINAL, { cwd: CWD });

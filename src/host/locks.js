@@ -11,10 +11,10 @@
  *
  * To take over from a live holder, a window writes <id>.takeover; the holder, which watches the folder with fs.watch
  * while it holds any lock, hands the request to onTakeover, releases the lock and answers with <id>.letgo naming the
- * asker. On macOS an event may name the temporary file a request was renamed from, or not come at all when the watch has
- * only just started, so the holder looks for requests on any event, and the asker checks for the answer on a timer and
- * writes its request again every second while it waits. Over Remote-SSH a window whose client went away without closing keeps its extension host running for hours,
- * holding its locks; that host still answers.
+ * asker. On macOS an event may name the temporary file a request was renamed from, or not come at all when the watch
+ * has only just started, so the holder looks for requests on any event, and the asker checks for the answer on a timer
+ * and writes its request again every second while it waits. Over Remote-SSH a window whose client went away without
+ * closing keeps its extension host running for hours, holding its locks; that host still answers.
  *
  * A lock also names its holder's VS Code window (windowToken), so that a window reloaded while its old extension host
  * lives on (ownWindow) can take its conversations back without asking.

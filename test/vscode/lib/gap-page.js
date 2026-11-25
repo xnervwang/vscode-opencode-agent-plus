@@ -29,11 +29,11 @@ async function run(t) {
   await call('await vscode.commands.executeCommand("workbench.action.editorLayoutSingle"); await vscode.commands.executeCommand("notifications.clearAll"); return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");').catch(() => {});
   await sleep(1500);
   let chat = await frameWith(page, '#input', 30000);
-  check(!!chat, 'a new chat page for the page checks');
+  check(!!chat, 'a new chat page opens for the page checks');
   if (!chat) return;
   const idle = (ms = real ? 240000 : 30000) => until(() => chat.evaluate(() => document.body.dataset.status === 'idle' || null), ms);
   const users = () => chat.evaluate(() => document.querySelectorAll('#log .msg.user').length);
-  /* Sends `text` and waits for the turn it starts to end, answering a permission request with Allow once. */
+  /* Sends `text` and waits until the turn it starts has ended, answering a permission request with Allow once. */
   const turn = async (text, ms) => {
     const before = await users();
     await chat.fill('#input', text);
@@ -48,7 +48,8 @@ async function run(t) {
       await sleep(400);
     }
   };
-  /* Scrolls the log so that your message number `n` (from 1) is at its top, so that the turn after it is in sight. */
+  /* Scrolls the log until your message number `n` (counting from 1) is at the top, which brings the turn after it into
+     view. */
   const toUser = (n) => chat.evaluate((i) => { const u = document.querySelectorAll('#log .msg.user')[i - 1]; const l = document.getElementById('log');
     if (u) l.scrollTop += u.getBoundingClientRect().top - l.getBoundingClientRect().top - 8; }, n);
 
@@ -66,19 +67,20 @@ async function run(t) {
   const coloured = code.filter((b) => b.lang && b.spans > 0 && b.keyword && b.keyword !== b.plain);
   check(codeDone && coloured.some((b) => /^(js|javascript)$/.test(b.lang)) && coloured.some((b) => /^(python|py)$/.test(b.lang))
     && (real || code.some((b) => !b.lang && b.spans === 0)),
-  'code blocks that name a language are coloured, keywords in a colour of their own; a block without a language stays plain', code);
+  'code blocks that name a language are highlighted, with keywords in their own colour; a block without a language stays plain', code);
   await toUser(1);
   await picture('g01-code-dark', { features: ['code highlighting'], part: EDITOR,
-    expect: `The reply holds ${real ? 'a JavaScript and a Python code block' : 'a JavaScript code block, a Python one and a third block without a language'}. In the first two, keywords (function, const, return, def), strings, numbers and comments each have their own colour from the dark theme (keywords blue, strings orange, numbers pale green, comments green and italic, function names purple), readable on the block's dark background.${real ? '' : ' The last block is plain grey-white text.'}` });
+    expect: `The reply holds ${real ? 'a JavaScript and a Python code block' : 'a JavaScript code block, a Python one and a third block without a language'}. In the JavaScript and Python blocks, keywords (function, const, return, def) are blue, strings orange, numbers pale green, comments green and italic, and function names purple, all from the dark theme and readable on the block's dark background.${real ? '' : ' The last block is plain grey-white text.'}` });
 
-  /* The rest of the reply: the last code block. */
+  /* Scrolls down to the last code block for the next picture. */
   await chat.evaluate(() => { const b = [...document.querySelectorAll('#log .msg.reply pre')].pop(); const l = document.getElementById('log');
     if (b) l.scrollTop += b.getBoundingClientRect().bottom - l.getBoundingClientRect().bottom + 60; });
   await picture('g01b-code-rest-dark', { features: ['code highlighting'], part: EDITOR,
     expect: real ? 'The end of the reply with code: the Python block, its keywords, strings and numbers coloured from the dark theme like the JavaScript one above it.'
       : 'The end of the reply with code: the Python block coloured from the dark theme (def and return as keywords, the docstring as a string), then the line "And its output, a block with no language:" and a last block "sum(2, 3) = 5" in plain grey-white text, no colours.' });
 
-  // G3. An edit's row opens to its change: red and green lines, a long one cut short with the number of lines left out.
+  // G3. An edit's row opens to its change as red and green lines; a long change is cut short and says how many lines
+  // it leaves out.
   const editTurn = real
     ? 'Use your edit tool on the file notes.txt to replace the text "Some notes." with three lines: "Some notes.", "Line two." and "Line three.". Then reply "Edited." and nothing else.'
     : 'Demo: page-edit';
@@ -109,14 +111,14 @@ async function run(t) {
   await picture('g02-edit-dark', { features: ['edit diff in the tool row'], part: EDITOR,
     expect: `An edit tool row opened under its time: the row reads the tool's name, the file and a green "+n" (and a red "-n" when lines were removed); the open box shows the changed lines, removed ones on a red background with "-", added ones on a green background with "+"${real ? ', with line numbers at the left' : ''}, no IN row.${real ? '' : ' Under it a write row ("300 lines") opened to green lines that end with "… more lines not shown", and an apply_patch row with "Update README.md" and two green lines.'}` });
 
-  /* The rest of the turn: the end of the edit rows. */
+  /* Scrolls down to the end of the edit rows for the next picture. */
   await chat.evaluate(() => { const rows = [...document.querySelectorAll('#log .tool:not(.subagent)')].filter((e) => !e.querySelector('.tool-diff').hidden); const e = rows.pop(); const l = document.getElementById('log');
     if (e) l.scrollTop += e.getBoundingClientRect().bottom - l.getBoundingClientRect().bottom + 60; });
   await picture('g02b-edit-rest-dark', { features: ['edit diff in the tool row'], part: EDITOR,
-    expect: real ? 'The end of the edit row opened to its change: green added lines with line numbers, then its OUT row; the reply after it.'
+    expect: real ? 'The end of the edit row, opened to show its change: green added lines with line numbers, then its OUT row; the reply after it.'
       : 'The end of the write row opened to its green lines, which stop with an italic grey "… more lines not shown" line, then an apply_patch row ("+2") opened to a bold grey "Update README.md" line, an "@@" line, the unchanged "# Demo project" and two green added lines; the reply after them.' });
 
-  // G4. The paths a reply names, and the file of a read row, become links that open the file at its line.
+  // G4. Paths named in a reply, and the file name in a read row, become links that open the file at its line.
   const pathTurn = real
     ? 'Read the file src/sum.js with your read tool, then reply with one sentence that names it as `src/sum.js:1` in backticks and also names README.md. Nothing else.'
     : 'Demo: page-paths';
@@ -128,7 +130,7 @@ async function run(t) {
     return l.links.some((x) => /src\/sum\.js$/.test(x.path) && x.line === '1') && l.links.some((x) => /README\.md$/.test(x.path)) && l.tools.some((p) => /sum\.js$/.test(p)) ? l : null;
   }, 15000);
   check(pathDone && !!links && (real || (!links.links.some((x) => /missing/.test(x.path)) && links.links.some((x) => x.path === 'notes.txt') && links.web.includes('https://example.com/README.md'))),
-    "paths in a reply that are workspace files become links, a file that is not there does not, and the read row's file is a link too", links
+    "paths in a reply that are workspace files become links, missing files do not, and the read row's file is also a link", links
       || await chat.evaluate(() => document.getElementById('log').lastElementChild && document.getElementById('log').textContent.slice(-400)));
   if (links) {
     await chat.click('#log .msg.reply a.file-link[data-line="1"] >> nth=-1');
@@ -141,7 +143,7 @@ async function run(t) {
   }
   await toUser(3);
   await picture('g03-file-links-dark', { features: ['file links'], part: EDITOR,
-    expect: `A read row whose file (src/sum.js) is drawn in the link colour, and a reply in which src/sum.js:1 (in a code span) and README.md are links in the link colour${real ? '' : '; notes.txt is a link too, src/missing.js is plain text, and the https address is an ordinary link'}.` });
+    expect: `A read row whose file (src/sum.js) is drawn in the link colour, and a reply in which src/sum.js:1 (in a code span) and README.md are links as well${real ? '' : '; notes.txt is a link too, src/missing.js is plain text, and the https address is an ordinary link'}.` });
 
   // G5. The thinking row is folded: grey, "Thinking", and opens to the reasoning on a click.
   if (!real) await turn('Demo: page-thinking');
@@ -198,8 +200,8 @@ async function run(t) {
   // G7. Your message stays pinned at the top while its reply scrolls by; a click goes back to it.
   if (!real) await turn('Demo: page-long');
   const pinState = () => chat.evaluate(() => { const p = document.getElementById('pinned'); return { shown: !p.hidden && p.getClientRects().length > 0, text: p.querySelector('.pinned-text').textContent, item: p.dataset.item || '' }; });
-  /* Scrolls the log so that the last of your messages followed by more than 160 px of reply, and far enough from the end
-     for the log to scroll it out of sight, is just above the top. */
+  /* Scrolls the log so that one of your messages is just above the top: the last one that has more than 160 px of reply
+     after it and is far enough from the end for the log to scroll it out of sight. */
   const pastLast = () => chat.evaluate(() => {
     const l = document.getElementById('log');
     const us = [...document.querySelectorAll('#log .msg.user')];
@@ -218,7 +220,7 @@ async function run(t) {
   const pinned = await pinState();
   check(!!past && pinned.shown && pinned.text === past.text, 'scrolled past your message, it stays pinned at the top of the log', { past, pinned });
   await picture('g06-pinned-dark', { features: ['pinned prompt'], part: EDITOR,
-    expect: 'At the top of the conversation, over its rows, a box like your messages (a bar down its left edge, its small time before the text) holds the message whose reply is in sight below it, which has scrolled out of view.' });
+    expect: 'At the top of the conversation, over its rows, a box like your messages (a bar down its left edge, its small time before the text) holds your message, which has scrolled out of view; its reply is visible below.' });
   if (pinned.shown) {
     await chat.click('#pinned');
     await sleep(500);
@@ -253,10 +255,10 @@ async function run(t) {
   const set = await read('focusView');
   check(!!on && set === true && on.users === on.allUsers && on.tools === 0 && on.thinking === 0 && on.replies >= 1 && on.pressed === 'true'
     && (real || (before.early.join() === 'true' && on.early.join() === 'false')),
-  'Ctrl+Alt+F in the chat tab turns Focus view on: your messages and the last reply of each turn stay; tool rows, thinking and earlier replies of a turn go', { before, on, set });
+  'Ctrl+Alt+F in the chat tab turns Focus view on, which keeps your messages and the last reply of each turn and hides tool rows, thinking and the earlier replies of a turn', { before, on, set });
   await toUser(3);
   await picture('g07-focus-view-dark', { features: ['focus view'], part: EDITOR,
-    expect: 'Focus view is on: the conversation shows only your messages (boxes with a bar down the left) and one reply row under each, the last of its turn, with its time (and the figures of the turn when it has any); no tool rows, thinking rows or todo list. The eye button under the message box is drawn pressed. A message of yours may be pinned over the top row.' });
+    expect: 'Focus view is on: the conversation shows only your messages (boxes with a bar down the left) and one reply row under each, the last of its turn, with its time (followed by the turn\'s figures, if any); no tool rows, thinking rows or todo list. The eye button under the message box shows as pressed. A message of yours may be pinned over the top row.' });
   await chat.click('#focusBtn');
   await chat.hover('#title').catch(() => {});
   const off = await until(async () => { const f = await focusOf(); return !f.on && (await read('focusView')) === false ? f : null; }, 10000);
@@ -276,7 +278,7 @@ async function run(t) {
   if (chat) {
     await toUser(3);
     await picture('g08-narrow-dark', { features: ['narrow log'], part: EDITOR,
-      expect: 'The chat on the left half of the editor area, a text editor on the right. In the chat, each message of yours has its small time on a line of its own above its text, and each reply row has its time (and figures) on a line of its own above its text, so every line of text starts at the same left edge; no text squeezed into a narrow column beside the time.' });
+      expect: 'The chat on the left half of the editor area, a text editor on the right. In the chat, the time of each of your messages, and the time (and figures) of each reply row, sit on a line of their own above the text, so every line of text starts at the same left edge; no text squeezed into a narrow column beside the time.' });
   }
   await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input instanceof vscode.TabInputText && x.input.uri.fsPath.endsWith("README.md"));
     await vscode.window.tabGroups.close(tabs); await vscode.commands.executeCommand("workbench.action.editorLayoutSingle"); return true;`).catch(() => {});
@@ -289,16 +291,16 @@ async function run(t) {
   if (chat) {
     await toUser(1);
     await picture('g01-code-light', { features: ['code highlighting'], part: EDITOR,
-      expect: 'The light theme. The code blocks of the first reply are coloured from the light theme: keywords dark blue, strings dark red, numbers dark green, comments green and italic, function names purple, all readable on the light grey block.' });
+      expect: 'The light theme. The code blocks of the first reply use its colours: keywords dark blue, strings dark red, numbers dark green, comments green and italic, function names purple, all readable on the light grey block.' });
     await toUser(2);
     await picture('g02-edit-light', { features: ['edit diff in the tool row'], part: EDITOR,
-      expect: 'The light theme. The edit row is open to its change: removed lines on a pale red background with "-", added ones on a pale green background with "+", readable dark text; its row shows a green "+n" and a red "-n".' });
+      expect: 'The light theme. The edit row is open and shows its change: removed lines on a pale red background with "-", added ones on a pale green background with "+", readable dark text; its row shows a green "+n" and a red "-n".' });
     await thinkShots('light');
     if (todos) {
       await chat.evaluate(() => { const e = [...document.querySelectorAll('#log .tool')].reverse().find((x) => x.querySelector('.todo-list:not([hidden]) .todo')); const l = document.getElementById('log');
         if (e) l.scrollTop += e.getBoundingClientRect().top - l.getBoundingClientRect().top - 80; });
       await picture('g05-todo-light', { features: ['todo list'], part: EDITOR,
-        expect: 'The light theme. The todowrite row is open to its list: each item with its icon, the one under way in bold with a filled blue circle, done ones ticked in green and struck through in grey, dropped ones struck through and faded; all readable.' });
+        expect: 'The light theme. The todowrite row is open and shows its list: each item with its icon, the one under way in bold with a filled blue circle, done ones ticked in green and struck through in grey, dropped ones struck through and faded; all readable.' });
     }
   }
   await theme(DARK);

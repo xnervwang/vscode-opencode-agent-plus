@@ -7,15 +7,15 @@
  * OPENCODE_AGENT_PLUS_TEST_BACKEND for the window tests: createOpenCode's shape (src/opencode/index.js) with the scripted
  * conversation of test/ui/fake-conversation.js as each session, so no OpenCode and no model are needed. A session's
  * first turn draws every kind of item, a permission request included; a message "Say: <text>" is answered with <text>,
- * for a reply the test writes itself, and "Demo: <name>" plays the turn DEMOS names, for the pictures that compare the
- * page with Claude Code's. Sessions and the events each one emitted are kept in
+ * for a reply the test writes itself, and "Demo: <name>" plays the turn listed under <name> in DEMOS, for the pictures
+ * that compare the page with Claude Code's. Sessions and the events each one emitted are kept in
  * <OPENCODE_AGENT_PLUS_HOME>/fake-backend.json, so a reloaded window finds them again.
  *
  * With OPENCODE_AGENT_PLUS_FAKE_DEMO=1 each session also offers what a real OpenCode 2 does: a mode and an effort to
  * pick, three slash commands, images, workspace files and selections in a message, and rewinding to before a message.
- * A message that carries images, files or selections is answered with what it carried (an image by the colour of its
- * first pixel, a file by its text). The prompts test/vscode/run.js sends a real model are answered the way a model
- * answers them (PROMPTS below), which needs no model: a turn may write files in the folder, start a subagent, move a
+ * A message with images, files or selections gets a reply that describes them (an image by the colour of its first
+ * pixel, a file by its text). Prompts that test/vscode/run.js would send to a real model get scripted answers like
+ * a model's (PROMPTS below): a turn may write files in the folder, start a subagent, move a
  * command to the background, ask a question, or start a turn of its own when its background work ends.
  */
 const crypto = require('crypto');
@@ -137,7 +137,7 @@ const DEMOS = {
   ],
 };
 
-/* How long a command moved to the background runs before it ends and the agent goes on by itself. */
+/* How long a backgrounded command runs before it ends and the agent starts a turn of its own. */
 const BACKGROUND_MS = 8000;
 
 /* The colour of a PNG's first pixel by name, for 8-bit RGB or RGBA; '' for anything else. Every PNG filter stores the
@@ -197,7 +197,7 @@ function received(extra) {
 }
 
 const allowed = (decision) => typeof decision === 'string' && decision !== 'deny';
-/* A session's history as OpenCode's record of it has it: the requests a turn made, and their answers, are not in it. */
+/* A session's history as OpenCode records it, without the requests a turn made and their answers. */
 const ASKED = new Set(['permission', 'permissionSettled', 'question', 'questionSettled']);
 const replayed = (events) => events.filter((e) => !ASKED.has(e.type));
 const capital = (w) => (w ? w[0].toUpperCase() + w.slice(1) : w);
@@ -356,7 +356,7 @@ function createOpenCode() {
       turnStart: () => (picked.effort !== 'default' ? { effort: picked.effort } : {}) });
     let model = saved.model || MODELS[0].id;
     let asking = 0;
-    /* The user message of the turn playing: what a file that turn writes is put back to before. */
+    /* The user message whose turn is playing; rewinding to before it puts back the files that turn writes. */
     let current = '';
     let seq = 0;
     const t = {
@@ -516,8 +516,8 @@ function createOpenCode() {
       return { id: s.id, cwd: s.cwd };
     },
     canRewind: () => DEMO,
-    /* Puts back each file the turns from `messageId` on wrote, as it was before the first of them, and keeps what they
-       left, for rewindClear. */
+    /* Restores each file that the turns from `messageId` onward wrote to its state before the first of them, and keeps
+       what they left, for rewindClear. */
     async rewindStage(id, messageId) {
       const { db, s } = session(id);
       const order = s.events.filter((e) => e.type === 'userMessage' && e.messageId).map((e) => e.messageId);

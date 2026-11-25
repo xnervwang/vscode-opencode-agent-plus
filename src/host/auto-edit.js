@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * "Edit automatically", the second of the chat page's permission modes (Ask before edits, Edit automatically, Plan):
+ * "Edit automatically", one of the chat page's three permission modes (Ask before edits, Edit automatically, Plan):
  * OpenCode's build mode, with each request to edit or write a file inside the conversation's folder allowed once by
  * the extension instead of the user. Commands, web fetches, paths outside the folder and anything else still ask. The
  * choice is kept per conversation in the workspace's state, so it survives closing and reopening the tab.

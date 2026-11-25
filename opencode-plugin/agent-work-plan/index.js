@@ -233,11 +233,11 @@ const MAX_TITLE = 200;
 const MAX_TO = 200;
 /* In the steward line whatever the number of stewards; the plugin's log counts the messages that carry it. */
 const WATCHED_MARK = 'this one for the user through Claude Code Plus:';
-/* How Claude Code Plus's steward_table.py name_of() names a steward. */
+/* The same naming as Claude Code Plus's steward_table.py name_of(). */
 const nameOf = (s) => (s.title && s.title !== s.sessionId ? `"${s.title}" (${s.sessionId})` : s.sessionId);
 
 /* Claude Code Plus's steward.py watched(), with the steward_handoff tool and its `to` in place of the relay command and
-   its --to. `list` is the conversation's stewards, the one the user spoke with last first. */
+   its --to. `list` holds the conversation's stewards, starting with the one the user spoke with most recently. */
 function watchedText(list) {
   const names = list.map(nameOf);
   const several = names.length > 1;
@@ -260,7 +260,7 @@ const STEWARD_TOOL = {
     + 'It returns whether the steward got it; do not call it again for the same message.',
   input: { type: 'object', required: ['text'], additionalProperties: false, properties: {
     text: { type: 'string', description: "The user's words, where it should go (a session id, or a folder for a new conversation) and why." },
-    to: { type: 'string', description: 'The session id of the steward to give it to; leave it out for the usual one.' } } },
+    to: { type: 'string', description: 'The session id of the steward who should get the message; leave it out for the default one.' } } },
 };
 /* deliver() settles within about 40 seconds once a window has the request. */
 const HANDOFF_WAIT_MS = 45000;
@@ -275,7 +275,8 @@ const LEAVE_IT = ' Say in your reply where it seems to belong, so the user decid
 const usable = (s) => !!s && typeof s === 'object' && typeof s.sourceId === 'string' && !!s.sourceId && typeof s.sessionId === 'string' && !!s.sessionId;
 const titleOf = (t) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE) : '');
 
-/* The stewards in the conversation's steward file, first first, as the extension's readStewards() reads them. */
+/* The stewards listed in the conversation's steward file, in their order there, read as the extension's readStewards()
+   reads them. */
 function stewardsOf(sessionID) {
   let s;
   try { s = JSON.parse(fs.readFileSync(stewardPath(sessionID), 'utf8')); } catch (_) { return []; }

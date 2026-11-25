@@ -12,7 +12,7 @@
  *   { wait: ms }             pauses
  *   a 'permission' event     pauses until respond(requestId, decision), then emits permissionSettled
  *   a 'question' event       pauses until respondQuestion(requestId, answer), then emits questionSettled
- *   a function               called with what each request of this conversation was answered, by request id (a
+ *   a function               called with the answers to this conversation's requests, by request id (a
  *                            permission's decision, a question's answer, null when the turn was stopped); the step or
  *                            array of steps it returns, if any, plays in its place
  * turnStart, userMessage and turnEnd ('endTurn') are added around each turn unless the turn emits them itself. The

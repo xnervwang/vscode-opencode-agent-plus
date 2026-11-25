@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The archive of Claude Code's panel that test/vscode/look-alike.js puts beside this page: a picture for every state
- * and theme it pictures, cut the way it cuts its own, and the versions they show.
+ * The archive of Claude Code's panel that test/vscode/look-alike.js puts beside this page: a picture for each state
+ * and theme that look-alike.js takes, cut the same way as its own pictures, and the versions the pictures show.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -29,7 +29,7 @@ function jpegSize(buf) {
 
 const ARCHIVED = fs.existsSync(path.join(DIR, 'official.json'));
 
-test('every state look-alike.js pictures has an archived picture of Claude Code in each of its themes, cut the same way',
+test('the archive has a picture of Claude Code for every state and theme look-alike.js takes, cut the same way',
   { skip: !ARCHIVED && 'the archive of the official panel is kept on the developer machine, not in the repository' }, () => {
   const official = JSON.parse(fs.readFileSync(path.join(DIR, 'official.json'), 'utf8'));
   for (const k of ['claudeCode', 'claudeCodePlus', 'vscode', 'window']) assert.ok(official[k], `official.json names ${k}`);
@@ -37,7 +37,7 @@ test('every state look-alike.js pictures has an archived picture of Claude Code 
   assert.deepEqual(Object.keys(THEMES).sort(), Object.keys(official.themes).sort());
   const editor = { width: w - 56, height: h - 67 };
   for (const s of STATES) {
-    assert.ok(official.states[s.name], `official.json says how ${s.name} was taken`);
+    assert.ok(official.states[s.name], `official.json records how ${s.name} was captured`);
     for (const t of s.themes) {
       const size = jpegSize(fs.readFileSync(path.join(DIR, t, `${s.name}.jpg`)));
       assert.deepEqual(size, { width: editor.width, height: s.lower ? LOWER : editor.height - TABS }, `${t}/${s.name}.jpg`);

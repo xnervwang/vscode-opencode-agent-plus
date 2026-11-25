@@ -19,12 +19,12 @@ See [Checking the Connection](docs/setup.md#checking-the-connection).
 
 ## Connecting a Model Provider
 
-OpenCode Agent Plus uses the model providers you set up in OpenCode. For Amazon Bedrock, you can provide credentials in either of two ways:
+OpenCode Agent Plus uses the model providers you set up in OpenCode. For Amazon Bedrock, you can configure credentials through the extension's settings or OpenCode's own configuration:
 
-- [Through OpenCode Agent Plus Settings](docs/setup.md#through-opencode-agent-plus-settings): Set your AWS profile and Region in the extension's settings, or use its command to store a Bedrock API key.
-- [Through OpenCode's Own Configuration](docs/setup.md#through-opencodes-own-configuration): Set your AWS profile and Region in `~/.config/opencode/opencode.json`, or set AWS environment variables in the environment VS Code starts with.
+- [Through OpenCode Agent Plus Settings](docs/setup.md#through-opencode-agent-plus-settings): Set your AWS profile and Region, or store a Bedrock API key with the `OpenCode Agent Plus: Set Amazon Bedrock API Key` command.
+- [Through OpenCode's Own Configuration](docs/setup.md#through-opencodes-own-configuration): Put your AWS profile and Region in `~/.config/opencode/opencode.json`, or set AWS environment variables in the environment VS Code starts with.
 
-You can also select Connect a provider… in the model list under the message box. It opens OpenCode's sign-in, `opencode auth login`, in a VS Code terminal, and works for Amazon Bedrock as well: on OpenCode 2, the Bedrock entry takes an AWS profile or a Bedrock API key. For [other model providers](docs/setup.md#other-model-providers), use the same entry, or run `opencode auth login` yourself on the machine where OpenCode runs.
+In a chat tab, you can also select Connect a provider… from the model list under the message box. This opens OpenCode's sign-in (`opencode auth login`) in a VS Code terminal, where the Amazon Bedrock entry in OpenCode 2 accepts an AWS profile or a Bedrock API key. For [other model providers](docs/setup.md#other-model-providers), select Connect a provider… from the model list or run `opencode auth login` on the machine where OpenCode runs.
 
 ## Remote-SSH
 
@@ -36,12 +36,12 @@ In a [Remote-SSH](docs/setup.md#remote-ssh) window, the extension and OpenCode r
 
 | Feature | What it does |
 | --- | --- |
-| [Chat tabs](docs/features.md#messages-tools-and-permissions) | Each conversation opens in an editor tab with streaming replies and a row for each tool call, such as a command or a file edit, that opens to show what went in and came out. |
+| [Chat tabs](docs/features.md#messages-tools-and-permissions) | Each conversation opens in an editor tab with streaming replies and a row for each tool call, such as a command or a file edit; the row opens to show the call's input and output. |
 | [Permission prompts](docs/features.md#permission-prompts) | OpenCode asks before it edits files, runs commands, fetches web pages or works outside the project, and you can review a proposed edit as a diff. |
 | [Questions from the model](docs/features.md#questions-from-the-model) | You answer them in a form. |
 | [Slash commands, files and images](docs/features.md#writing-a-message) | Type `/` to list OpenCode commands or `@` to list workspace files, or add your editor selection and images to a message. |
-| [Model, mode and effort](docs/features.md#models-modes-and-reply-figures) | You choose them in the row of buttons under the input box; effort sets how much the model reasons. |
-| [Reply figures](docs/features.md#models-modes-and-reply-figures) | After the time on each reply's last row: how long the reply took, context use, the conversation's cost so far, model and effort. |
+| [Model, mode and effort](docs/features.md#models-modes-and-reply-figures) | You choose them in the row of buttons under the input box; the mode sets whether OpenCode asks before editing files, edits on its own or only plans, and effort sets how much the model reasons. |
+| [Reply figures](docs/features.md#models-modes-and-reply-figures) | How long the reply took, context use (how full the model's context window is), the conversation's cost so far, model and effort, shown on each reply's last row after the time it arrived. |
 | [Context and compaction](docs/features.md#context-compaction-and-retries) | A ring shows how full the context window is, and a divider marks where OpenCode summarized older turns to make room. |
 | [Outline, session information and chimes](docs/features.md#getting-around-a-long-conversation) | A rail on the right edge moves between your messages and opens a list of them, a box shows the conversation's details, and a chime sounds when a turn ends or OpenCode waits for you. |
 | [Links and images in replies](docs/features.md#links-and-images-in-replies) | Replies link to other conversations by title or ID and display images from the machine where OpenCode runs. |

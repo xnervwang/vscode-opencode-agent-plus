@@ -1,41 +1,60 @@
 # Judging whether the chat page looks like Claude Code's panel
 
-Read [LOOK.md](LOOK.md) first. In each picture, judge how much OpenCode Agent Plus's chat page on the right looks like Claude Code's panel on the left.
+Read [LOOK.md](LOOK.md) first. Each picture puts Claude Code's panel on the left and OpenCode Agent Plus's chat page on the right. Judge how alike they look.
 
-## What the pictures hold
+## What the pictures show
 
-`test/vscode/look-alike.js` starts VS Code with OpenCode Agent Plus and a fake backend that plays scripted turns. It saves one picture per state and theme in the output folder's `shots/`. The grey strips label the halves. The left label gives the archived versions from `test/vscode/look-alike/official.json`: Claude Code 2.1.332 with Claude Code Plus 1.5.0, in VS Code 1.147.0. Each `look.json` entry adds `official`, the archived filename and versions.
+`test/vscode/look-alike.js` starts VS Code with OpenCode Agent Plus and a fake backend that plays scripted turns. It saves one picture per state and theme in the output folder's `shots/`. The grey strips label the halves. The left label gives the archived versions from `test/vscode/look-alike/official.json`: Claude Code 2.1.332 with Claude Code Plus 1.5.0 (an extension that adds the demo conversation and a few controls), in VS Code 1.147.0. Each `look.json` entry adds `official`: the filename of the archived picture and the versions it shows.
 
-Both halves show the editor without tabs in a 1440 by 900 CSS pixel window, in Default Dark Modern or Default Light Modern. Slash (commands) and at (files) show only the lower 440 pixels. Other states show a permission request, finished replies, a conversation with thinking, text and tool rows (one open), a question with choices, a subagent call and result, a failed tool, or a running turn.
+Both halves show the editor without tabs in a 1440 by 900 CSS pixel window, in Default Dark Modern or Default Light Modern. The / command menu and the @ file menu show only the lower 440 pixels. Other states show a permission request, finished replies, a question with choices, a subagent call and its result, a failed tool, or a turn still running; one picture shows a conversation with a thinking row, text rows and tool rows, with one tool row open.
 
 The archive shows Claude Code Plus's demo conversation; the run shows scripted content. Ignore differences in text, times, filenames, numbers, costs and model names.
 
 ## What to compare
 
-- Layout: Look for a thin title header, conversation below, small buttons down the right edge and a centred message box about 680 pixels wide at the bottom. Requests and questions sit just above the box or replace it. Command and file lists sit just above it and match its width.
-- Conversation: Your messages fill the width, with a coloured left bar and small time before the text. Reply rows have dots on a thin vertical line: grey by default, green for success, red for failure, blue for running tools. Each starts with a small grey monospaced time, on its own line above tool names. In the last row of each reply, the time is followed by the turn's duration, context share, cost and model.
-- Tool rows: Look for a bold name and grey arguments on one line. An open tool has a framed monospaced box with faded IN and OUT labels on separate rows.
-- Message box: A rounded box holds text above a thin divider and small buttons below. Pills have rounded ends and faint backgrounds, grey effort beside the model, and a green dot for background work. The square send button on the right becomes stop during a turn.
-- Popups and requests: Check frames and shadows. Requests highlight the first numbered choice; lists highlight what Enter selects.
-- Colours and type: Compare theme colours, text sizes, row spacing, corner rounding and line and border thickness.
+### Layout
+
+Look for a thin title header, conversation below, small buttons down the right edge and a centred message box about 680 pixels wide at the bottom. Requests and questions appear just above the message box or in its place. Command and file lists match the box's width and open directly above it.
+
+### Conversation
+
+Your messages fill the width, with a coloured left bar and small clock time before the text. Reply rows have dots on a thin vertical line: grey by default, green for success, red for failure, blue for running tools. Each reply row starts with a small grey monospaced time; in tool rows it sits on its own line above the tool name. In the last row of each reply, the time is followed by the turn's duration, context use (ctx and a percentage), cost and model.
+
+### Tool rows
+
+Look for a bold name and grey arguments on one line. An open tool has a framed monospaced box with faded IN and OUT labels on separate rows.
+
+### Message box
+
+A rounded box holds text above a thin divider and small buttons below. Pills, such as the model and mode selectors, have rounded ends and faint backgrounds. The effort (how much the model reasons) appears in grey beside the model. A green dot marks background work. During a turn, the square send button at the right end of the box turns into a stop button.
+
+### Popups and requests
+
+Check frames and shadows. Requests highlight the first numbered choice; lists highlight what Enter selects.
+
+### Colours and type
+
+Compare theme colours, text sizes, row spacing, corner rounding and line and border thickness.
 
 ## Intended differences
+
+Intended differences aren't findings, but report defects such as unreadable accent text.
 
 - Claude Code uses Anthropic's logo, mascot and orange or red accents for focus, send and Auto mode. The right uses theme focus and button colours and VS Code icons.
 - Claude Code has header buttons for bookmarks, history and new conversations, a mode menu and a "Generating" mark. The right has info, chime and subagent filter buttons under the message box and OpenCode modes such as Build and Plan.
 - Right-hand tools fold to one line. Compare an opened tool with Claude Code's open IN/OUT boxes.
-- Right-hand requests start with a time and keep the box below for typing and queuing messages. Claude Code replaces the box.
+- On the right, a request starts with a time. The message box stays below the request so you can still type and queue messages. Claude Code replaces the box.
 - Compare the right's pill-shaped VS Code model, effort and mode drop-downs only when closed.
-- Compare only shape and placement for Claude Code Plus's detached-command count, focus view, mute and filter buttons.
-- The right's question box takes an own answer in a text box and has no collapse or close button: OpenCode asks for an own answer in a field of its own, and Cancel or Esc ends the question.
+- Compare only shape and placement for what comes from Claude Code Plus: the count of commands still running after they leave the agent (such as one started with `nohup … &`) and the Focus view, mute and filter buttons.
+- The question box on the right has a separate text field for typing your own answer, as OpenCode requires. The box has no collapse or close button; Cancel or Esc ends the question.
 - The right's slash list holds only OpenCode's commands, without Claude Code's groups and setting rows; the model, effort and mode are in the pills under the message box.
-- Only the last row of a reply on the right names the model; the other rows show their time and how long after the message they came.
+- Only the last row of a reply on the right names the model; the other rows show their time and how long after the user's message they came.
 
 ## Verdict
 
 For pass 1, use `expect` for both halves. Choose "alike" if someone familiar with Claude Code would take the right for it apart from intended differences; "mostly alike" for matching layout with one or two differing aspects; "not alike" for different layout or several differing aspects.
 
-For each difference outside the intended list, name the aspect, specify which half and where in the picture, and describe what differs. For example, the open tool box in the right half has no border. Run pass 2 only on the right. Intended differences aren't findings, but report defects such as unreadable accent text.
+For each difference outside the intended list, name the aspect, specify which half and where in the picture, and describe what differs. For example, the open tool box in the right half has no border. Run pass 2 only on the right.
 
 ## REVIEW-ALIKE.md
 

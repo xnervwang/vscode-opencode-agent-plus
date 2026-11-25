@@ -430,22 +430,22 @@
         "opencodeAgentPlus.autosave": {
           "type": "boolean",
           "default": true,
-          "description": "Save edited files before a message is sent or a request is allowed, so OpenCode reads and changes what the editor shows."
+          "description": "Save edited files before a message is sent or a request is allowed, so that OpenCode works with the text you see in the editor."
         },
         "opencodeAgentPlus.attachOpenFile": {
           "type": "boolean",
           "default": true,
-          "description": "Send the file open in the editor with your messages, as a reference OpenCode reads, and show it in the message box. When off, a file goes along only with the lines you select."
+          "description": "Send a reference to the file open in the editor with your messages, and show it in the message box. When off, only the lines you select in the file are sent automatically, if the Attach Selection setting is on."
         },
         "opencodeAgentPlus.attachSelection": {
           "type": "boolean",
           "default": true,
-          "description": "Send the lines you select in the editor with your messages, and show them in the message box. When off, add them with the selection button or Alt+K."
+          "description": "Send your editor selection with each message; the message box shows it. When off, click the pill under the input box or press Alt+K to add it."
         },
         "opencodeAgentPlus.useCtrlEnterToSend": {
           "type": "boolean",
           "default": false,
-          "description": "Send with Ctrl+Enter (Cmd+Enter on macOS), so that Enter starts a new line."
+          "description": "Send with Ctrl+Enter (Cmd+Enter on macOS) and use Enter for a new line."
         },
         "opencodeAgentPlus.showFixActions": {
           "type": "boolean",
@@ -471,12 +471,12 @@
           },
           "default": {},
           "scope": "machine",
-          "markdownDescription": "Environment variables for the OpenCode that the extension starts, such as `{ \"OPENAI_BASE_URL\": \"https://…\" }`. The Bedrock settings below take precedence over the same names. A change restarts OpenCode."
+          "markdownDescription": "Environment variables for the OpenCode process the extension starts, such as `{ \"OPENAI_BASE_URL\": \"https://…\" }`. The Bedrock settings below take precedence over the same names. A change restarts OpenCode."
         },
         "opencodeAgentPlus.todoList": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Turn on OpenCode 2's experimental todo list tool (todowrite) by adding `todo` to `OPENCODE_FLAGS`, so the model can keep a list of steps, shown in the conversation. A change restarts OpenCode."
+          "markdownDescription": "Turn on OpenCode 2's experimental todo list tool (todowrite) by adding `todo` to `OPENCODE_FLAGS`; the model's todo list then shows in the conversation. A change restarts OpenCode."
         },
         "opencodeAgentPlus.bedrock.profile": {
           "type": "string",

@@ -96,7 +96,7 @@ test('the latest reply: the user\'s last messages and what came after the last o
   assert.ok(reply.startsWith('...') && reply.endsWith('END'), 'its end is kept');
 });
 
-test("the latest reply keeps a steward's message as it came, its signed first line included: Claude Code Plus reads that line to tell which steward started the turn", () => {
+test("the latest reply keeps a steward's message as it came, signed first line included", () => {
   const signed = 'Sent by the steward "Night steward" (bbbbbbbb-1111-4222-8333-444444444444) for the user:\n  Please look at the build.\n';
   const r = createReplyState();
   r.take({ type: 'turnStart', turnId: 't', at: 1 });
@@ -107,7 +107,7 @@ test("the latest reply keeps a steward's message as it came, its signed first li
   assert.deepStrictEqual(r.body().said, [{ text: signed, at: 1 }], 'whole and untrimmed; a synthetic message is not the user\'s');
   const long = `Sent by the steward (aaaaaaaa-1111-4222-8333-444444444444) for the user:\n${'z'.repeat(MAX_SAID_CHARS * 2)}`;
   r.take({ type: 'userMessage', text: long, at: 4 });
-  assert.ok(r.body().said.at(-1).text.startsWith('Sent by the steward (aaaaaaaa-1111-4222-8333-444444444444) for the user:\n'), 'a long one is cut at its end');
+  assert.ok(r.body().said.at(-1).text.startsWith('Sent by the steward (aaaaaaaa-1111-4222-8333-444444444444) for the user:\n'), 'a long one is truncated at the end');
 });
 
 test('the latest reply file is written beside the plan when a turn ends, from the history on, and deleted with the plan', () => {

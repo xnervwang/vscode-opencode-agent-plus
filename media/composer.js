@@ -92,7 +92,7 @@
     return { text: before + add + after, caret: at + add.length };
   }
 
-  /* A draft put after what the box holds, a blank line between; what was typed stays. */
+  /* The box's text with `draft` added after it, a blank line between. */
   function appendDraft(text, draft) {
     const t = String(text || '');
     const d = String(draft || '');
@@ -101,7 +101,7 @@
     return `${t.replace(/\s+$/, '')}\n\n${d}`;
   }
 
-  /* What a key in the message box does: 'accept' the list's item, 'send', or null to let it be (a new line, say).
+  /* The action for a key in the message box: 'accept' the list's item, 'send', or null for the default (such as a new line).
      With `ctrlEnter`, Enter makes a new line and Ctrl or Cmd with Enter sends. */
   function enterAction({ key, shiftKey = false, ctrlKey = false, metaKey = false, composing = false, menu = false, ctrlEnter = false } = {}) {
     if (composing) return null;
@@ -122,7 +122,7 @@
     const current = modeOption && typeof modeOption.value === 'string' ? modeOption.value : '';
     const build = values.find((v) => v.value === 'build');
     const entries = [
-      { value: ASK, name: 'Ask before edits', description: 'OpenCode asks before it edits a file' },
+      { value: ASK, name: 'Ask before edits', description: 'Each file edit waits for your answer' },
       { value: AUTO, name: 'Edit automatically', description: 'Edits of files in this folder are allowed without asking; commands still ask' },
     ];
     for (const v of values) {
@@ -136,9 +136,9 @@
 
   /*
    * The pill under the message box for what the editor offers, `ctx` being { selection, file }, each null or { key,
-   * label, ... }: { item: { kind, ...ctx entry }, goes } or null. The selection comes first while
-   * `settings.selection` is on, else the open file while `settings.file` is on, else a selection the user may add; `goes`
-   * says it goes with the message, which the user can undo for this message (its key in `dropped`). A selection added
+   * label, ... }: { item: { kind, ...ctx entry }, goes } or null. In order of preference it shows the
+   * selection while `settings.selection` is on, the open file while `settings.file` is on, or a selection the user may add; `goes`
+   * says whether it goes with the message; leaving it out of this message puts its key in `dropped`. A selection added
    * already (its key in `pinned`) stays on the pill as `pinned`, and does not go along a second time.
    */
   function contextPill(ctx, settings, dropped, pinned) {
@@ -154,7 +154,7 @@
     return null;
   }
 
-  /* What a message takes along from the editor without being asked (contextPill's item while it goes), or null. */
+  /* The editor item that goes with a message automatically (contextPill's item while it goes), or null. */
   function autoContext(ctx, settings, dropped, pinned) {
     const p = contextPill(ctx, settings, dropped, pinned);
     return p && p.goes ? p.item : null;
@@ -253,7 +253,7 @@
     return '';
   }
 
-  /* The words on a queued message's row: its text, or for one without text what went with it. */
+  /* The text on a queued message's row: the message's text, or for a message without text, what it carries. */
   function queuedText(q) {
     const text = String((q && q.text) || '').trim();
     if (text) return text;

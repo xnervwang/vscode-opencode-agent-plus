@@ -9,13 +9,13 @@
  *
  * Puts the chat page through the states of STATES, in the dark and the light theme, with test/vscode/fake-backend.js
  * and its demo turns (OPENCODE_AGENT_PLUS_FAKE_DEMO), and saves for each a picture with Claude Code's panel in the
- * same state on the left and this page on the right, to <out>/shots with a look.json that test/vscode/LOOK.md explains
- * and test/vscode/LOOK-ALIKE.md says how to judge. The left halves are the pictures in --official (by default
+ * same state on the left and this page on the right. The pictures go to <out>/shots with a look.json, which
+ * test/vscode/LOOK.md explains; test/vscode/LOOK-ALIKE.md says how to judge them. The left halves are the pictures in --official (by default
  * test/vscode/look-alike/), taken once in Claude Code Plus's demo window; official.json there says from which versions.
  * They picture Anthropic's panel, so the folder stays on the developer's machine and out of the repository.
  * Both halves are the editor area of a window of 1440 by 900 CSS pixels without its row of tabs, cut the same way.
  * The pictures are put together on a canvas in the window itself, so nothing beyond what run.js needs is installed.
- * It runs only where someone starts it, never in CI. With state names it runs only those.
+ * It runs only when someone starts it, never in CI; given state names, it pictures only those.
  *
  * Under `node --test` this file does nothing but export STATES.
  */
@@ -34,8 +34,8 @@ const LOWER = 440;
 const THEMES = { dark: 'Default Dark Modern', light: 'Default Light Modern' };
 
 /*
- * Each state: the name its pictures go by, the themes the archive has it in, `lower` to keep only the lower part,
- * and `expect`, what both halves show. act() puts this page into the state; it runs in order, in one conversation.
+ * Each state has a `name` its pictures are named after, the `themes` the archive has pictures of it in, `lower` to
+ * keep only the lower part, and `expect`, what both halves show. act() puts this page into the state; it runs in order, in one conversation.
  */
 const STATES = [
   { name: 'slash', themes: ['dark'], lower: true,
@@ -45,17 +45,17 @@ const STATES = [
   { name: 'permission', themes: ['dark', 'light'],
     expect: 'A request for permission, framed in the focus colour, right above (or in place of) the message box: a bold question naming the tool, the call\'s detail, and numbered rows to allow once, to allow for the project, and to refuse, the first highlighted; a hint about the keys under them.' },
   { name: 'reply', themes: ['dark', 'light'],
-    expect: 'Your messages as full-width boxes with a coloured bar down the left edge and a small grey time before the text; every row of a reply hangs on a thin line down the left with a dot, starting with its small grey time, the last row of each reply with the turn\'s figures after the time (a duration, ctx, cost, model).' },
+    expect: 'Your messages as full-width boxes with a coloured bar down the left edge and a small grey time before the text; every row of a reply hangs on a thin line down the left with a dot and starts with its small grey time; on the last row of each reply the turn\'s figures (a duration, ctx, cost, model) follow that time.' },
   { name: 'conversation', themes: ['dark', 'light'],
     expect: 'A turn with a thinking row, rows of text, and tool rows: each tool row has its time on a line of its own, then the tool\'s name in bold and what it was called with in grey; one tool is opened to a framed box with an IN row and an OUT row in a monospaced font.' },
   { name: 'question', themes: ['dark', 'light'],
-    expect: 'A question from the model, framed in the focus colour, right above (or in place of) the message box: the question, each choice a row with a round button, its label and a grey description, an own-answer box, and a way to submit.' },
+    expect: 'A question from the model, framed in the focus colour, right above (or in place of) the message box: the question, each choice a row with a round button, its label and a grey description, a box for typing your own answer, and a Submit button.' },
   { name: 'subagent', themes: ['dark', 'light'],
     expect: 'A subagent\'s call as a tool row, under it a framed box saying what the subagent was asked and how it ended, with a small dot; the reply after it.' },
   { name: 'error', themes: ['dark'],
     expect: 'A tool call that failed: a red dot on its row, and its framed box with the command after IN and the error after OUT.' },
   { name: 'running', themes: ['dark', 'light'],
-    expect: 'A turn still running: the last tool row has no end time, a line with a turning mark says the turn is at work, the message box\'s placeholder offers to queue another message, and the button at the right end of its row is a filled square to stop.' },
+    expect: 'A turn still running: the last tool row has no end time, a line with a spinning mark shows the turn is still working, the message box\'s placeholder offers to queue another message, and the button at the right end of its row is a filled square to stop.' },
 ];
 
 module.exports = { STATES, TABS, LOWER, THEMES };
@@ -191,7 +191,7 @@ async function main() {
         error: async () => { await say('Demo: error'); await idle(); await sleep(400); await toLastUser(); await sleep(400); },
         running: async () => { await say('Demo: running'); await sleep(2500); await toEnd(); await sleep(300); },
       };
-      /* Every act runs, in order, so that each state follows from the one before; only the wanted ones are pictured. */
+      /* Every act runs in order, since each state builds on the one before; only the states asked for are pictured. */
       for (const s of STATES) {
         if (!s.themes.includes(theme)) { if (acts[s.name]) await acts[s.name]().catch(() => {}); continue; }
         let note = '';

@@ -6,7 +6,7 @@
 /*
  * "Fix with OpenCode Agent Plus" among the quick fixes where the editor reports an error or a warning
  * (opencodeAgentPlus.showFixActions). Picking it runs COMMAND with the file and the diagnostics at that place, which
- * puts a draft naming them into the message box of the chat tab in front, for the user to read before sending.
+ * puts a draft naming them into the message box of the chat tab in front, without sending it.
  */
 const COMMAND = 'opencodeAgentPlus.fixWithOpenCode';
 const TITLE = 'Fix with OpenCode Agent Plus';
@@ -39,7 +39,7 @@ function createFixActions({ vscode, enabled }) {
   };
 }
 
-/* Registers the provider for files of every language; a disposable, or null where the API is missing. */
+/* Registers the provider for files of every language and returns its disposable, or null where the API is missing. */
 function registerFixActions({ vscode, enabled }) {
   if (!vscode.languages || typeof vscode.languages.registerCodeActionsProvider !== 'function' || typeof vscode.CodeAction !== 'function') return null;
   const provider = createFixActions({ vscode, enabled });

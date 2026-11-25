@@ -32,7 +32,7 @@ const STEWARD = Object.freeze({ sourceId: 'claude-code', sessionId: '3f2b6c1e-00
 const OTHER = Object.freeze({ sourceId: 'claude-code', sessionId: '3f2b6c1e-0000-4000-8000-00000000000b' });
 const DOCS = Object.freeze({ sourceId: 'claude-code', sessionId: 'aaaaaaaa-1111-4222-8333-444444444444', title: 'Docs steward' });
 const NIGHT = Object.freeze({ sourceId: 'claude-code', sessionId: 'bbbbbbbb-1111-4222-8333-444444444444', title: 'Night steward' });
-/* The steward file as an Agent Plus without 'stewardList' leaves it: one steward, untitled. */
+/* A steward file written for an Agent Plus without 'stewardList': one steward, with no title. */
 const ONE = (s) => ({ format: 1, sourceId: s.sourceId, sessionId: s.sessionId, stewards: [{ sourceId: s.sourceId, sessionId: s.sessionId, title: '' }] });
 /* The first line Claude Code Plus puts in a steward's message (its src/stewards.js fromLine). */
 const SIGNED = (s, body) => `Sent by the steward "${s.title}" (${s.sessionId}) for the user:\n${body}`;
@@ -249,7 +249,7 @@ test("with 'stewardList' the steward file lists every steward with its title, th
     assert.deepStrictEqual(read(file), { format: 1, sourceId: DOCS.sourceId, sessionId: DOCS.sessionId, stewards: [DOCS, NIGHT] },
       'an entry without a session id is left out, one named twice is kept once, and a title is trimmed to one line');
     assert.deepStrictEqual(core.listed, [['opencode-plus', A]]);
-    assert.deepStrictEqual(core.asked, [], 'stewardOf() is not asked while stewardsOf() answers');
+    assert.deepStrictEqual(core.asked, [], 'stewardOf() is not called while stewardsOf() answers');
     assert.deepStrictEqual(readStewards(dir, A), [DOCS, NIGHT]);
     assert.deepStrictEqual(readSteward(dir, A), { sourceId: DOCS.sourceId, sessionId: DOCS.sessionId });
 
@@ -262,7 +262,7 @@ test("with 'stewardList' the steward file lists every steward with its title, th
     core.list = () => [];
     core.answer = () => OTHER;
     core.fire();
-    assert.deepStrictEqual(read(file), ONE(OTHER), 'stewardsOf() gives none: stewardOf() is asked, as an Agent Plus without the list would be');
+    assert.deepStrictEqual(read(file), ONE(OTHER), 'when stewardsOf() returns none, stewardOf() is called, as for an Agent Plus without the list');
     core.answer = () => null;
     core.fire();
     assert.ok(!fs.existsSync(file));
@@ -328,7 +328,7 @@ test("a handoff goes to the steward `to` names, else to the one whose signed mes
     await s.take(request(dir, A, 'r5000000', { to: wrong }));
     assert.deepStrictEqual(res(A, 'r5000000'), { format: 1, outcome: 'refused',
       reason: `${wrong} is not a steward of this conversation; its stewards are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId})` });
-    assert.strictEqual(core.delivered.length, sent, 'a refused handoff calls no deliver()');
+    assert.strictEqual(core.delivered.length, sent, 'a refused handoff does not call deliver()');
 
     fire({ type: 'turnStart', turnId: 't2', at: 3, unsolicited: true });
     await s.take(request(dir, A, 'r6000000'));
@@ -336,7 +336,7 @@ test("a handoff goes to the steward `to` names, else to the one whose signed mes
 
     fire({ type: 'turnStart', turnId: 't3', at: 4 }, { type: 'userMessage', text: SIGNED({ title: 'Gone', sessionId: 'dddddddd-1111-4222-8333-444444444444' }, 'x'), at: 4 });
     await s.take(request(dir, A, 'r7000000'));
-    assert.strictEqual(to(), DOCS.sessionId, 'a signed line naming a steward not in the list: the first steward');
+    assert.strictEqual(to(), DOCS.sessionId, 'a signed line naming a steward not in the list goes to the first steward');
     stop();
     assert.strictEqual(listeners.size, 0);
 

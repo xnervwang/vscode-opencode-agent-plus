@@ -26,10 +26,10 @@
  *               openConversation { sourceId, sessionId }, setPermissionMode { mode }, checkPaths { paths },
  *               openFile { path, line, col }, setFocusView { on }.
  *
- * The message box takes along the editor's selection, or else the file open in the editor (the composer settings say
- * which), shown lit on the pill under the box; its × leaves it out of this message, and a click on a selection adds it
- * to the message as it is now. The editor's Alt+K, Add to Conversation and Fix with
- * OpenCode put @ references or a draft after what the box holds.
+ * With each message the page sends the editor's selection, or else the file open in the editor (the composer settings
+ * say which), shown lit on the pill under the box; the pill's × leaves it out of this message, and a click on a selection
+ * adds it to the message as it is now. The editor's Alt+K, Add to Conversation and Fix with OpenCode put @ references or
+ * a draft after the text already in the box.
  *
  * The layout is the Claude Code panel's: each row of a reply hangs on a line down the left side with a dot that shows
  * its state, a tool call is one row that opens to its input and result, and the message box carries its buttons in a
@@ -44,13 +44,13 @@
  * Replies link the other conversations they mention by title or id (agentPlusKit's mentions); a click opens one.
  * The rail on the right edge moves between the user's messages, and its middle button opens a list of them and of the
  * compaction points; a click scrolls to one. The Subagents button hides what subagents did and folds their progress,
- * leaving a request of theirs that still waits. Both choices live in the page's state.
+ * but a subagent's request that still waits for the user stays. Both choices live in the page's state.
  *
  * Code blocks that name a language are coloured by highlight.js with the theme's colours; one without a language stays
  * plain, as guessing goes wrong on logs and output. The paths a reply names, and the file of a read, edit or write row,
  * become links once the extension has checked that they are files. An edit's row opens to its change as red and green
  * lines, and a todowrite row to its list. Focus view hides all but your messages and the last reply of each turn; the
- * message whose reply is being read stays pinned at the top of the log. The two settings come from the extension.
+ * message whose reply is being read stays pinned at the top of the log.
  */
 
 /* The page's logic that needs no DOM, for the tests (require) and the page (window.ChatPage). */
@@ -80,7 +80,7 @@
     if (!/[A-Za-z]/.test(name)) return false;
     return /[\\/]/.test(p) || /\.[A-Za-z][A-Za-z0-9]{0,9}$/.test(name);
   }
-  /* The paths in `text`, each { index, length, path, line?, col? } with index and length over the path and its line. */
+  /* The paths in `text`: [{ index, length, path, line?, col? }], where index and length cover the path and its line part. */
   function pathRefs(text) {
     const out = [];
     const t = String(text || '');
@@ -99,7 +99,7 @@
     }
     return out;
   }
-  /* The path that the whole of `text` is, as inline code holds one, or null. */
+  /* `text` as a path when all of it is one, as an inline code span may be; else null. */
   function codePathRef(text) {
     const t = String(text || '').trim();
     const r = pathRefs(t);
@@ -123,8 +123,9 @@
     return out;
   }
 
-  /* Which of your messages, given their boxes' { top, bottom } from the top of the log in order, to pin there: the last
-     one scrolled out of sight above, unless the next is within `height` of the top. -1 for none. */
+  /* The index of the user message to pin at the top of the log: the last one scrolled out of sight above, unless the
+     next is within `height` of the top; -1 for none. `rects` are the { top, bottom } of the message boxes, in order,
+     from the top of the log. */
   function pinIndex(rects, height) {
     let at = -1;
     for (let i = 0; i < (rects || []).length; i++) {
@@ -145,7 +146,7 @@
   const C = window.ChatComposer;
   const P = window.ChatPage;
   const HL = window.hljs && typeof window.hljs.highlight === 'function' ? window.hljs : null;
-  /* The coloured HTML of the latest code blocks, as a reply that is still coming is drawn again on every change. */
+  /* The coloured HTML of the latest code blocks, since a reply that is still streaming is redrawn on every change. */
   const codeCache = new Map();
   function codeHtml(str, lang) {
     if (!HL || !lang) return '';
@@ -303,7 +304,7 @@
 
   /* ---------- files a reply names ---------- */
 
-  /* path -> { ok, at }, the extension's latest answer; a miss is asked about again after FILE_RETRY_MS. */
+  /* path -> { ok, at }, the extension's latest answer; a missing file is checked again after FILE_RETRY_MS. */
   const fileState = new Map();
   const fileAsk = new Set();
   const fileAsked = new Set();
@@ -311,7 +312,7 @@
   const fileFresh = new Set();
   let fileAskTimer = 0;
   const FILE_RETRY_MS = 4000;
-  /* The paths a call to linkFiles met, so that an answer redraws only the entries naming them. */
+  /* The paths each linkFiles call found, so that an answer redraws only the entries that name them. */
   let filesSeen = null;
   function askFiles() {
     fileAskTimer = 0;
@@ -321,7 +322,7 @@
     if (paths.length) api.postMessage({ type: 'checkPaths', paths, ...(fresh.length ? { fresh } : {}) });
     if (fileAsk.size) fileAskTimer = setTimeout(askFiles, 120);
   }
-  /* Whether `p` is known to be a file; asks the extension when it is not known yet. */
+  /* Whether `p` is known to be a file; with no answer yet, it asks the extension. */
   function fileOk(p) {
     if (filesSeen) filesSeen.add(p);
     const got = fileState.get(p);
@@ -378,7 +379,7 @@
       node.replaceWith(frag);
     }
   }
-  /* The file of a read, edit or write row, linked on its summary once it is known to be a file. */
+  /* The file of a read, edit or write row; the summary links it once the panel confirms the file exists. */
   function paintToolFile(entry, ended) {
     const f = entry.item && entry.item.file;
     if (f && ended && !(fileState.get(f.path) || {}).ok) { fileState.delete(f.path); fileAsked.delete(f.path); fileFresh.add(f.path); }
@@ -464,7 +465,7 @@
     return { meta, time };
   }
 
-  /* When each turn's message was sent, for the time a row of its reply took to come. */
+  /* The time each turn's message was sent, which each reply row's delay is measured from. */
   const turnSent = new Map();
   function stampIn(target, item) {
     target.textContent = stamp(item.at);
@@ -625,7 +626,7 @@
     };
   }
 
-  /* What a call went in with: a command as it reads, anything else as the JSON it came in. */
+  /* A call's input: a command as typed, anything else as its JSON. */
   function inputShown(text) {
     const raw = String(text || '');
     try {
@@ -656,7 +657,6 @@
     box.replaceChildren(list);
     if (change.more) box.appendChild(el('div', 'diff-more', `${change.more} more line${change.more === 1 ? '' : 's'} not shown`));
   }
-  /* The counts on an edit's row: +added and -removed, each only when not 0, or a write's number of lines. */
   function changeLabel(target, change) {
     if (change.kind === 'write') { target.textContent = `${change.added} line${change.added === 1 ? '' : 's'}`; return; }
     const parts = [];
@@ -1167,7 +1167,7 @@
     document.body.classList.toggle('focus-view', view.focus);
     focusBtn.hidden = !view.toggle;
     focusBtn.setAttribute('aria-pressed', view.focus ? 'true' : 'false');
-    focusBtn.title = view.focus ? 'Focus view is on: only your messages and the last reply of each turn show. Click to show everything (Ctrl+Alt+F).'
+    focusBtn.title = view.focus ? 'Focus view is on: it shows only your messages and the last reply of each turn. Click to show everything (Ctrl+Alt+F).'
       : 'Focus view: show only your messages and the last reply of each turn (Ctrl+Alt+F)';
   }
   focusBtn.addEventListener('click', () => {
@@ -1344,7 +1344,7 @@
     bgSum.title = 'Show what runs in the background';
     const away = detached.map((d) => {
       const row = el('div', 'bg-row bg-detached');
-      row.title = 'Left OpenCode and still runs; the extension does not stop it';
+      row.title = 'Still running after leaving OpenCode. The extension does not stop it.';
       row.append(el('span', 'bg-kind', 'Detached'), el('span', 'bg-title', d.command),
         el('span', 'bg-detail', [`pid ${d.pid}`, d.startedAt ? `since ${stamp(d.startedAt)}` : ''].filter(Boolean).join(' · ')));
       return row;
@@ -1481,7 +1481,7 @@
     const list = Array.isArray(m.models) ? m.models : [];
     modelSel.replaceChildren();
     if (m.error) modelSel.appendChild(option('', `Couldn't list models: ${m.error}`));
-    /* Before a provider is connected OpenCode offers only its free models; connecting one comes first then. */
+    /* Before a provider is connected, OpenCode offers only its free models, so Connect a provider… goes first. */
     const free = C.onlyFreeModels(list);
     if (free && caps.connect) modelSel.appendChild(option('__connect', 'Connect a provider…'));
     const byVendor = new Map();
@@ -1606,12 +1606,12 @@
     const pinned = new Set(selections.map((x) => `${x.path}:${x.startLine}-${x.endLine}`));
     return C.contextPill(editorCtx, { selection: composerSet.attachSelection, file: composerSet.attachFile }, dropped, pinned);
   }
-  /* The selection or file the message takes along from the editor, or null. */
+  /* The editor's selection or file that goes with the next message, or null. */
   function autoItem() {
     const p = ctxNow();
     return p && p.goes ? p.item : null;
   }
-  /* Lit while it goes with the message; its × leaves it out of this one. */
+  /* The pill is lit while its item goes with the message; the × leaves the item out of this message. */
   function renderCtx() {
     const p = ctxNow();
     ctxPill.hidden = !p;
@@ -1624,8 +1624,8 @@
     ctxDrop.hidden = !goes;
     const what = item.kind === 'file' ? 'the file open in the editor' : 'the lines selected in the editor';
     if (pinned) selBtn.title = `${item.label} is added to the message`;
-    else if (item.kind === 'selection') selBtn.title = goes ? `${item.label} goes with your message, as ${what}. Click to keep it even after you select something else.` : `Add ${item.label} to the message`;
-    else selBtn.title = goes ? `${item.label} goes with your message, as ${what}. Click to leave it out.` : `Send ${item.label} with the message`;
+    else if (item.kind === 'selection') selBtn.title = goes ? `${item.label} goes with your message (${what}). Click to keep it even after you select something else.` : `Add ${item.label} to the message`;
+    else selBtn.title = goes ? `${item.label} goes with your message (${what}). Click to leave it out.` : `Send ${item.label} with the message`;
   }
 
   function renderAttachments() {
@@ -2054,7 +2054,8 @@
       const refs = (Array.isArray(m.refs) ? m.refs : []).filter((r) => r && r.token && r.path);
       for (const r of refs) if (!picked.some((x) => x.token === r.token && x.path === r.path)) picked.push(r);
       let text = input.value;
-      /* A draft names its references itself; they are only kept, so that they go with the message. */
+      /* A draft already names its references in its text, so they are not inserted again, only kept to go with the
+         message. */
       if (refs.length && !m.draft) {
         const at = document.activeElement === input ? input.selectionStart : text.length;
         const r = C.insertRefs(text, at, refs);

@@ -29,11 +29,11 @@
  *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
  *   src/host/trust-gate.js        what the commands, the chat tabs and the view do before the workspace is trusted
  *   src/host/opencode-download.js    downloading OpenCode when none is found
- *   src/host/provider-login.js    OpenCode's sign-in wizard in a terminal, then OpenCode started again for its models
- *   src/host/mentions.js          the @ references Alt+K, Add to Conversation and Fix with OpenCode put in a message box
+ *   src/host/provider-login.js    OpenCode's sign-in wizard in a terminal, and the restart that follows it
+ *   src/host/mentions.js          the @ references that editor commands put in a message box
  *   src/host/fix-actions.js       Fix with OpenCode Agent Plus among the editor's quick fixes
  *   src/host/auto-edit.js         the Edit automatically permission mode of each conversation
- *   src/host/detached.js          the commands of a conversation that left OpenCode and still run (Linux)
+ *   src/host/detached.js          commands a conversation started that left OpenCode and are still running (Linux)
  *
  * OPENCODE_AGENT_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_AGENT_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -396,7 +396,7 @@ function start(context, log, gate, channel) {
     return chat;
   }
 
-  /* The settings of the message box, which each chat page follows. */
+  /* The message box settings that every chat page uses. */
   const cfg = () => vscode.workspace.getConfiguration(brand.prefix);
   const composerSettings = () => ({ ctrlEnter: cfg().get('useCtrlEnterToSend') === true, attachFile: cfg().get('attachOpenFile') !== false,
     attachSelection: cfg().get('attachSelection') !== false });
@@ -404,7 +404,7 @@ function start(context, log, gate, channel) {
     if (['useCtrlEnterToSend', 'attachOpenFile', 'attachSelection'].some((k) => e.affectsConfiguration(`${brand.prefix}.${k}`))) for (const c of chats) c.settingsChanged();
   }));
 
-  /* The chat tab last in front, and whether the Claude Code panel came to the front after it. */
+  /* The chat tab that was active last, and whether the Claude Code panel became active after it. */
   let frontId = '';
   let otherLast = null;
   function otherChatLast(on) {
@@ -420,7 +420,8 @@ function start(context, log, gate, channel) {
     const list = [...chats];
     return list.find((c) => c.conversation && c.conversation.id === frontId) || list[list.length - 1] || null;
   };
-  /* Runs `fn` on the chat tab in front, brought forward and focused; with none open, on a new conversation's. */
+  /* Runs `fn` on the chat tab in front after bringing it forward and focusing it, or on a new conversation's tab when no
+     chat tab is open. */
   async function toFrontChat(fn) {
     let chat = frontChat();
     if (!chat) {
@@ -448,7 +449,7 @@ function start(context, log, gate, channel) {
   const forkDrafts = new Map();
   async function forkFromMessage(id, target) {
     const mid = rewinding.messageOf(target, target.messageId ? [] : await backend.userMessages(id));
-    if (!mid) throw new Error('OpenCode\'s copy of the conversation does not have this message, so nothing was forked.');
+    if (!mid) throw new Error('Cannot fork here: OpenCode\'s copy of the conversation does not have this message.');
     const f = await backend.forkBefore(id, mid);
     if (f.cwd) folders.set(f.id, f.cwd);
     if (target.text) forkDrafts.set(f.id, target.text);
@@ -503,7 +504,8 @@ function start(context, log, gate, channel) {
     ];
   }
 
-  /* Connect a Model Provider. OpenCode starts again only when no turn of this window runs, since a restart ends it. */
+  /* Connect a Model Provider. OpenCode is restarted only when no turn in this window is running, since a restart would
+     end the turn. */
   const idleHere = () => manager.list().every((s) => s.activity !== 'working' && s.activity !== 'waiting');
   const whenIdle = () => new Promise((resolve) => {
     if (idleHere()) { resolve(); return; }
@@ -521,7 +523,7 @@ function start(context, log, gate, channel) {
     done: async () => {
       const before = await models.list().catch(() => []);
       if (!idleHere()) {
-        tell('OpenCode starts again for the new provider once the turns running in this window end.');
+        tell('OpenCode will restart for the new provider when the turns running in this window have ended.');
         await whenIdle();
       }
       await backend.restart(plan.launch(settings.options()));
@@ -532,7 +534,7 @@ function start(context, log, gate, channel) {
       logins.refreshed++;
       const added = addedProviders(before, list);
       if (added.length) tell(`OpenCode now offers models from ${added.join(', ')}.`);
-      else if (!manager.ids().length) tell('Open a conversation to see the models OpenCode offers now.');
+      else if (!manager.ids().length) tell('Open a conversation to see the updated model list.');
       else tell(`OpenCode offers ${list.length} model${list.length === 1 ? '' : 's'}; no provider was added.`);
     },
     fail,
@@ -740,7 +742,8 @@ function start(context, log, gate, channel) {
       const ref = refOf(ed.document.uri.fsPath, ed);
       return ref ? toFrontChat((c) => c.compose({ refs: [ref] })) : false;
     }),
-    /* From an editor's context menu (its file, with the selection) or the Explorer's (the files picked there). */
+    /* Called from an editor's context menu with that editor's file and selection, or from the Explorer's with the
+       files selected there. */
     vscode.commands.registerCommand(`${brand.prefix}.addToConversation`, (uri, uris) => {
       const ed = vscode.window.activeTextEditor;
       const list = Array.isArray(uris) && uris.length ? uris : uri instanceof vscode.Uri ? [uri] : ed ? [ed.document.uri] : [];
@@ -879,7 +882,8 @@ function start(context, log, gate, channel) {
       told: () => told.slice(), sound: () => soundOn, recent: () => recent.get(), links: () => links.list(), infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
       zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }),
       backendInfo: () => backend.info(), downloadOffered: () => fetcher.offered,
-      /* The program the sign-in terminal runs instead of the OpenCode found ('' for that one), and how often it ran. */
+      /* For tests: the program the sign-in terminal runs in place of the OpenCode found ('' to run that one), and how many
+         times the sign-in ran. */
       loginProgram: (p) => { loginProgram = String(p || ''); return true; }, logins: () => ({ ...logins }),
       autoEdit: (id) => autoEdit.get(id), rescanDetached: () => { for (const c of chats) c.lookForDetached(0); return chats.size; },
       canForkBefore: () => backend.canForkBefore(), restartOpenCode: () => backend.restart(plan.launch(settings.options())).then(() => true),

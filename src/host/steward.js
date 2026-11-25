@@ -45,7 +45,7 @@ const NO_TITLE = 'New conversation';
 /* The line Claude Code Plus puts first in each message a steward sends (its src/stewards.js FROM). */
 const FROM = /^Sent by the steward (?:"(.*)" )?\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\) for the user:[ \t]*$/i;
 const FIRST_LINE_CHARS = 1000;
-/* Conversations whose latest message is remembered; the oldest is forgotten past this. */
+/* How many conversations keep their latest message; past it, the oldest is dropped. */
 const MAX_TRACKED = 200;
 
 /* The message the steward gets: Claude Code Plus's src/relay.js handoffText, naming this extension. Its steward takes a
@@ -61,7 +61,7 @@ const usable = (s) => !!s && typeof s === 'object' && typeof s.sourceId === 'str
 const titleOf = (t) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE) : '');
 const entryOf = (s) => (usable(s) ? { sourceId: s.sourceId, sessionId: s.sessionId, title: titleOf(s.title) } : null);
 
-/* The usable entries of `list`, each once, at most MAX_STEWARDS. */
+/* The usable entries of `list`, without repeats and at most MAX_STEWARDS of them. */
 function entries(list) {
   const out = [], seen = new Set();
   for (const s of Array.isArray(list) ? list.slice(0, MAX_STEWARDS * 2) : []) {
@@ -91,7 +91,7 @@ function readSteward(dir, sessionId) {
   return s ? { sourceId: s.sourceId, sessionId: s.sessionId } : null;
 }
 
-/* The steward session id that the first line of `text` names, lower case, or ''. */
+/* The steward session id in the signed first line of `text`, in lower case, or ''. */
 function senderOf(text) {
   const m = FROM.exec(String(text || '').replace(/^\s+/, '').split(/\r?\n/)[0]);
   return m ? m[2].toLowerCase() : '';
@@ -104,7 +104,7 @@ const namesOf = (list) => {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] || '');
 };
 
-/* The steward of `list` that `to` names, by its session id or as sourceId:sessionId, or null. */
+/* Finds the steward in `list` that `to` names, by its session id or as sourceId:sessionId; null if there is none. */
 function named(list, to) {
   const want = String(to).trim().toLowerCase();
   return list.find((s) => s.sessionId.toLowerCase() === want || `${s.sourceId}:${s.sessionId}`.toLowerCase() === want) || null;
@@ -167,7 +167,8 @@ function createStewards(deps) {
   const openIds = () => { try { return new Set(deps.ids()); } catch (_) { return new Set(); } };
   const has = (feature, method) => Array.isArray(core.features) && core.features.includes(feature) && typeof core[method] === 'function';
 
-  /* stewardsOf() when Agent Plus has it; stewardOf() as a list of one when it has not, or gives none. */
+  /* Asks stewardsOf() when Agent Plus has it; when it has not, or that gives none, asks stewardOf() and makes its
+     answer a list of one. */
   function ask(id) {
     let list = [];
     if (has('stewardList', 'stewardsOf')) {
@@ -314,7 +315,6 @@ function createStewards(deps) {
     opened() { refresh(false); },
     refresh: () => refresh(true),
     track,
-    /* The first line kept for `id` by track(). */
     firstLine: (id) => firstLines.get(id) || '',
     /* Looks for requests now, as the poll would. */
     scan,

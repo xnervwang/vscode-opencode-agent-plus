@@ -478,8 +478,8 @@ const pick = (o, keys) => { for (const k of keys) if (typeof o[k] === 'string') 
 const PATH_KEYS = ['filePath', 'file_path', 'filepath', 'path'];
 
 /*
- * What an edit, write or patch call changes, from what it was called with: old and new strings (edit, multiedit), the
- * whole content (a write), or a patch's text. null for any other call.
+ * The change an edit, write or patch call makes, worked out from its arguments: old and new strings (edit, multiedit),
+ * the whole content (a write), or a patch's text. null for any other call.
  */
 function changeOf(name, input) {
   if (!input || typeof input !== 'object') return null;
@@ -529,7 +529,7 @@ function todoSummary(todos) {
   return `${todos.length} item${todos.length === 1 ? '' : 's'}${done ? ` · ${done} done` : ''}`;
 }
 
-/* The file a call reads or writes, { path, line? }, for the page to link once the extension has found it. */
+/* The file a call reads or writes: { path, line? }. */
 function fileOf(input, change) {
   const where = input && typeof input === 'object' ? pick(input, PATH_KEYS) : undefined;
   const p = where || (change && change.path) || '';

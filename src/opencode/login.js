@@ -5,7 +5,7 @@
 'use strict';
 /*
  * What runs when the user connects a model provider: OpenCode's own sign-in wizard, `opencode auth login`, in a
- * terminal. ACP's initialize answer offers it as the auth method opencode-login, whose `_meta["terminal-auth"]` names
+ * terminal. ACP's initialize response lists it as the auth method opencode-login, whose `_meta["terminal-auth"]` names
  * the arguments when OpenCode sends them. The program is always the OpenCode this extension found, never the
  * `opencode` on PATH that the method names, and the environment is the one its other subcommands get (server.js
  * subcommandEnv); on 2.x `--standalone` keeps the wizard off the shared background service, as for every subcommand.
@@ -15,7 +15,7 @@ const server = require('./server');
 const DEFAULT_ARGS = Object.freeze(['auth', 'login']);
 const METHOD_ID = 'opencode-login';
 
-/* The arguments of the first terminal sign-in an auth method gives, else `auth login`. */
+/* The arguments of the first terminal sign-in among the auth methods, or `auth login` when there is none. */
 function terminalArgs(authMethods) {
   for (const m of Array.isArray(authMethods) ? authMethods : []) {
     const t = m && m._meta && m._meta['terminal-auth'];
@@ -26,11 +26,11 @@ function terminalArgs(authMethods) {
 
 /*
  * { shellPath, shellArgs, env } for vscode.window.createTerminal. `found` is what findOpenCode() or detect() gave
- * ({ path, version }); `env` the extra environment OpenCode starts with; `authMethods` what initialize answered, if
- * known. The terminal adds `env` to its own environment.
+ * ({ path, version }); `env` the extra environment OpenCode starts with; `authMethods` the auth methods listed in
+ * initialize's response, if known. The terminal adds `env` to its own environment.
  */
 function loginLaunch({ found, env = {}, authMethods } = {}) {
-  if (!found || typeof found.path !== 'string' || !found.path) throw new server.OpenCodeError('notFound', 'OpenCode was not found, so there is no sign-in to run.');
+  if (!found || typeof found.path !== 'string' || !found.path) throw new server.OpenCodeError('notFound', 'OpenCode was not found, so its sign-in cannot start.');
   return {
     shellPath: found.path,
     shellArgs: server.subcommandArgs(found.version, terminalArgs(authMethods)),

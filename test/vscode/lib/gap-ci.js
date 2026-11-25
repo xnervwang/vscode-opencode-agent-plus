@@ -54,7 +54,7 @@ const reveal = (call, id) => call(`const t = vscode.window.tabGroups.all.flatMap
   await vscode.commands.executeCommand("vscode.openWith", t.input.uri, "opencodeAgentPlus.chat", { viewColumn: t.group.viewColumn, preview: false });
   return true;`, SCHEME + id);
 
-/* The webview frame on screen whose log has `text`, as lib/window.js frameWith tells one on screen. */
+/* The webview frame on screen whose log contains `text`; lib/window.js frameWith decides what counts as on screen. */
 async function frameShowing(page, until, text, ms = 30000) {
   const shown = async (f) => {
     let top = f;
@@ -72,16 +72,16 @@ async function frameShowing(page, until, text, ms = 30000) {
   }, ms, 300);
 }
 
-/* Brings `tab` ({ id, text }) to the front and returns its page, found by `text` in its log. */
+/* Brings `tab` ({ id, text }) to the front and returns the page whose log shows `text`. */
 async function pageOf(ctx, tab) {
   await reveal(ctx.call, tab.id);
   return frameShowing(ctx.page, ctx.until, tab.text);
 }
 
 /*
- * Before the reload: beside `first` ({ id, text }), the only chat tab open, two more conversations, each sent a message
- * of its own; the first stays behind `first` in the main editor group, the second goes to a split to the right, and
- * `first` ends in front. Returns the three tabs as { id, text, column }.
+ * Before the reload, opens two more conversations beside `first` ({ id, text }), the only chat tab open, and sends
+ * each a message of its own; the first of them stays in the main editor group behind `first`, the second goes to a
+ * split to the right, and `first` ends in front. Returns the three tabs as { id, text, column }.
  */
 async function openTabs(ctx, first) {
   const { call, ext, until, check } = ctx;
@@ -96,7 +96,6 @@ async function openTabs(ctx, first) {
     await ext('await api.test.send(arg.id, arg.text); return true;', { id, text });
     tabs.push({ id, text });
   }
-  /* Each reply has come once its user message and the reply's figures are in the conversation. */
   const done = (id) => ext('const s = api.test.snapshot(arg); return !!s && s.activity === "stopped" && !!s.lastReplyAt;', id).catch(() => false);
   await until(async () => (await Promise.all(tabs.slice(1).map((t) => done(t.id)))).every(Boolean), 180000, 500);
   await reveal(call, first.id);
@@ -110,7 +109,7 @@ async function openTabs(ctx, first) {
 }
 
 /* After the reload: each tab is back in its group, and each, brought to the front, loads its own conversation, which
-   its info box names. `first` ends in front. */
+   its info box names. The first tab is in front again at the end. */
 async function checkTabs(ctx, tabs) {
   const { call, check } = ctx;
   const now = await ctx.until(async () => { const n = await chatTabs(call); return tabs.every((t) => n.some((x) => x.id === t.id)) ? n : null; }, 30000) || await chatTabs(call);
@@ -130,10 +129,9 @@ async function checkTabs(ctx, tabs) {
     }
     pages.push({ id: t.id, page: !!f, session });
   }
-  check(pages.every((x) => x.page && x.session === x.id), 'each restored chat tab, brought to the front, loads its page with its own conversation, whose session its info box names', pages);
+  check(pages.every((x) => x.page && x.session === x.id), 'each restored chat tab, once brought to the front, loads its own conversation, and its info box names that session', pages);
 }
 
-/* Closes the chat tabs of `tabs`. */
 const closeTabs = (call, tabs) => call(`const ids = arg.map((t) => "${SCHEME}" + t.id);
   await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && ids.includes(t.input.uri.toString())));
   return true;`, tabs).catch(() => false);

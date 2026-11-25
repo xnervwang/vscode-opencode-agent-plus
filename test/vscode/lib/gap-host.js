@@ -12,7 +12,7 @@
  * moves between an editor and the message box, Alt+K and Add to Conversation (the editor's and the Explorer's menus) put
  * @ references in it; Fix with OpenCode Agent Plus in the quick fixes of a JSON error drafts a message after what the box
  * holds; on Linux a process carrying the conversation's OPENCODE_SESSION_ID shows as detached on the background pill;
- * a message of an image alone goes (where the page takes images); on OpenCode 2 the effort chosen comes back after a
+ * a message with only an image is sent (where the page takes images); on OpenCode 2 the effort chosen comes back after a
  * model without it, and stays when OpenCode starts again, in the page and in what OpenCode records; and with no chat tab
  * open, Cmd+Esc starts a conversation.
  *
@@ -66,7 +66,8 @@ async function run(ctx) {
     }, ms, 400);
   };
   const ask = (fakeText, realText) => (real ? realText : `Say: ${fakeText}`);
-  /* Opens `file` beside, or where it is already on screen (else in the active group); `keep` leaves the focus where it is. */
+  /* Opens `file` beside the chat, or where it is already on screen (else in the active group); with `keep`, the focus
+     stays where it is. */
   const openFile = (file, opts) => call(`const d = await vscode.workspace.openTextDocument(vscode.Uri.file(arg.file));
     const there = vscode.window.visibleTextEditors.find((x) => x.document.uri.toString() === vscode.Uri.file(arg.file).toString());
     const col = arg.beside ? vscode.ViewColumn.Beside : there ? there.viewColumn : vscode.ViewColumn.Active;
@@ -97,11 +98,11 @@ async function run(ctx) {
   const standalone = !real || line >= 2;
   check(!!plain && plain.shellPath === configured && plain.shellArgs.join(' ') === (standalone ? 'auth login --standalone' : 'auth login') && plain.env.OPENCODE_DISABLE_AUTOUPDATE === '1'
     && (!real || plain.env.AWS_PROFILE === 'self'),
-  "the sign-in runs the OpenCode found (not the one on PATH) with auth login, --standalone on OpenCode 2, and the extension's environment", plain && { ...plain, env: Object.keys(plain.env) });
+  "the sign-in runs auth login with the OpenCode the extension found (not the one on PATH), adds --standalone on OpenCode 2 and uses the extension's environment", plain && { ...plain, env: Object.keys(plain.env) });
   await ext('return api.test.loginProgram(arg);', program);
   const offered = await f.evaluate(() => [...document.querySelectorAll('#model option')].map((o) => [o.value, o.textContent]));
   check(offered.some(([v, t]) => v === '__connect' && t === 'Connect a provider…'), 'the model list offers "Connect a provider…"', offered.slice(-3));
-  /* OpenCode starts again only once no turn of this window runs, so the turns of earlier steps are let end first. */
+  /* OpenCode restarts only when no turn in this window is running, so the turns from earlier steps must end first. */
   const busy = async () => ((await ext('return api.test.conversations();')) || []).filter((c) => c.activity === 'working' || c.activity === 'waiting')
     .map((c) => ({ title: c.title, activity: c.activity, waitingFor: c.waitingFor }));
   const quiet = await until(async () => ((await busy()).length ? null : true), real ? 300000 : 30000);
@@ -112,7 +113,7 @@ async function run(ctx) {
   check(!!term && term.path === program && Array.isArray(term.args) && term.args.join(' ') === (standalone ? 'auth login --standalone' : 'auth login'),
     'picking it opens the terminal "OpenCode: Connect a Provider" running the sign-in', term);
   const kept = await f.evaluate(() => document.getElementById('model').dataset.current || '');
-  check(kept && kept !== '__connect', 'the model pill keeps the model it had', kept);
+  check(kept && kept !== '__connect', 'the model pill still shows the earlier model, not Connect a provider…', kept);
   /* The terminal's process starts through VS Code's pty host, whose node-pty needs glibc 2.28: on an older Linux it never
      starts, and the terminal is closed instead. Windows runs the stand-in through cmd, which is not checked here. */
   const pid = await call(`const t = vscode.window.terminals.find((x) => x.name === "OpenCode: Connect a Provider");
@@ -131,7 +132,7 @@ async function run(ctx) {
   }
   const refreshed = await until(async () => { const l = await ext('return api.test.logins();'); return l.refreshed > refreshedBefore ? l : null; }, 120000);
   const words = (await told()).slice(-3);
-  check(!!refreshed && words.some((w) => /OpenCode (now )?offers|Open a conversation to see/.test(w)), 'once the terminal closes, OpenCode starts again and the models are listed anew', { refreshed, words, busy: refreshed ? undefined : await busy() });
+  check(!!refreshed && words.some((w) => /OpenCode (now )?offers|Open a conversation to see/.test(w)), 'once the terminal closes, OpenCode restarts and the models are listed again', { refreshed, words, busy: refreshed ? undefined : await busy() });
   f = await chatPage();
   const listed = f ? await until(() => f.evaluate(() => { const o = [...document.querySelectorAll('#model option')].map((x) => x.value); return o.includes('__connect') && o.length > 2 ? o.length : null; }), 30000) : null;
   check(!!listed, 'the chat page lists the models again, still with "Connect a provider…"', listed);
@@ -165,7 +166,7 @@ async function run(ctx) {
   const outlined = await f.evaluate(() => document.querySelector('.mode-pick').classList.contains('auto-edit'));
   check(!!autoOn && outlined, 'picking Edit automatically keeps it for this conversation, and the pill is outlined', { autoOn, outlined });
   await shot('host-02-edit-automatically', { features: ['edit automatically'], part: '#workbench\\.parts\\.editor',
-    expect: 'An empty conversation; in the row under the message box, the mode pill near the right has a thin outline in the focus colour and reads "Edit automatically", which a chat as narrow as half the window cuts short with an ellipsis (such as "Edit aut…") rather than wrap the row. The row of buttons stays on one line.' });
+    expect: 'An empty conversation; in the row under the message box, the mode pill near the right has a thin outline in the focus colour and reads "Edit automatically", which a chat as narrow as half the window cuts short with an ellipsis (such as "Edit aut…") rather than wrap the row.' });
   const target = path.join(folder, 'auto-edit.txt');
   fs.rmSync(target, { force: true });
   await f.fill('#input', real ? 'Use your write tool to create the file auto-edit.txt in the current folder, with the single word OTTER as its whole content. Do not run any command.'
@@ -189,7 +190,7 @@ async function run(ctx) {
   const reopened = f ? await until(() => f.evaluate(() => (document.getElementById('mode').value === 'build:auto' ? true : null)), 15000) : null;
   check(!!reopened, 'reopened, the tab is still on Edit automatically');
 
-  // 11d. Fork from here (OpenCode 2): the history before a message in a new tab, that message in its box.
+  // 11d. Fork from here (OpenCode 2) opens the history before a message in a new tab, with that message in its box.
   if (await ext('return api.test.canForkBefore();')) {
     const second = 'Reply with the single word SECOND and do not use any tool.';
     await f.fill('#input', second);
@@ -220,17 +221,18 @@ async function run(ctx) {
     await f.selectOption('#mode', 'build');
   }
 
-  // 11e. The file open in the editor and the selection go along with a message, unless removed (where files go along).
+  // 11e. The file open in the editor and the selection go with a message unless removed (where the page takes files).
   const takesFiles = await f.evaluate(() => /@ for files/.test(document.getElementById('input').placeholder));
   const codeword = path.join(folder, 'codeword.txt');
   if (takesFiles) {
     await openFile(codeword, { beside: true, keep: true });
-    /* What goes along is lit on the pill under the box; the file already on screen does until codeword.txt comes beside. */
+    /* What goes with the message is lit on the pill under the box; until codeword.txt has opened beside the chat, that
+       is still the file shown before, so the check waits for it. */
     const pill = (kind) => f.evaluate((k) => { const c = document.querySelector(`#ctxPill.ctx-${k}.on`); return c && !c.hidden ? c.textContent : null; }, kind);
     const fileChip = await until(async () => { const t = await pill('file'); return t && /codeword\.txt/.test(t) ? t : null; }, 15000)
       || await f.evaluate(() => { const c = document.getElementById('ctxPill'); return c && !c.hidden ? `${c.className}: ${c.textContent}` : 'no pill'; });
     const notInBox = await f.evaluate(() => !document.querySelector('#attachments .att-chip'));
-    check(!!fileChip && /codeword\.txt/.test(fileChip) && notInBox, 'the file open in the editor shows lit on the pill under the box, as going along, and only there', { fileChip, notInBox });
+    check(!!fileChip && /codeword\.txt/.test(fileChip) && notInBox, 'the file open in the editor is lit on the pill under the box as going with the message, and is not among the attachments', { fileChip, notInBox });
     await shot('host-04-open-file', { features: ['open file goes along'], part: '#workbench\\.parts\\.editor',
       expect: 'The editor is split: codeword.txt on the right; in the chat on the left, in the row under the message box, a lit pill with a file icon, the name codeword.txt (in a chat this narrow cut short with an ellipsis, such as "codew…") and a small ×. Nothing about the file inside the box itself. The row of buttons stays on one line.' });
     await openFile(codeword, { beside: false, keep: true, sel: [0, 4, 0, 13] });
@@ -243,7 +245,7 @@ async function run(ctx) {
     await sendWith(f, 'Enter');
     const noChip = await f.evaluate(() => { const u = [...document.querySelectorAll('#log .msg.user')].pop(); return u ? u.querySelector('.user-att').textContent : 'none'; });
     const back = await until(() => f.evaluate(() => !!document.querySelector('#ctxPill.on') || null), 10000);
-    check(!/codeword/.test(noChip) && !!back, 'that message went without it, and the next one takes it along again', { noChip, back: !!back });
+    check(!/codeword/.test(noChip) && !!back, 'that message was sent without the file, and the pill is lit again for the next one', { noChip, back: !!back });
     await openFile(codeword, { beside: false, keep: true, sel: [0, 0, 0, 0] });
     await until(() => f.evaluate(() => !!document.querySelector('#ctxPill.ctx-file.on') || null), 10000);
     if (real) {
@@ -251,11 +253,11 @@ async function run(ctx) {
       await sendWith(f, 'Enter');
       const reply = await f.evaluate(() => { const r = [...document.querySelectorAll('#log .msg.reply .md')].pop(); return r ? r.textContent : ''; });
       const chips = await f.evaluate(() => { const u = [...document.querySelectorAll('#log .msg.user')].pop(); return u ? u.querySelector('.user-att').textContent : ''; });
-      check(/KIWI-93/.test(reply) && /codeword\.txt/.test(chips), 'the model reads the file that went along', { reply, chips });
+      check(/KIWI-93/.test(reply) && /codeword\.txt/.test(chips), 'the model reads the file sent with the message', { reply, chips });
     }
     await conf('attachOpenFile', false);
     const off = await until(() => f.evaluate(() => !document.querySelector('#ctxPill.on') || null), 10000);
-    check(!!off, 'with attachOpenFile off, the file does not go along');
+    check(!!off, 'with attachOpenFile off, the file is not sent with the message');
     await conf('attachOpenFile', undefined);
   } else {
     note('this backend takes no files with a message, so the open file and the selection are not offered (the steps that send them run against a real OpenCode)');
@@ -283,7 +285,7 @@ async function run(ctx) {
   const inFront = () => call('const e = vscode.window.activeTextEditor; const t = vscode.window.tabGroups.activeTabGroup.activeTab; return { editor: e ? e.document.uri.fsPath : "", tab: t ? t.label : "", text: !!t && t.input instanceof vscode.TabInputText };');
   const isBack = async () => { const a = await inFront(); return a.text && a.editor && path.relative(a.editor, notes) === '' ? a : null; };
   /* VS Code takes a moment to note that the text editor lost the focus; pressed before it has, the key focuses the box
-     again. A person does not press twice that fast, so the key is pressed once more if the first did not take. */
+     again. So if the first press did not take, the key is pressed once more; a person does not press twice that fast. */
   await sleep(400);
   await press('Meta+Escape', 'opencodeAgentPlus.blurInput');
   let backInEditor = await until(isBack, 5000);
@@ -334,11 +336,11 @@ async function run(ctx) {
     await vscode.commands.executeCommand("opencodeAgentPlus.addToConversation", u(arg.dir), [u(arg.dir)]); return true;`, { a: notes, b: codeword, dir: path.join(folder, 'src') });
   const both = await until(() => f.evaluate(() => { const v = document.getElementById('input').value; return /@notes\.txt\b/.test(v) && /@codeword\.txt\b/.test(v) ? v : null; }), 10000);
   const folderSaid = (await told()).some((w) => /A folder cannot be added/.test(w));
-  check(!!both && folderSaid, 'several files picked in the Explorer go in together; a folder is refused with a word why', { both, folderSaid });
+  check(!!both && folderSaid, 'several files picked in the Explorer go in together; a folder is refused with a message saying why', { both, folderSaid });
   await call('await vscode.commands.executeCommand("workbench.action.closeSidebar"); return true;').catch(() => {});
   await clearBox(f);
 
-  // 11h. Fix with OpenCode Agent Plus among the quick fixes of a JSON error: a draft after what the box holds.
+  // 11h. Fix with OpenCode Agent Plus among the quick fixes of a JSON error: a draft after the text already in the box.
   const broken = path.join(folder, 'broken.json');
   fs.writeFileSync(broken, '{\n  "a": 1\n  "b": 2\n}\n');
   await f.fill('#input', 'Keep this.');
@@ -366,7 +368,7 @@ async function run(ctx) {
     }
     f = await chatPage();
     const draft = f ? await until(() => f.evaluate(() => { const v = document.getElementById('input').value; return /Fix this problem in @broken\.json#L\d/.test(v) ? v : null; }), 15000) : null;
-    check(!!draft && draft.startsWith('Keep this.\n\n') && /- Error at line \d/.test(draft), 'picking it drafts the problem after what the box held, in the chat tab in front', { inWidget, draft });
+    check(!!draft && draft.startsWith('Keep this.\n\n') && /- Error at line \d/.test(draft), 'picking it drafts the problem after the text already in the box of the chat tab in front', { inWidget, draft });
     if (draft) await shot('host-09-fix-draft', { features: ['fix with opencode'], part: '#workbench\\.parts\\.editor',
       expect: 'The chat tab is in front; its message box holds "Keep this.", a blank line, then "Fix this problem in @broken.json#L3:" and a line "- Error at line 3 (json …): …" describing the missing comma. Nothing was sent.' });
     await conf('showFixActions', false);
@@ -398,7 +400,7 @@ async function run(ctx) {
     await sleep(500);
     await ext('return api.test.rescanDetached();');
     const cleared = await until(() => f.evaluate(() => { const b = document.getElementById('background'); return b.hidden || !/detached/.test(b.querySelector('summary').textContent) ? true : null; }), 15000);
-    check(!!cleared, 'once it has ended, it is off the pill');
+    check(!!cleared, 'once the command has ended, the pill no longer counts it');
   } else {
     note('detached commands are found through /proc, so only on Linux');
   }
@@ -428,17 +430,17 @@ async function run(ctx) {
     await onModel(model);
     const back = await until(async () => ((await effortNow()) === 'low' ? 'low' : null), 15000) || await effortNow();
     const kept = await until(() => (recorded() === 'low' ? 'low' : null), 20000, 2000) || recorded();
-    check(onHaiku === 'default' && back === 'low' && kept === 'low', 'the effort chosen comes back with a model that offers it, as OpenCode records it', { onHaiku, back, kept });
+    check(onHaiku === 'default' && back === 'low' && kept === 'low', 'the chosen effort comes back when the model offers it again, and OpenCode records it', { onHaiku, back, kept });
     await ext('return api.test.restartOpenCode();');
     await f.fill('#input', 'Reply with the single word AFTER and do not use any tool.');
     await sendWith(f, 'Enter');
     const afterRestart = { page: await effortNow(), recorded: recorded() };
-    check(afterRestart.page === 'low' && afterRestart.recorded === 'low', 'after OpenCode starts again and a turn has run, the effort is still the one chosen', afterRestart);
+    check(afterRestart.page === 'low' && afterRestart.recorded === 'low', 'after OpenCode restarts and a turn has run, both the page and OpenCode still have the effort at low', afterRestart);
   } else {
-    note('the effort across model changes is OpenCode 2\'s, so it is checked against a real OpenCode 2 only');
+    note('keeping the effort across model changes needs OpenCode 2, so it is checked only against a real OpenCode 2');
   }
 
-  // 11l. A message of an image alone goes, where the page takes images.
+  // 11l. A message with only an image is sent, where the page takes images.
   const takesImages = f ? await f.evaluate(() => !document.getElementById('attach').hidden) : false;
   if (takesImages) {
     if (real) {
@@ -458,7 +460,7 @@ async function run(ctx) {
     check(!!lit, 'with an image and no text, the send button is lit');
     const went = await sendWith(f, 'Enter');
     const chips = await f.evaluate(() => { const u = [...document.querySelectorAll('#log .msg.user')].pop(); return u ? u.querySelector('.user-att').textContent : ''; });
-    /* The fake backend's message need not name what came with it; OpenCode's does. */
+    /* Only with a real OpenCode does the sent message show that it had an image. */
     check(!!went && (!real || /Image/.test(chips)), `Enter sends the image alone${real ? ', and the message shows it had one' : ''}`, { went: !!went, chips });
   } else {
     note('this backend takes no images, so the image-only message is not sent here');

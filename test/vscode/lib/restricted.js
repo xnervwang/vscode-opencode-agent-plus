@@ -155,7 +155,7 @@ async function run(t) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   console.log(`  note  settings as VS Code gives them to the extension in Restricted Mode: ${JSON.stringify(seen)}`);
   check(Array.isArray(seen) && seen.every((s) => same(s.get, want[s.key]) && !same(s.get, prepared.workspace[`opencodeAgentPlus.${s.key}`])),
-    "the settings that pick what runs read as the user's values, not the folder's", seen);
+    "the settings that decide how OpenCode is started read as the user's values, not the folder's", seen);
 
   // R6. Nothing ran and nothing was written.
   await sleep(5000);
@@ -209,7 +209,7 @@ async function run(t) {
     return arg.map((k) => { const i = c.inspect(k) || {}; return { key: k, get: c.get(k), globalValue: i.globalValue, workspaceValue: i.workspaceValue, workspaceFolderValue: i.workspaceFolderValue }; });`, KEYS);
   console.log(`  note  settings as VS Code gives them to the extension once trusted: ${JSON.stringify(seenTrusted)}`);
   check(Array.isArray(seenTrusted) && seenTrusted.every((x) => same(x.get, want[x.key]) && x.workspaceValue === undefined && x.workspaceFolderValue === undefined),
-    "once trusted the settings that pick what runs still read as the user's values: VS Code gives no workspace value for them", seenTrusted);
+    "once trusted, those settings still read as the user's values: VS Code gives no workspace value for them", seenTrusted);
   await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
   const listed = await until(async () => {
     const text = await textOf(sidebar);
@@ -264,8 +264,8 @@ async function run(t) {
   check(!ran(), "the folder's opencode program was still never run", ran() ? fs.readFileSync(prepared.marker, 'utf8') : '');
   await shot('r06-trusted-conversation', { features: ['conversation after trust'],
     expect: real
-      ? 'A chat tab with the message "Reply with the single word READY and nothing else." and the model\'s reply READY, whose time is followed by the figures; the Conversations view in the side bar lists the conversation. No Restricted Mode text anywhere.'
-      : 'A chat tab with the chat page (an empty area with the OpenCode mark and a hint, and the rounded message box with its row of buttons and a send arrow); the Conversations view in the side bar lists the conversation. No Restricted Mode text anywhere.' });
+      ? 'A chat tab with the message "Reply with the single word READY and nothing else." and the model\'s reply READY, its time followed by figures; the Conversations view in the side bar lists the conversation. No Restricted Mode text anywhere.'
+      : 'A chat tab showing the chat page (an empty area with the OpenCode mark and a hint, and the rounded message box with its row of buttons and a send arrow); the Conversations view in the side bar lists the conversation. No Restricted Mode text anywhere.' });
 }
 
 module.exports = { run, prepareFolder, openCodeProcesses, TRUST_SETTINGS, TEXT };

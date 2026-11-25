@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The chat page's coloured code blocks, an edit's change and a todo list in their tool rows, links to the files a reply
+ * Tests for the chat page's coloured code blocks, an edit's change and a todo list in their tool rows, links to the files a reply
  * names, Focus view and the pinned prompt: the logic that runs without the page (media/chat.js's ChatPage), the view
- * model, and what the panel checks, opens and sends the page.
+ * model, and what the panel checks and opens, and the messages it sends the page.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,8 +52,8 @@ test('a code block that names a language is coloured with highlight.js; one with
   for (const lang of ['', undefined, 'no-such-language']) assert.equal(P.highlightCode(hljs, 'x = 1', lang), '', String(lang));
   assert.equal(P.highlightCode(hljs, 'x'.repeat(P.HIGHLIGHT_MAX + 1), 'js'), '', 'a block that long stays plain');
   assert.equal(P.highlightCode(null, 'x = 1', 'js'), '', 'without the library');
-  assert.equal(P.highlightCode(hljs, '<b>&', 'js').includes('<b>'), false, 'what the code holds is escaped');
-  /* markdown-it with the page's option: the coloured HTML inside its usual pre and code. */
+  assert.equal(P.highlightCode(hljs, '<b>&', 'js').includes('<b>'), false, 'HTML in the code is escaped');
+  /* With the page's highlight option, markdown-it puts the coloured HTML inside its usual pre and code. */
   const md = require(path.join(ROOT, 'node_modules', 'markdown-it'))({ html: false, highlight: (s, l) => P.highlightCode(hljs, s, l) });
   const html = md.render('```js\nlet a = 2;\n```\n\n```\nlet a = 2;\n```\n');
   assert.match(html, /<pre><code class="language-js"><span class="hljs-keyword">let<\/span> a = <span class="hljs-number">2<\/span>;/);
@@ -93,7 +93,7 @@ test("an edit's change: its old and new strings line by line, unchanged runs fol
   assert.equal(vm.changeOf('read', { filePath: 'x', content: 'y' }), null, 'content alone makes a change only for a write');
 });
 
-test("a write's content as added lines, and a patch's rows in OpenCode's and in unified form", () => {
+test("a write's content as added lines, and a patch's rows in both OpenCode's own format and unified diff form", () => {
   const w = vm.changeOf('write', { path: 'src/export.js', content: 'one\ntwo\n' });
   assert.deepEqual([w.kind, w.added, w.removed, w.rows.map((r) => r.k + r.t)], ['write', 2, 0, ['+one', '+two']]);
   const p = vm.changeOf('apply_patch', { patchText: '*** Begin Patch\n*** Update File: src/a.js\n@@ function f\n-old\n+new\n same\n*** End Patch' });
@@ -105,7 +105,7 @@ test("a write's content as added lines, and a patch's rows in OpenCode's and in 
   const u = vm.changeOf('patch', { patch: 'diff --git a/x.sql b/x.sql\nindex 1..2\n--- a/x.sql\n+++ b/x.sql\n@@ -1,2 +1,2 @@\n--- a comment removed\n+-- a comment added\n select 1;\n\\ No newline at end of file' });
   assert.equal(u.path, 'x.sql');
   assert.deepEqual(u.rows.map((r) => r.k + r.t), ['fx.sql', '@@@ -1,2 +1,2 @@', '--- a comment removed', '+-- a comment added', ' select 1;'],
-    'a removed line starting with -- is a line, not a header');
+    'a removed line that starts with -- is not taken for a file header');
 });
 
 test('a long change shows its first rows and counts the rest; a long line is clipped', () => {
@@ -136,7 +136,7 @@ test("a permission request's whole file replaces its call's change, with line nu
   assert.deepEqual(c.rows.map((r) => (r.k === '~' ? `~${r.count}` : `${r.k}${r.o || ''}/${r.n || ''}`)), ['~17', ' 18/18', ' 19/19', ' 20/20', '-21/', '+/21', ' 22/22', ' 23/23', ' 24/24', '~17']);
   assert.ok(s.items[1].request.hasDiff, 'the request keeps its View diff');
   assert.equal(s.diffs.p1.before, file('old'));
-  /* A request for another tool, or once the call is done, leaves the row as it is. */
+  /* A request for another tool, or one that comes after the call is done, leaves the row as it is. */
   let t = vm.reduce(vm.initialState(), { type: 'turnStart', turnId: 't' }, 1);
   t = vm.reduce(t, { type: 'toolCall', id: 'c', name: 'read', input: { filePath: 'r' } }, 2);
   t = vm.reduce(t, { type: 'permission', requestId: 'p', request: { tool: 'edit', path: 'r', diff: { path: 'r', before: 'a', after: 'b' } } }, 3);
@@ -161,7 +161,7 @@ test("a todowrite call carries its list for the row, a short summary, and the fi
   assert.equal(vm.fileOf({ path: 'a\nb' }), null);
 });
 
-test('the paths a reply names: relative, with a line or a line and column, absolute on either system; a sentence\'s full stop is not one', () => {
+test('the paths a reply names: relative, with a line or a line and column, absolute on either system; the full stop ending a sentence is not part of a path', () => {
   const t = 'See src/ui/view-model.js:120 and README.md. Then C:\\work\\a.ts:3:4, ./b.json#L9, /abs/dir/file.txt and lib/x.js:5-9.';
   assert.deepEqual(P.pathRefs(t).map((r) => [r.path, r.line || 0, r.col || 0, t.slice(r.index, r.index + r.length)]), [
     ['src/ui/view-model.js', 120, 0, 'src/ui/view-model.js:120'], ['README.md', 0, 0, 'README.md'], ['C:\\work\\a.ts', 3, 4, 'C:\\work\\a.ts:3:4'],
@@ -174,7 +174,7 @@ test('the paths a reply names: relative, with a line or a line and column, absol
   assert.equal(P.codePathRef('see src/a.js'), null, 'inline code that is more than a path');
 });
 
-test('the panel says which paths are files: inside a workspace folder or the conversation\'s, or absolute; never a folder or a way out', async () => {
+test('the panel says which paths are files: relative to a workspace folder or the conversation\'s folder, or absolute; never a folder or a relative path that climbs out with ..', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oap-files-'));
   const ws = path.join(root, 'ws');
   const own = path.join(root, 'own');
@@ -194,7 +194,8 @@ test('the panel says which paths are files: inside a workspace folder or the con
     panel.fromPage({ type: 'checkPaths', paths: Array.from({ length: 500 }, (_, i) => `f${i}.js`) });
     await settle(120);
     assert.equal(panel.posted.filter((m) => m.type === 'paths').pop().results.length, 200, 'at most 200 at a time');
-    /* A file written just after it was found missing: the cached answer stands until the page asks past it. */
+    /* A file written just after it was found missing: the cached answer holds until the page asks with the path in
+       `fresh`. */
     fs.writeFileSync(path.join(ws, 'missing.js'), 'now here\n');
     panel.fromPage({ type: 'checkPaths', paths: ['missing.js'] });
     await settle(60);
@@ -221,19 +222,19 @@ test('a click on a file link opens the file beside the chat at its line, after c
     fs.rmSync(path.join(root, 'a.js'));
     panel.fromPage({ type: 'openFile', path: 'a.js', line: 1 });
     await settle(60);
-    assert.equal(vscode.rec.commands.filter((c) => c[0] === 'vscode.open').length, 1, 'a file gone since is not opened');
+    assert.equal(vscode.rec.commands.filter((c) => c[0] === 'vscode.open').length, 1, 'a file that no longer exists is not opened');
     assert.match(vscode.rec.errors.pop(), /a\.js is not there any more/);
     assert.deepEqual(panel.posted.filter((m) => m.type === 'paths').pop().results, [{ path: 'a.js', ok: false }], 'and the page drops its link');
   } finally { panel.dispose(); fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('the page links files only once the extension says so, asks in batches, and opens one on a click', () => {
-  assert.match(PAGE, /setTimeout\(askFiles, 120\)/, 'paths are gathered for a moment, then asked about together');
+  assert.match(PAGE, /setTimeout\(askFiles, 120\)/, 'paths are batched for a moment, then checked together');
   assert.match(PAGE, /linkConversations\(target\);\n\s*linkFiles\(target\);/, 'every rendered reply');
   assert.match(PAGE, /closest\('a, pre, code'\)/, 'code blocks and links stay as they are');
   assert.match(PAGE, /closest\('\.file-link'\)[\s\S]{0,200}type: 'openFile', path: file\.dataset\.path/);
-  assert.match(PAGE, /getAttribute\('href'\) !== `http:\/\/\$\{text\}`/, 'a web link markdown-it guessed from a file name is checked as a file');
-  assert.match(PAGE, /paintToolFile\(entry, !!prev && prev\.state === 'running' && item\.state !== 'running'\)/, 'a call that has just ended has its file checked again');
+  assert.match(PAGE, /getAttribute\('href'\) !== `http:\/\/\$\{text\}`/, 'a file name that markdown-it turned into a web link is handled as a file');
+  assert.match(PAGE, /paintToolFile\(entry, !!prev && prev\.state === 'running' && item\.state !== 'running'\)/, 'the file of a call that has just ended is checked again');
   assert.match(PAGE, /type: 'checkPaths', paths, \.\.\.\(fresh\.length \? \{ fresh \} : \{\}\)/);
 });
 
@@ -291,19 +292,19 @@ test('the page: thinking starts folded, a todo list starts open, an edit row ope
   assert.match(PAGE, /if \(todos && !entry\.shownOnce\) \{ entry\.shownOnce = true; setOpen\(entry, true\); \}/);
   assert.match(PAGE, /entry\.inBox\.hidden = !item\.input \|\| item\.input === '\{\}' \|\| !!change \|\| !!todos;/, 'the change takes the place of IN');
   assert.match(PAGE, /entry\.submit\.classList\.toggle\('idle', !answered\(\)\)/);
-  assert.match(PAGE, /box\.replaceChildren\(list\);\n\s*if \(change\.more\) box\.appendChild\(el\('div', 'diff-more'/, 'the count of rows left out sits outside the scrolling rows');
+  assert.match(PAGE, /box\.replaceChildren\(list\);\n\s*if \(change\.more\) box\.appendChild\(el\('div', 'diff-more'/, 'the count of rows left out comes after the scrolling list, not inside it');
   assert.match(CSS, /\.diff-rows \{\s*max-height: 360px;\s*overflow: auto;/);
   assert.match(CSS, /button\.q-submit\.idle \{\s*opacity: 0\.5;/);
   for (const sel of ['.diff-row.d-add', '.diff-row.d-del', '.todo-completed .todo-text', '.todo-cancelled', '#pinned']) assert.ok(CSS.includes(sel), sel);
 });
 
 test('in a light theme grey text is lighter; an open request has a paler frame; the rail has no borders between its buttons', () => {
-  assert.match(CSS, /body\.vscode-light \{\s*--muted: color-mix\(/, 'grey text, the times and figures among it, is lighter in a light theme');
+  assert.match(CSS, /body\.vscode-light \{\s*--muted: color-mix\(/, 'in a light theme, grey text, including the times and figures, is lighter');
   assert.match(CSS, /\n\.permission:not\(\.settled\), \.question:not\(\.settled\) \{\s*border-color: color-mix\(/);
   assert.match(CSS, /#log \{\s*scrollbar-color: auto;/, "VS Code's scrollbar-color would turn the log's own thin bar off");
   assert.match(CSS, /\.tool\.state-running \.tool-state \{\s*color: var\(--vscode-foreground\);/);
   assert.doesNotMatch(CSS, /\.rail-btn \+ \.rail-btn/);
   assert.match(CSS, /container-type: inline-size;/);
   assert.match(CSS, /@container \(max-width: 600px\) \{\s*\.tl > \.meta, \.msg\.user \.meta \{\s*float: none;\s*display: block;/, 'in a narrow log the time takes a line of its own');
-  assert.match(CSS, /\.perm-actions button\.diff \{\s*justify-content: flex-start;\s*border-color: transparent;/, 'View diff has no frame of its own beside the highlighted answer');
+  assert.match(CSS, /\.perm-actions button\.diff \{\s*justify-content: flex-start;\s*border-color: transparent;/, 'View diff has no separate frame beside the highlighted answer');
 });

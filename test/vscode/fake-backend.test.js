@@ -63,7 +63,7 @@ test('names the colour of a PNG\'s first pixel, whatever filter its rows use', (
   assert.equal(pngColour(Buffer.from('not a png')), '');
 });
 
-test('says what a message carried, and shows it on the message as the real backend does', () => {
+test('replies with what a message carried and shows the attachments on it, as the real backend does', () => {
   const d = folder();
   const got = received({ images: [{ mediaType: 'image/png', data: png(30, 80, 230).toString('base64'), name: 'square.png' }],
     files: [{ path: path.join(d, 'notes.txt'), name: 'notes.txt' }, { path: path.join(d, 'c.txt'), name: 'c.txt', text: 'The colour is MAGENTA.', startLine: 2, endLine: 2 }] });
@@ -73,7 +73,7 @@ test('says what a message carried, and shows it on the message as the real backe
   assert.match(got.lines.join('\n'), /The selection c\.txt:2 reads: The colour is MAGENTA\./);
 });
 
-test('a turn writes files once allowed; rewinding stages them back, Cancel restores the turn\'s, Rewind drops the turn', async () => {
+test('a turn writes files once allowed; rewinding stages the earlier contents, Cancel puts back what the turn wrote, and Rewind drops the turn', async () => {
   const oc = createOpenCode();
   const d = folder();
   const c = await oc.createSession(d);
@@ -83,7 +83,7 @@ test('a turn writes files once allowed; rewinding stages them back, Cancel resto
   await c.send(ask);
   for (let i = 0; i < 2; i++) {
     const p = await until(() => c.events.filter((e) => e.type === 'permission')[i]);
-    assert.ok(p && p.request.diff, 'each change asks with a diff');
+    assert.ok(p && p.request.diff, 'each change comes as a permission request with a diff');
     c.respondPermission(p.requestId, 'allowOnce');
   }
   await c.idle();
@@ -97,7 +97,7 @@ test('a turn writes files once allowed; rewinding stages them back, Cancel resto
   assert.equal(fs.existsSync(path.join(d, 'rewind-me.txt')), false);
   assert.equal(fs.readFileSync(path.join(d, 'notes.txt'), 'utf8'), 'Some notes.\n');
   await oc.rewindClear(c.id);
-  assert.equal(fs.readFileSync(path.join(d, 'rewind-me.txt'), 'utf8'), 'v1', 'Cancel puts back what the turn left');
+  assert.equal(fs.readFileSync(path.join(d, 'rewind-me.txt'), 'utf8'), 'v1', 'Cancel restores the files as the turn left them');
   await oc.rewindStage(c.id, users[1].id);
   await oc.rewindCommit(c.id);
   assert.deepEqual((await oc.userMessages(c.id)).map((u) => u.text), ['Say: first']);
@@ -106,7 +106,7 @@ test('a turn writes files once allowed; rewinding stages them back, Cancel resto
   await oc.dispose();
 });
 
-test('a subagent\'s session stays out of the list, and the agent goes on by itself once the subagent asks and ends', async () => {
+test('a subagent\'s session stays out of the list; it asks for a permission, and the agent starts a turn of its own that ends after the subagent has finished', async () => {
   const oc = createOpenCode();
   const c = await oc.createSession(folder());
   await c.send('Use the subagent tool to start one subagent whose task is: use the shell tool to run the command sleep 8, then reply finished. After launching it, end your response at once without waiting.');
@@ -144,7 +144,7 @@ test('the mode and effort picked show in the turns: Plan writes nothing, Low goe
   await oc.dispose();
 });
 
-test('the question prompt asks with a form and replies with the choice', async () => {
+test('the question prompt shows a form and replies with the choice', async () => {
   const oc = createOpenCode();
   const c = await oc.createSession(folder());
   await c.send('Use the question tool to ask me whether I prefer red or blue (two options). Then reply with only the colour I chose.');

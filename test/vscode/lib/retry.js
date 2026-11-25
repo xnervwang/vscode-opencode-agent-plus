@@ -32,7 +32,7 @@ async function run(t) {
   /* "ready" is in the message too, so the reply is the second one. */
   const replied = await until(() => chat.evaluate(() => (document.querySelector('#log').textContent.split('ready').length > 2 ? true : null)), 20000);
   const after = await until(async () => { const s = await status(); return !s || s.cls !== 'retry' ? (s || 'hidden') : null; }, 5000, 100);
-  check(!!replied && !!after, 'once the attempt starts the notice goes, and the reply comes', { replied: !!replied, after });
+  check(!!replied && !!after, 'once the attempt starts, the notice disappears and the reply arrives', { replied: !!replied, after });
 }
 
 module.exports = { run };

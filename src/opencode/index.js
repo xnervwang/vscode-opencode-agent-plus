@@ -511,8 +511,8 @@ function createOpenCode(opts = {}) {
       config: [],
       pendingOptions: new Map(),
       /* The effort the user last chose here (or OpenCode had recorded when the conversation opened). OpenCode 2.4.1
-         puts a session back on 'default' each time its model is set, so it is chosen again after that where the new
-         model offers it. */
+         puts a session back on 'default' each time its model is set, so after a model change this effort is chosen
+         again if the new model offers it. */
       effortChoice: '',
       disposed: false,
     };
@@ -736,7 +736,6 @@ function createOpenCode(opts = {}) {
       h.modelGen = p.gen;
       await keepEffort(p);
     }
-    /* Chooses the user's effort again once a model change has put it back on 'default', where the model offers it. */
     async function keepEffort(p) {
       const want = h.effortChoice;
       const o = h.config.find((x) => x.id === 'effort');
@@ -760,7 +759,7 @@ function createOpenCode(opts = {}) {
         h.replay = null;
       }
       h.loadedGen = p.gen;
-      /* Setting the model OpenCode already has would put its effort back on 'default'. */
+      /* Not for the model OpenCode already has: setting it again resets the effort (see effortChoice). */
       h.modelGen = current && current === h.model ? p.gen : 0;
     }
 
@@ -826,7 +825,7 @@ function createOpenCode(opts = {}) {
          or an array taken as the images. */
       send(text, extra) {
         const x = Array.isArray(extra) ? { images: extra } : (extra && typeof extra === 'object' ? extra : {});
-        /* An empty text block is left out: a message of images alone carries none. */
+        /* A message of images alone has no text block. */
         const prompt = String(text || '').trim() ? [{ type: 'text', text: String(text) }] : [];
         const attachments = [];
         for (const img of Array.isArray(x.images) ? x.images : []) {
@@ -980,7 +979,8 @@ function createOpenCode(opts = {}) {
         }
       },
       takeConfig(configOptions) { noteConfig(configOptions); },
-      /* Loads the conversation into the running OpenCode if it is not yet, which notes the models OpenCode offers. */
+      /* Loads the conversation into the running OpenCode if it is not loaded yet; loading it records the models OpenCode
+       offers. */
       async refreshConfig() {
         if (h.running || h.own || h.disposed) return;
         await ensureLoaded(await ensure());
@@ -1287,7 +1287,7 @@ function createOpenCode(opts = {}) {
       if (!SESSION_ID.test(String(id || ''))) throw new server.OpenCodeError('badRequest', `Not a conversation id: ${String(id).slice(0, 80)}`);
       const found = foundNow();
       if (!found.version || found.version.major < 2) throw new server.OpenCodeError('unsupported', 'Forking from a message needs OpenCode 2.');
-      if (!/^msg_[0-9A-Za-z_]{8,64}$/.test(String(messageId || ''))) throw new server.OpenCodeError('badRequest', 'That message cannot be forked from: it has no OpenCode message id.');
+      if (!/^msg_[0-9A-Za-z_]{8,64}$/.test(String(messageId || ''))) throw new server.OpenCodeError('badRequest', 'Cannot fork from that message: it has no OpenCode message id.');
       const r = await runSub(found, ['api', 'session.fork', '--param', `sessionID=${id}`, '-d', JSON.stringify({ before: messageId })], 'forkFailed', { timeout: 60000 });
       let v;
       try { v = JSON.parse(r.stdout); } catch (_) { throw new server.OpenCodeError('forkFailed', 'OpenCode\'s reply to the fork could not be read.'); }
@@ -1304,8 +1304,8 @@ function createOpenCode(opts = {}) {
     },
 
     /*
-     * The models OpenCode offers once it has started again: a conversation open here is loaded into it, which notes
-     * them. With none open, the list stays as last noted until a conversation opens.
+     * The models OpenCode offers once it has started again: loading a conversation open in this window records
+     * them. With no conversation open, the list keeps its last value until one opens.
      */
     async refreshModels() {
       const open = [...handles.values()].find((x) => !x.disposed && !x.running && !x.own);

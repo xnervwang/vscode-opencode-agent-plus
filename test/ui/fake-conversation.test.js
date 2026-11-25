@@ -74,7 +74,7 @@ test('a scripted question waits for respondQuestion, and abort ends a long wait 
   assert.equal(c.events[c.events.length - 1].reason, 'aborted');
 });
 
-test('a function step sees what each request was answered and plays the steps it returns', async () => {
+test('a function step gets the answer to each request and plays the steps it returns', async () => {
   const c = createFakeConversation({ turns: [] });
   c.script([
     { type: 'permission', requestId: 'p-1', request: { kind: 'execute', tool: 'bash', summary: 'ls' } },
@@ -93,7 +93,7 @@ test('a function step sees what each request was answered and plays the steps it
   assert.equal(c.events[c.events.length - 1].reason, 'endTurn');
 });
 
-test('start plays a turn of the agent\'s own after the one playing, with no user message', async () => {
+test('start plays a turn the agent begins itself after the current one, with no user message', async () => {
   const c = createFakeConversation({ turns: [[{ wait: 30 }, ...streamText('first')]] });
   await c.send('hi');
   await c.start([...streamText('on my own')]);
@@ -108,7 +108,7 @@ test('start plays a turn of the agent\'s own after the one playing, with no user
   assert.deepEqual(last.map((e) => e.type), ['turnStart', 'text', 'turnEnd']);
 });
 
-test('turnStart takes the fields turnStart() gives at that moment, and the user message an id', async () => {
+test('turnStart gets the fields turnStart() returns at that moment, and the user message gets an id', async () => {
   let effort = 'low';
   let n = 0;
   const c = createFakeConversation({ turns: [], turnStart: () => ({ effort }), messageId: () => `msg_${++n}` });

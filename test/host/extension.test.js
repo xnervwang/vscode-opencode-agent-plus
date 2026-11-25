@@ -48,8 +48,8 @@ test('activate registers, and starts nothing', async () => {
   for (const c of pkg.contributes.commands) assert.ok(control.state.registered.includes(c.command), `${c.command} in package.json is registered`);
   for (const k of pkg.contributes.keybindings) {
     assert.ok(pkg.contributes.commands.some((c) => c.command === k.command), `${k.command} of a keybinding is a command`);
-    /* In a chat tab, or in a text editor unless the Claude Code panel was in front after the chat tab: it does not take
-       the official panel's keys. */
+    /* The key works in a chat tab, and in a text editor unless the Claude Code panel came to the front after the chat
+       tab, so it does not take the official panel's keys. */
     assert.ok(/activeCustomEditorId == 'opencodeAgentPlus\.chat'/.test(k.when) || /editorTextFocus && !opencodeAgentPlus\.otherChatLast/.test(k.when),
       `${k.command} works only in a chat tab or an editor: ${k.when}`);
   }
@@ -84,7 +84,7 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   const saves = control.state.saves;
   panel.fromPage({ type: 'send', text: 'Say: saved first' });
   await settle();
-  assert.strictEqual(control.state.saves, saves + 1, 'edited files are saved before a message goes');
+  assert.strictEqual(control.state.saves, saves + 1, 'edited files are saved before a message is sent');
   control.state.config['opencodeAgentPlus.autosave'] = false;
   panel.fromPage({ type: 'send', text: 'Say: not saved' });
   await settle();

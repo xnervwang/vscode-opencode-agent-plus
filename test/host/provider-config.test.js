@@ -20,7 +20,7 @@ function setup(config = {}, secret, baseEnv = {}) {
 
 const TODO = { OPENCODE_FLAGS: 'todo' };
 
-test('empty settings add only the todo flag; set ones become the environment OpenCode starts with', async () => {
+test('empty settings add only the todo flag; settings that are set become the environment OpenCode starts with', async () => {
   const empty = setup();
   await empty.cfg.ready;
   assert.deepStrictEqual(empty.cfg.options(), { binaryPath: '', permissions: true, env: TODO });
@@ -36,7 +36,7 @@ test('opencode.environment adds variables under the Bedrock ones; a bad name or 
   await s.cfg.ready;
   assert.deepStrictEqual(s.cfg.options().env, { OPENAI_BASE_URL: 'https://x', ...TODO, AWS_PROFILE: 'self' });
   s.cfg.options();
-  assert.deepStrictEqual(s.lines.filter((l) => /left out/.test(l)), ['opencode.environment: left out bad name, N (a name of letters, digits and _ with a string value is needed)']);
+  assert.deepStrictEqual(s.lines.filter((l) => /left out/.test(l)), ['opencode.environment: left out bad name, N (names must be letters, digits and _, and values strings)']);
   const off = setup({ 'opencodeAgentPlus.opencode.environment': ['A=1'] });
   await off.cfg.ready;
   assert.deepStrictEqual(off.cfg.options().env, TODO, 'a list is not an object of variables');
@@ -73,7 +73,7 @@ test("todoList turns on OpenCode 2's todowrite tool through OPENCODE_FLAGS, merg
   assert.strictEqual(inherited.cfg.options().env.OPENCODE_FLAGS, 'machines,sqlite_fts,todo', 'added to what OpenCode would inherit');
   const own = setup({ 'opencodeAgentPlus.opencode.environment': { OPENCODE_FLAGS: 'artifacts' } }, undefined, { OPENCODE_FLAGS: 'machines' });
   await own.cfg.ready;
-  assert.strictEqual(own.cfg.options().env.OPENCODE_FLAGS, 'artifacts,todo', 'the setting wins over the inherited value, as it does for any variable');
+  assert.strictEqual(own.cfg.options().env.OPENCODE_FLAGS, 'artifacts,todo', 'the setting wins over the inherited value');
   for (const flags of ['todo', '-todo', 'machines,-todo']) {
     const named = setup({}, undefined, { OPENCODE_FLAGS: flags });
     await named.cfg.ready;

@@ -18,8 +18,8 @@
  *                                (known once it has started)
  *   forkBefore(id, messageId), canForkBefore()
  *                                a copy of the history before one user message (OpenCode 2): Promise of { id, cwd, title }
- *   refreshModels()              Promise<ModelInfo[]> once OpenCode has started again, as after a provider sign-in; the
- *                                list as it stands where the module cannot load it afresh
+ *   refreshModels()              Promise<ModelInfo[]> once OpenCode has started again, as after a provider sign-in; where
+ *                                the module cannot load a new list, the one it already has
  *   rewindStage(id, messageId), rewindCommit(id), rewindClear(id), canRewind()
  *                                rewinding to before a user message (OpenCode 2): stage restores the files and lists
  *                                them ({ messageId, tracked, files }), commit removes the messages, clear undoes stage

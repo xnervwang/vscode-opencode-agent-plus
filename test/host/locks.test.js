@@ -94,7 +94,7 @@ test('the holder answers a request whatever file the event names, as macOS may n
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, `${ID}.letgo`), 'utf8')).for, 222);
 });
 
-test('an asker whose watch never fires still sees the answer, and writes its request again while it waits', async () => {
+test('when its file watch never fires, a takeover request still sees the answer and is written again while it waits', async () => {
   const dir = tmp();
   createLocks({ dir, pid: 111, alive: () => true, watch: () => ({ close() {} }) }).acquire(ID);
   const asker = createLocks({ dir, pid: 222, alive: (pid) => pid === 111, watch: () => ({ close() {} }) });

@@ -5,7 +5,7 @@
 'use strict';
 /*
  * The host side of the message box and the editor: the provider sign-in's terminal, the @ references and the lines they
- * name, Edit automatically, detached commands read from a /proc of the test's own, the quick fix, what the editor
+ * name, Edit automatically, detached commands (from a fake /proc), the quick fix, what the editor
  * offers a message, and what package.json declares for them.
  */
 const test = require('node:test');
@@ -50,7 +50,7 @@ test('Connect a Provider opens one terminal with the sign-in, shows it again whe
   assert.deepEqual({ ...made[0].opts, iconPath: made[0].opts.iconPath.id }, { name: TERMINAL_NAME, shellPath: '/opt/oc/opencode', shellArgs: ['auth', 'login', '--standalone'],
     env: { AWS_PROFILE: 'self' }, isTransient: true, iconPath: 'key' });
   await lg.run();
-  assert.equal(made.length, 1, 'asked again, the same terminal is shown');
+  assert.equal(made.length, 1, 'a second request shows the same terminal');
   assert.ok(made[0].shown >= 2);
   close({ exitStatus: undefined }, 0);
   await settle();
@@ -88,7 +88,7 @@ test('@ references: relative inside a workspace folder, absolute outside, with l
   const outside = path.join(os.tmpdir(), 'elsewhere', 'a.txt');
   assert.equal(mentions.refFor(outside, { folders: [root] }).rel, outside.split(path.sep).join('/'));
   assert.equal(mentions.refFor('relative/a.txt', { folders: [root] }), null);
-  assert.deepEqual(mentions.linesOf({ start: { line: 2, character: 0 }, end: { line: 4, character: 0 } }), { startLine: 3, endLine: 4 }, 'a selection ending at the start of a line does not take it');
+  assert.deepEqual(mentions.linesOf({ start: { line: 2, character: 0 }, end: { line: 4, character: 0 } }), { startLine: 3, endLine: 4 }, 'a selection that ends at the start of a line does not include that line');
 });
 
 test('the lines a reference names are read from the editor\'s text, else from disk, and cut at the limit', (t) => {
@@ -103,7 +103,7 @@ test('the lines a reference names are read from the editor\'s text, else from di
   assert.equal(mentions.rangeText(f, 1, 3, { maxChars: 5 }), 'one\nt');
 });
 
-test('Fix with OpenCode drafts what the editor reports, with the place as a reference', () => {
+test('Fix with OpenCode drafts the problems the editor reports, with a reference to where they are', () => {
   const ref = mentions.refFor(path.join(os.tmpdir(), 'ws', 'bad.json'), { folders: [path.join(os.tmpdir(), 'ws')], startLine: 2, endLine: 2 });
   const one = mentions.fixDraft(ref, [{ severity: 0, message: 'Expected comma\n  or closing brace', line: 2, source: 'json', code: 514 }]);
   assert.equal(one, 'Fix this problem in @bad.json#L2:\n- Error at line 2 (json 514): Expected comma or closing brace');
@@ -137,10 +137,10 @@ test('only edits and writes of files inside the conversation\'s folder are allow
   assert.equal(autoEdit.allowable({ kind: 'edit', path: path.join(folder, '..', 'other', 'a.js') }, folder), false, 'outside the folder');
   assert.equal(autoEdit.allowable({ kind: 'command', command: 'rm -rf /' }, folder), false, 'commands still ask');
   assert.equal(autoEdit.allowable({ kind: 'other', summary: 'webfetch' }, folder), false);
-  assert.equal(autoEdit.allowable({ kind: 'edit' }, folder), false, 'no path, no answer');
+  assert.equal(autoEdit.allowable({ kind: 'edit' }, folder), false, 'an edit without a path still asks');
 });
 
-test('the guard answers an allowed request once and keeps it and its answer from the page; the others pass', async () => {
+test('the guard answers an allowed request once and hides the request and its answer from the page; other requests pass through', async () => {
   const listeners = new Set();
   const conv = { cwd: '/proj', on(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
   const emit = (ev) => { for (const fn of [...listeners]) fn(ev); };
@@ -160,8 +160,8 @@ test('the guard answers an allowed request once and keeps it and its answer from
   assert.deepEqual(seen, ['toolCall:', 'permission:p2', 'permission:p3']);
 });
 
-/* A /proc with: this conversation's detached sleep (ppid 1), its shell under the OpenCode (pid 500), another
-   conversation's command, and a process whose environment cannot be read. */
+/* A fake /proc holding this conversation's detached sleep (ppid 1), its shell under the OpenCode process (pid 500),
+   another conversation's command, and a process whose environment cannot be read. */
 function fakeProc(t, session) {
   const proc = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-proc-'));
   t.after(() => fs.rmSync(proc, { recursive: true, force: true }));
@@ -190,13 +190,13 @@ test('detached commands: this conversation\'s processes outside the OpenCode\'s 
   assert.deepEqual(found, [{ pid: 777, command: 'sleep 287', startedAt: (1795590000 + 123.45) * 1000 }]);
   assert.deepEqual(detached.scan({ sessionId: session, rootPid: 0, proc, self: 99999 }).map((d) => d.pid), [501, 777], 'without the OpenCode\'s pid, all of them');
   assert.deepEqual(detached.scan({ sessionId: '', proc }), []);
-  assert.deepEqual(detached.scan({ sessionId: session, proc: path.join(proc, 'missing') }), [], 'no /proc, nothing');
+  assert.deepEqual(detached.scan({ sessionId: session, proc: path.join(proc, 'missing') }), [], 'without /proc, no detached commands are found');
   assert.equal(detached.supported('linux', proc), true);
   assert.equal(detached.supported('darwin', proc), false, 'other systems list none');
   assert.equal(detached.supported('win32', proc), false);
 });
 
-test('the quick fix is offered for errors and warnings in files while the setting is on, and carries them', () => {
+test('the quick fix is offered for errors and warnings in files while the setting is on, and passes them to the command', () => {
   class CodeAction { constructor(title, kind) { this.title = title; this.kind = kind; } }
   const vscode = { CodeAction, CodeActionKind: { QuickFix: 'quickfix' } };
   let on = true;
@@ -218,7 +218,7 @@ test('the quick fix is offered for errors and warnings in files while the settin
   assert.equal(fixes.registerFixActions({ vscode: {}, enabled: () => true }), null, 'no languages API, no provider');
 });
 
-test('what the editor offers a message: the selection and the file last in front, while they are visible', async () => {
+test('what the editor offers a message: the selection and the file of the editor active last, while they are visible', async () => {
   const listeners = { sel: new Set(), vis: new Set(), act: new Set() };
   const ev = (set) => (fn) => { set.add(fn); return { dispose: () => set.delete(fn) }; };
   const editor = (p, sel) => ({ document: { uri: { scheme: 'file', fsPath: p }, getText: () => 'text' }, selection: sel });
@@ -233,7 +233,7 @@ test('what the editor offers a message: the selection and the file last in front
   assert.deepEqual(tracker.context(), { selection: null, file: { path: '/ws/a.js', name: 'a.js', label: 'a.js', key: '/ws/a.js' } });
   window.activeTextEditor = undefined;
   for (const fn of listeners.act) fn(undefined);
-  assert.equal(tracker.context().file.path, '/ws/a.js', 'moving into the chat tab keeps the file last in front');
+  assert.equal(tracker.context().file.path, '/ws/a.js', 'moving into the chat tab keeps the last active file');
   window.activeTextEditor = b;
   for (const fn of listeners.act) fn(b);
   b.selection = lines(1, 2);
@@ -243,7 +243,7 @@ test('what the editor offers a message: the selection and the file last in front
   assert.equal(tracker.lastEditor(), b);
   window.visibleTextEditors = [a];
   for (const fn of listeners.vis) fn();
-  assert.deepEqual(tracker.context(), { selection: null, file: { path: '/ws/a.js', name: 'a.js', label: 'a.js', key: '/ws/a.js' } }, 'a hidden editor offers nothing');
+  assert.deepEqual(tracker.context(), { selection: null, file: { path: '/ws/a.js', name: 'a.js', label: 'a.js', key: '/ws/a.js' } }, 'once b.js is hidden, its file and selection are no longer offered, and the visible a.js is');
   /* Opened beside the chat tab without taking the focus: no editor became active, and the new one is in front. */
   const c = editor('/ws/c.js', empty);
   window.visibleTextEditors = [a, c];
@@ -258,7 +258,7 @@ test('package.json: the commands, menus, keys and settings of the message box an
   assert.equal(cmd('opencodeAgentPlus.connectProvider').title, 'Connect a Model Provider');
   for (const id of ['focusInput', 'blurInput', 'insertAtMention', 'addToConversation', 'fixWithOpenCode']) assert.ok(cmd(`opencodeAgentPlus.${id}`), id);
   const keys = (id) => c.keybindings.filter((k) => k.command === id);
-  /* As the Claude Code extension's: Cmd on macOS, Ctrl elsewhere; Alt+K on all. */
+  /* The Claude Code extension's keys: Cmd+Esc on every system (the Windows or Super key outside macOS), and Alt+K. */
   assert.deepEqual(keys('opencodeAgentPlus.focusInput').map((k) => [k.key, k.mac]), [['cmd+escape', 'cmd+escape']]);
   assert.deepEqual(keys('opencodeAgentPlus.blurInput').map((k) => [k.key, k.mac]), [['cmd+escape', 'cmd+escape']]);
   assert.deepEqual(keys('opencodeAgentPlus.insertAtMention').map((k) => [k.key, k.mac]), [['alt+k', 'alt+k']]);

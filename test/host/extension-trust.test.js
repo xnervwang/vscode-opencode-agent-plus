@@ -153,7 +153,7 @@ test('once trust is granted it starts without a reload, and the chat tab already
   extension.deactivate();
 });
 
-test('package.json: the settings that pick what runs are read from user or remote machine settings only', () => {
+test('package.json: the settings that decide how OpenCode is started are read from user or remote machine settings only', () => {
   const props = PKG.contributes.configuration.properties;
   for (const k of KEYS) assert.strictEqual(props[k].scope, 'machine', k);
   for (const [k, v] of Object.entries(props)) if (!KEYS.includes(k)) assert.notStrictEqual(v.scope, 'machine', `${k} keeps its scope`);

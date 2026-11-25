@@ -223,7 +223,7 @@ test('2.x: each replayed turn gets its usage from the export: the cost of its re
     assert.ok(Math.abs(u.costUsd - mine.reduce((n, m) => n + m.cost, 0)) < 1e-9, `turn ${i} cost`);
     assert.equal(u.contextUsed, used(mine[mine.length - 1]), `turn ${i} context`);
   });
-  /* Each sits right before its turn's end, at its time. */
+  /* Each usage event comes right before its turn's turnEnd, with the same time. */
   for (const u of usage) {
     const next = events[events.indexOf(u) + 1];
     assert.equal(next.type, 'turnEnd');

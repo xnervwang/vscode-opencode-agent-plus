@@ -171,7 +171,7 @@ test('a failed model list shows its error and can be retried', async () => {
   chat.dispose();
 });
 
-test('a hidden tab gets nothing until it shows, then what changed; a page that loads gets the whole view', async () => {
+test('a hidden tab gets no updates until it is shown, then only what changed; a page that loads gets the whole view', async () => {
   const { panel, conversation, chat } = setup({ turns: [[{ type: 'text', delta: 'hello' }]] });
   panel.fromPage({ type: 'ready' });
   await settle();
@@ -194,7 +194,7 @@ test('a hidden tab gets nothing until it shows, then what changed; a page that l
   chat.dispose();
 });
 
-test('beforeSend runs before the message goes, and a failure in it does not stop the message', async () => {
+test('beforeSend runs before the message is sent, and an error in it does not stop the message', async () => {
   const order = [];
   let fail = false;
   const { panel, conversation, chat } = setup({ turns: [[{ type: 'text', delta: 'one' }], [{ type: 'text', delta: 'two' }]],

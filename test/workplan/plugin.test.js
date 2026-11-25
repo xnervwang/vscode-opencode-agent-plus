@@ -555,8 +555,8 @@ test('after a compaction the notes are sent again, separately from the plan, so 
 
 /* ---------- the steward line and steward_handoff ---------- */
 
-/* The line Claude Code Plus's own conversations get (its hooks/steward.py watched(), as its developers sent it, the
-   example stewards included), with the two changes this plugin makes: the steward_handoff tool for the relay command,
+/* The line Claude Code Plus's own conversations get (its hooks/steward.py watched(), with two example stewards),
+   with the two changes this plugin makes: the steward_handoff tool for the relay command,
    and the tool's `to` for --to. */
 const CCPLUS_ONE = 'A steward, "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444), watches this one for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the steward "<title>" (<session id>) for the user:`, which names the steward that sent it. Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered.';
 const CCPLUS_MANY = 'Stewards "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444) and "Night steward" (bbbbbbbb-1111-4222-8333-444444444444) watch this one for the user through Claude Code Plus: they read your work plan and latest reply, and speak for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the steward "<title>" (<session id>) for the user:`, which names the steward that sent it. Do not send them status messages; put questions for the user in your plan as rows waiting on the user, where they see them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered. It goes to the steward whose message started this turn, or else to the one the user last typed to; to hand it to another of them, add --to and that steward\'s session id.';
@@ -587,7 +587,7 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   watch(env);
   const second = prompt(SID, 'msg_2', 'x');
   await f.hooks.prompt(second);
-  assert.equal(second.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_2\n\n${ONE_TEXT}\n</system-update>`, "one steward: Claude Code Plus's line for one");
+  assert.equal(second.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_2\n\n${ONE_TEXT}\n</system-update>`, "with one steward, the text is Claude Code Plus's one-steward line");
   assert.deepEqual(toolNames(f), [...PLAN_TOOLS, 'steward_handoff'], 'registered again as one set, steward_handoff last');
   assert.equal(f.liveTools().length, 1);
   const tool = f.tool('steward_handoff');
@@ -623,7 +623,7 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   await stop();
 });
 
-test("two stewards get Claude Code Plus's line for several, in the steward file's order; more, untitled and old files are named the same way", async () => {
+test("two stewards get Claude Code Plus's line for several, in the steward file's order, and so do more stewards, untitled ones and old-format files", async () => {
   const env = makeEnv();
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
@@ -639,7 +639,7 @@ test("two stewards get Claude Code Plus's line for several, in the steward file'
   'three: commas and a last "and"; one without a title is named by its session id');
   fs.writeFileSync(path.join(env.plans, `${SID}.steward.json`), JSON.stringify({ format: 1, sourceId: 'claude-code', sessionId: DOCS.sessionId }));
   assert.equal(await line('msg_4'), `<system-update>\nPLAN ${SID} msg_4\n\n${ONE_TEXT.replace(`"Docs steward" (${DOCS.sessionId})`, DOCS.sessionId)}\n</system-update>`,
-    'a file with only the two top fields, as an older extension wrote it: one steward named by its session id');
+    'an older extension\'s file with only the two top fields names one steward, by its session id');
   watch(env, SID, [{ ...DOCS, title: 'Docs\n   steward ' }, { sourceId: 'claude-code' }]);
   assert.equal(await line('msg_5'), `<system-update>\nPLAN ${SID} msg_5\n\n${ONE_TEXT}\n</system-update>`, 'an unusable entry is left out and a title kept on one line');
   await stop();
@@ -739,7 +739,7 @@ test("the plugin and the extension together: the tool's request is sent with Cla
   } finally { host.dispose(); }
 });
 
-test("the plugin and the extension with two stewards: the line names both, and each handoff reaches the steward it should", async () => {
+test("the plugin and the extension with two stewards: the line names both, and each handoff reaches the right steward", async () => {
   const env = makeEnv();
   const { createStewards } = require('../../src/host/steward');
   const delivered = [];

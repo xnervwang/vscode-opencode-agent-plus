@@ -32,7 +32,7 @@
  * work plan needs OpenCode 2 is shown once, the / and @ lists, question forms and compaction line show only what it
  * offers, and its tab offers Fork but not Rename. The plugin writes what it does to <out>/plugin.jsonl
  * (OPENCODE_AGENT_PLUS_PLAN_LOG).
- * The fake run goes on through the steps of OpenCode 2 after its own: with OPENCODE_AGENT_PLUS_FAKE_DEMO=1 the fake
+ * After its own steps, the fake run also goes through the OpenCode 2 steps: with OPENCODE_AGENT_PLUS_FAKE_DEMO=1 the fake
  * backend answers the same prompts (fake-backend.js PROMPTS), and lib/gap-ci.js reads what it recorded where OpenCode's
  * own record is read. Its plan row is a plan file the test writes; the plugin's own steps (its tool, its injection) are
  * left to the real runs. Before the reload three chat tabs are open, one behind another and one in a split to the
@@ -243,7 +243,7 @@ async function main() {
   const xdg = path.join(OUT, 'xdg');
   const xdgEnv = real ? { XDG_CONFIG_HOME: path.join(xdg, 'config'), XDG_DATA_HOME: path.join(xdg, 'data'), XDG_STATE_HOME: path.join(xdg, 'state'), XDG_CACHE_HOME: path.join(xdg, 'cache') } : {};
   for (const d of Object.values(xdgEnv)) fs.mkdirSync(d, { recursive: true });
-  /* OpenCode's version line, read with this run's own folders; the fake backend reports OpenCode 2. */
+  /* Reads OpenCode's version line with this run's own folders (the fake backend reports OpenCode 2). */
   let line = 0;
   if (DOWNLOAD || !real) line = 2;
   else if (real) {
@@ -397,8 +397,8 @@ async function main() {
     await page.mouse.move(900, 500);
     await sleep(300);
   };
-  /* The outline step: the rail's middle button opens the list of the user's messages; a row scrolls to its message; the
-     button hides and shows the list, which is left closed. */
+  /* The outline step. The rail's middle button opens the list of the user's messages, a click on a row scrolls to that
+     message, and the button hides and shows the list again; the list is left closed. */
   const outlineStep = async (f, name, expect) => {
     await dropHover();
     if (!(await outlineOf(f)).shown) await f.click('#navBtn').catch(() => {});
@@ -407,14 +407,14 @@ async function main() {
     const still = await pageScroll(f);
     if (still.over > 0) console.log(`  note  the chat page is ${still.over} px taller than its frame; only its log scrolls`);
     check(!!o && !!jump && jump.flash && (!jump.canScroll || Math.abs(jump.offset) <= 40) && still.scrolled === 0 && still.top === 0,
-      'the list of your messages over the log lists each of them, and a click on the first scrolls the log to it, not the page', { outline: o || await outlineOf(f), jump, page: still });
+      'the list of your messages over the log has a row for each, and a click on the first scrolls the log to it, not the page', { outline: o || await outlineOf(f), jump, page: still });
     await shot(name, { features: ['conversation outline'], expect, part: '#workbench\\.parts\\.editor' });
     await f.click('#navBtn');
     const closed = await until(async () => { const x = await outlineOf(f); return !x.shown && x.button && x.pressed === 'false' ? x : null; }, 5000);
     await f.click('#navBtn');
     const back = await until(async () => { const x = await outlineOf(f); return x.shown && x.pressed === 'true' ? x : null; }, 5000);
     check(!!closed && !!back, "the rail's list button hides the list and shows it again", { closed, back });
-    /* The list's filter box keeps the rows whose message has the words typed. */
+    /* Typing in the list's filter box keeps only the rows whose message contains the typed words. */
     const word = await f.evaluate(() => { const u = [...document.querySelectorAll('#log .msg.user .bubble')].pop(); return u ? (u.textContent.match(/[A-Za-z]{4,}/g) || [u.textContent.trim()]).pop() : ''; });
     const filtered = async (q) => { await f.fill('#outline .outline-filter', q); await sleep(300);
       return f.evaluate(() => ({ rows: [...document.querySelectorAll('#outline .outline-row')].map((r) => r.title), none: !!document.querySelector('#outline .outline-none') })); };
@@ -608,7 +608,7 @@ async function main() {
     let chat = await frameWith(page, '#input', 30000);
     check(!!chat, 'the chat page loaded in the tab');
     await shot('02-new-conversation', { features: ['new conversation', 'chat editor tab'],
-      expect: `An editor tab is open with the chat page: a thin header with the conversation's title; in the middle of the empty page the OpenCode mark and a one-line hint; at the bottom a rounded message box, centred, whose row of buttons under the text has a model pill showing ${real ? 'the Grok model' : 'Fake Small'} and, at the right end, a square send button with an arrow.`,
+      expect: `An editor tab is open with the chat page: a thin header with the conversation's title; in the middle of the empty page the OpenCode mark and a one-line hint; at the bottom a rounded, centred message box; in its row of buttons under the text, a model pill showing ${real ? 'the Grok model' : 'Fake Small'} and, at the right end, a square send button with an arrow.`,
       part: '#workbench\\.parts\\.editor' });
 
     let sessionId = tab ? tab.uri.replace(/^opencodeagentplus-session:\//, '') : '';
@@ -695,7 +695,7 @@ async function main() {
         const low = await until(() => chat.evaluate(() => document.getElementById('ring').classList.contains('low')), 5000);
         check(low, 'with 10% of the context left the ring is outlined');
         await shot('04y2-ring-low', { features: ['context ring outline'],
-          expect: 'In the row of buttons under the message box, the context ring nine-tenths full in the warning colour with a thin warning-coloured circle around it; further right a music-note button before the send button.',
+          expect: 'In the row of buttons under the message box, the context ring nine-tenths full, drawn in the warning colour with a thin circle of the same colour around it; further right a music-note button before the send button.',
           part: '#workbench\\.parts\\.editor' });
 
         // 4x. Fork from the chat tab's menu; with it closed, the Conversations view has its two groups.
@@ -755,7 +755,7 @@ async function main() {
 
         // 4u. The outline of the two messages.
         await outlineStep(chat, '04u-outline',
-          'Over the top right of the conversation a framed list with a "Filter your messages" box lists the two user messages, each with its date and time ("Hello there, please fix the failing test", then "Say: The copy is …"); the log is scrolled to the first message, which has a thin focus-coloured outline; in the rail of five small buttons on the right edge the middle one, a list icon, is drawn pressed.');
+          'Over the top right of the conversation a framed list with a "Filter your messages" box lists the two user messages, each with its date and time ("Hello there, please fix the failing test", then "Say: The copy is …"); the log is scrolled to the first message, which has a thin focus-coloured outline; the middle of the five small buttons on the right edge, a list icon, shows as pressed.');
 
         // 4t. The subagent filter, on subagent items posted to the page the way the extension posts them.
         const quiet = await subagentView(chat);
@@ -777,7 +777,7 @@ async function main() {
         check(!quiet.button && !!subShown && subShown.folded.every((x) => x.card && x.child) && subShown.hidden.every(Boolean)
           && !!subHidden && subHidden.text === 'Subagents hidden (4)' && subHidden.folded.length === 1 && subHidden.folded.every((x) => x.card && !x.child)
           && subHidden.hidden.length === 3 && subHidden.hidden.every((x) => !x) && subHidden.waiting.length === 1 && subHidden.waiting.every(Boolean),
-        "the Subagents button shows only once a subagent did something; pressed, it hides the subagents' boxes, calls and answered requests, folds the call that started one, and keeps a request of theirs that still waits",
+        "the Subagents button shows only once a subagent did something; pressed, it hides the subagents' boxes, calls and answered requests, folds the call that started each subagent, and leaves a subagent's request that still waits",
           { quiet, subShown, subHidden });
         await chat.evaluate(() => { const t = document.querySelector('#log [data-id="zz1"]'), l = document.getElementById('log'); if (t) l.scrollTop += t.getBoundingClientRect().top - l.getBoundingClientRect().top - 8; });
         await shot('04t-subagents-hidden', { features: ['subagent filter'],
@@ -826,7 +826,7 @@ async function main() {
               const t = await tabOf(sessionId);
               if (t) waitIcons.push(await iconOf(t.label));
               await shot(`${name}-permission`, { features: ['tool call', 'permission request'],
-                expect: 'The user message, a tool row for the call the model made, and right above the message box the permission box: "Allow <tool>?", then the numbered rows 1 Allow once (highlighted), 2 Allow in this project and 3 Deny.',
+                expect: 'The user message, a tool row, and right above the message box the permission box: "Allow <tool>?", then the numbered rows 1 Allow once (highlighted), 2 Allow in this project and 3 Deny.',
                 part: '#workbench\\.parts\\.editor' });
             }
             await button.click();
@@ -868,7 +868,7 @@ async function main() {
         const idleIcon = await until(async () => { const t = await tabOf(sessionId); const i = t ? await iconOf(t.label) : ''; return /tab-stopped-dark-/.test(i) ? i : null; }, 10000);
         check(waitIcons.some((i) => /tab-waiting-dark-/.test(i)) && !!idleIcon, "the chat tab's icon has a red dot while the request waits, and is the plain logo once the turn is over", { waitIcons, idleIcon });
         await shot('04-answer', { features: ['answer', 'reply figures'],
-          expect: `The tool row is done (a green dot) and the answered permission row says allowed; the model answer lists the files of the folder (README.md, notes.txt, src), and its row's time is followed by the figures: a duration, ctx, maybe a cost, and the model name ${real ? 'grok' : 'fake-small'}.`,
+          expect: `The tool row is done (a green dot) and the answered permission row says allowed; the model answer lists the files of the folder (README.md, notes.txt, src), and its row's time is followed by the figures: a duration, the ctx percentage, a cost if there is one, and the model name ${real ? 'grok' : 'fake-small'}.`,
           part: '#workbench\\.parts\\.editor' });
 
         if (line === 1) {
@@ -943,7 +943,7 @@ async function main() {
           check(lowShown && / low$/.test(fig) && !!inLow && inLow.agent === 'build' && !!inLow.model && inLow.model.variant === 'low',
             'with Build and effort Low picked, the next turn runs with both, and its figures name the effort', { fig, agent: inLow && inLow.agent, model: inLow && inLow.model });
           await shot('04e-effort-low', { features: ['effort in reply figures'],
-            expect: 'The Plan turn says the file could not be written; then "Reply with only the word four." and the reply "four", whose figures after its time end with the model name followed by "low"; under the message box the effort shows Low and the mode Ask before edits.',
+            expect: 'The Plan turn says the file could not be written; then "Reply with only the word four." and the reply "four", whose figures end with the model name and "low"; under the message box the effort shows Low and the mode Ask before edits.',
             part: '#workbench\\.parts\\.editor' });
 
           // 3f. A subagent: its session stays out of the list, and the turn OpenCode starts when it finishes shows here.
@@ -1047,7 +1047,7 @@ async function main() {
               expect: 'The chat shows the request to call add_row, an add_row tool row (folded to one line; its result "row 1 added: doing" shows only when opened), and the reply "ok".',
               part: '#workbench\\.parts\\.editor' });
           } else {
-            /* No plugin runs behind the fake backend: the row the model would add is written to the plan here. */
+            /* The fake backend has no plugin, so this writes the row the model would add to the plan. */
             gapCi.writePlan(planFile, [{ title: 'list the files', state: 'doing' }]);
           }
 
@@ -1207,7 +1207,7 @@ async function main() {
           }
           const chosen = await lastReply();
           const settledQ = await chat.evaluate(() => { const c = [...document.querySelectorAll('#log .question')].pop(); return c ? c.querySelector('.perm-result').textContent : ''; });
-          check(/blue/i.test(chosen) && /^Answered: .*Blue/i.test(settledQ), 'after Submit the model gets the answer: it replies with the colour chosen, and the answered question says what was answered', { chosen, settledQ });
+          check(/blue/i.test(chosen) && /^Answered: .*Blue/i.test(settledQ), 'after Submit the model gets the answer: it replies with the colour chosen, and the answered question shows the answer', { chosen, settledQ });
           await shot('12b-answered', { features: ['question answered'],
             expect: 'Above it the question tool row (folded), then the answered question, now a row in the log reading "Answered: … Blue" under a framed copy of the form: Blue\'s choice is checked and in bold, the other choice is faded (an own-answer box left empty may be left out), and there are no buttons; below it the reply "Blue" (or "blue"), its time followed by the figures.',
             part: '#workbench\\.parts\\.editor' });
@@ -1241,7 +1241,7 @@ async function main() {
           const beforeAsk = await figures();
           await chat.fill('#input', askText);
           await chat.press('#input', 'Enter');
-          /* Delivered before waitTurn runs, since waitTurn answers the request as soon as it sees it. */
+          /* Sent before waitTurn, which answers the request the moment it sees it. */
           const asked = await until(async () => {
             for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) return true;
             return null;
@@ -1363,7 +1363,7 @@ async function main() {
           check(!!after && after.box === REWIND_TEXT && !!stored && !stored.includes(REWIND_TEXT) && stored.length > 0,
             'after Rewind the files are as before the message, the page and OpenCode no longer have it, and its text is back in the box', { after, lastSeen, stored: stored && stored.slice(-3), files: { rewound: read(rewound), notes: read(notes) } });
           const rewoundFigures = await chat.evaluate(() => [...document.querySelectorAll('#log .figures')].map((x) => x.textContent));
-          check(rewoundFigures.some((x) => /ctx \d+%/.test(x)) && rewoundFigures.some((x) => /\$\d/.test(x)), 'after Rewind the turns drawn again give their context and cost in their figures', rewoundFigures.slice(-4));
+          check(rewoundFigures.some((x) => /ctx \d+%/.test(x)) && rewoundFigures.some((x) => /\$\d/.test(x)), 'after Rewind the turns drawn again show their context use and cost', rewoundFigures.slice(-4));
           await shot('17b-rewound', { features: ['rewound conversation'],
             expect: 'The conversation ends with the turn before the rewound message (the earlier replies are all there); the message box holds the rewound request ("Use the write tool to create a file named…").',
             part: '#workbench\\.parts\\.editor' });
@@ -1430,7 +1430,7 @@ async function main() {
           const info = await until(() => chat.evaluate(() => { const b = document.getElementById('infoBox'); return b && !b.hidden && b.querySelector('.info-row') ? [...b.querySelectorAll('.info-row')].map((r) => [r.querySelector('.info-label').textContent, r.querySelector('.info-value').textContent]) : null; }), 15000);
           const infoOf = Object.fromEntries(info || []);
           const runs = real ? { version: '2.4.1', db: path.join(xdgEnv.XDG_DATA_HOME, 'opencode', 'opencode.db') } : { version: '2.0.0-fake', db: path.join(p.agentHome, 'fake-backend.json') };
-          /* Windows has the folder with a drive letter in either case. */
+          /* On Windows the folder's drive letter can come back upper or lower case. */
           const samePath = (a, b) => (process.platform === 'win32' ? String(a).toLowerCase() === String(b).toLowerCase() : a === b);
           const versionRow = new RegExp(`^${runs.version.replace(/\./g, '\\.')}, acp process \\d+$`);
           check(!!info && infoOf.Session === sessionId && versionRow.test(infoOf.OpenCode || '') && samePath(infoOf.Folder, p.folder)
@@ -1468,7 +1468,7 @@ async function main() {
           check(!!forked && !!copied, "Fork Conversation in the chat tab's menu opens a copy of the whole conversation in a new tab", { items, forked, copied });
           if (copied) {
             const forkFigures = await forkPage.evaluate(() => [...document.querySelectorAll('#log .figures')].map((x) => x.textContent));
-            check(forkFigures.some((x) => /ctx \d+%/.test(x)) && forkFigures.some((x) => /\$\d/.test(x)), "the fork's replayed turns give their context and cost in their figures", forkFigures.slice(-4));
+            check(forkFigures.some((x) => /ctx \d+%/.test(x)) && forkFigures.some((x) => /\$\d/.test(x)), "the fork's replayed turns show their context use and cost", forkFigures.slice(-4));
           }
           await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
           const groups = await until(() => page.evaluate(() => { const t = document.getElementById('workbench.parts.sidebar').textContent; return /Open in this window/.test(t) && /Other conversations/.test(t); }), 20000);
@@ -1575,7 +1575,7 @@ async function main() {
     const inAp = await until(async () => page.evaluate((t) => { const e = document.getElementById('workbench.parts.panel'); return !!e && e.textContent.includes(t); }, await titleNow()), 30000);
     check(inAp, "the conversation shows in Agent Plus's Conversations view");
     await shot('05-agent-plus', { features: ['Agent Plus conversations'],
-      expect: 'The panel at the bottom shows Agent Plus\'s Conversations view, which lists this conversation by its title (possibly cut short) with no icon in front of it and no activity dot: Agent Plus draws a source\'s logo only once more than one source is registered, and the conversation has stopped.',
+      expect: 'The panel at the bottom shows Agent Plus\'s Conversations view, which lists this conversation by its title (possibly cut short) with no icon in front of it (Agent Plus draws a source\'s logo only once more than one source is registered) and no activity dot, since the conversation has stopped.',
       part: '#workbench\\.parts\\.panel' });
 
     // 4b. With a second source registered, Agent Plus draws this source's logo on its rows, in each theme.
@@ -1628,7 +1628,7 @@ async function main() {
     const firstText = real ? '列出工作目录下的文件' : 'subtracted instead of adding';
     const reloadCtx = { page, call, ext, check, until };
     const reloadTabs = await gapCi.openTabs(reloadCtx, { id: sessionId, text: firstText });
-    /* The log's entries by kind, and the figures of its turns, to set the reloaded page against. */
+    /* Records the log's entries by kind and each turn's figures, to compare with the page after the reload. */
     const logShape = (f) => f.evaluate(() => {
       const kinds = {};
       for (const e of document.querySelectorAll('#log [data-id]')) {
@@ -1648,8 +1648,8 @@ async function main() {
     const history = again && await until(() => again.evaluate((re) => new RegExp(re).test(document.getElementById('log').textContent), firstText), 30000);
     check(!!history, 'the restored tab shows the conversation so far');
     /* OpenCode's record of a session holds no requests and no stop reasons, so answered permission requests, questions and
-       notices such as "Stopped." are not replayed; nor is a /compact typed by the user, which it records as the compaction
-       alone. Every other entry comes back. */
+       notices such as "Stopped." are not replayed. Nor is a /compact the user typed: OpenCode records only the compaction.
+       Every other entry comes back. */
     const afterReload = again ? await logShape(again).catch(() => null) : null;
     const lost = beforeReload && afterReload ? Object.keys({ ...beforeReload.kinds, ...afterReload.kinds })
       .filter((k) => (beforeReload.kinds[k] || 0) !== (afterReload.kinds[k] || 0)).map((k) => `${k} ${beforeReload.kinds[k] || 0}->${afterReload.kinds[k] || 0}`) : null;
@@ -1659,7 +1659,7 @@ async function main() {
     check(!!lost && lost.every((d) => /^(permission|question|notice) /.test(d) || (real && compacted > 0 && d === `user ${users}->${users - compacted}`)),
       'after the reload the page has the same messages, replies, tool rows, subagent boxes and compaction lines as before', { before: beforeReload, after: afterReload && afterReload.kinds });
     check(!!afterReload && afterReload.figures.some((x) => /ctx \d+%/.test(x)) && afterReload.figures.some((x) => /\$\d/.test(x)),
-      "after the reload the replayed turns' figures give their context and cost", afterReload && afterReload.figures.slice(-4));
+      "after the reload the replayed turns show their context use and cost", afterReload && afterReload.figures.slice(-4));
     const recentAfter = (await ext('return api.test.recent();')) || [];
     check(!recentAfter.some((e) => e.id === sessionId) && JSON.stringify(recentAfter.map((e) => e.id)) === JSON.stringify(recentBefore),
       'Recently closed outlasts the reload, and the reload did not count as closing the chat tab', { before: recentBefore, after: recentAfter });
@@ -1741,7 +1741,7 @@ async function main() {
     const editorBox = await page.evaluate(() => { const r = document.querySelector('#workbench\\.parts\\.editor').getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height, page: window.innerWidth }; });
     const cdp = await page.context().newCDPSession(page);
-    /* Records what the window draws from just before `action` until `ms` after it. */
+    /* Captures the frames the window draws from just before `action` until `ms` after it. */
     const record = async (action, ms = 2000) => {
       const frames = [];
       const onFrame = (f) => { frames.push({ data: f.data, at: f.metadata.timestamp }); cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {}); };
@@ -1755,8 +1755,8 @@ async function main() {
       cdp.off('Page.screencastFrame', onFrame);
       return frames.slice(from);
     };
-    /* For each frame, the black or nearly black pixels in the editor area, whose dark theme background is #1f1f1f. Also
-       the pixels in that area's lowest quarter that differ from the background: the page's input box is drawn there. */
+    /* Counts the black or nearly black pixels in each frame's editor area. The dark theme paints that area #1f1f1f. It also
+       counts the pixels in that area's lowest quarter that differ from the background: the page's input box is drawn there. */
     const paintOf = (frames) => page.evaluate(async ({ frames, box }) => {
       const counts = [];
       for (const { data } of frames) {
@@ -1869,7 +1869,7 @@ async function main() {
         await chat10.fill('#input', 'Reply with only the words: Sent once the files were saved. Use no tool.');
         await chat10.press('#input', 'Enter');
         await until(() => chat10.evaluate(() => document.querySelector('#log').textContent.includes('Sent once the files were saved.') || null), 20000);
-        /* The turn is let end, a request on the way denied, so that no conversation is left waiting for the later steps. */
+        /* Lets the turn end, denying any request it makes, so that no conversation is still waiting during the later steps. */
         await until(async () => {
           const deny = await chat10.$('#log .permission:not(.settled) button[data-decision="deny"]');
           if (deny && await deny.isVisible()) await deny.click().catch(() => {});

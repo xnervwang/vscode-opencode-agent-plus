@@ -174,7 +174,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible, input:focus-v
   justify-content: center;
 }
 
-/* Your messages: a box with a bar down its left edge, its time before the text. */
+/* The user's messages: boxed, with a bar down the left edge and the time before the text. */
 .msg.user {
   position: relative;
   margin: 18px 0 14px;
@@ -206,7 +206,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible, input:focus-v
 .figures::before {
   content: ' ';
 }
-/* The time a row took to come, after its time; the reply's last row has the turn's figures instead. */
+/* After a row's time, how long after the message the row came; on the reply's last row, the turn's figures. */
 .elapsed {
   margin-left: 0.5em;
   font-family: var(--mono);
@@ -534,7 +534,7 @@ details.reasoning .md {
   border-radius: 8px;
   background: var(--vscode-input-background);
 }
-/* A frame of the focus colour mixed into the box's own, paler than the focus colour, as Claude Code draws it. */
+/* The frame mixes the focus colour with the box's background, so it is paler than the focus colour, as in Claude Code. */
 .permission:not(.settled), .question:not(.settled) {
   border-color: color-mix(in srgb, var(--vscode-focusBorder) 55%, var(--vscode-input-background));
 }
@@ -689,7 +689,7 @@ details.reasoning .md {
 .q-desc {
   margin-bottom: 4px;
 }
-/* A choice is a row of its own; only the one picked, or the first until one is, is framed. */
+/* A choice is a row of its own; the picked one is framed, or the first one until a choice is picked. */
 .q-option {
   margin: 0 0 1px;
   padding: 2px 8px;
@@ -1434,7 +1434,6 @@ button.pill:hover, .pill:hover {
   background: currentColor;
 }
 
-/* The context ring. */
 .ring {
   cursor: default;
 }
@@ -1750,7 +1749,7 @@ button.pill:hover, .pill:hover {
   font-style: italic;
 }
 
-/* ---------- an edit's change in its row: red and green lines ---------- */
+/* ---------- an edit's diff in its row: red and green lines ---------- */
 
 .tool-diff {
   padding: 4px 0;
@@ -1948,10 +1947,10 @@ body.focus-view .focus-out {
   overflow-wrap: anywhere;
 }
 
-/* ---------- a narrow log: the time on a line of its own ---------- */
+/* ---------- narrow log ---------- */
 
-/* Beside the time and figures, a narrow log leaves the first lines of a message a sliver of room before they go back
-   to the left edge; the time takes a line of its own instead. */
+/* In a narrow log the time and figures would leave the first lines of a message only a sliver of room before they wrap
+   to the left edge. */
 @container (max-width: 600px) {
   .tl > .meta, .msg.user .meta {
     float: none;
@@ -1963,7 +1962,7 @@ body.focus-view .focus-out {
   }
 }
 
-/* ---------- the message box and the editor (Fork from here, what goes along, detached commands) ---------- */
+/* ---------- the message box and the editor (Fork from here, the context pill, detached commands) ---------- */
 
 /* Fork from here and Rewind sit side by side at the top right of a user message, shown on hover. */
 .user-actions {
@@ -1995,7 +1994,7 @@ button.fork .codicon {
   visibility: visible;
 }
 
-/* What the editor offers on the pill under the box: lit while it goes with the message, struck through once left out. */
+/* The context pill under the box: lit while its item goes with the message, struck through once left out. */
 .ctx-pill {
   gap: 2px;
   padding: 0 4px 0 8px;
@@ -2044,7 +2043,7 @@ button.fork .codicon {
   box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
 }
 
-/* A detached command: its dot is hollow, as nothing in OpenCode waits for it. */
+/* A detached command has a hollow dot: nothing in OpenCode waits for it. */
 .bg-detached::before {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--ok);
@@ -2053,9 +2052,8 @@ button.fork .codicon {
   cursor: default;
 }
 
-/* In a narrow box the pill of what goes along and the mode pill give way, cut short, before the row of buttons wraps:
-   with no width of their own they do not break the line, and they share the room that is left (the spacer takes
-   next to none of it) up to their own width. */
+/* In a narrow box the context pill and the mode pill give way before the row of buttons wraps:
+   their flex basis is 0, and they take nearly all the room that is left, up to their own width. */
 #tools .ctx-pill {
   flex: 100 1 0;
   min-width: 64px;

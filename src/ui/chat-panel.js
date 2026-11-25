@@ -26,11 +26,12 @@
  *              widen (VS Code reloads a page whose options change)
  *   links      the conversations a reply may name (src/host/conversation-links.js), which the page turns into links
  *              ('conversations' { rev, list, self }); a click opens one
- *   beforeSend runs before a message goes to the conversation, such as saving edited files; its failure does not stop it
+ *   beforeSend runs before a message is sent to the conversation, for example to save edited files; if it fails, the
+ *              message is still sent
  *   view       the Focus view and pinned-prompt settings ('view' { focus, pin, toggle }); the page's Focus button sets the
  *              first through it ('setFocusView')
  *
- * The page asks which of the paths a reply names are files ('checkPaths' { paths }, at most MAX_PATHS at a time) and
+ * The page asks which paths in a reply are files ('checkPaths' { paths }, at most MAX_PATHS at a time) and
  * links those ('paths' { results: [{ path, ok }] }). A relative path counts only inside a workspace folder or the
  * conversation's folder, an absolute one anywhere; answers are kept for a while in FILE_CACHE, which the paths listed in
  * `fresh` skip. 'openFile' { path, line } opens one beside the chat, at that line, after checking it again.
@@ -45,8 +46,9 @@
  *              (src/host/detached.js), looked for when a turn starts or ends and when the background list opens
  *   readRange  (path, startLine, endLine) => text or null: lines of a file named with @<path>#L.. in a message
  *
- * compose({ refs, draft }) puts @ references or a draft into the message box (after what it holds) and focuses it;
- * before the page has loaded, it waits. focusInput() focuses the box.
+ * compose({ refs, draft }) puts @ references or a draft into the message box, after any text already there, and
+ * focuses it;
+ * before the page has loaded, it waits.
  *
  * The plan bar's fragment brings its own style element, so the page's policy lets inline styles in. A diff opened from
  * a permission card gets Allow once, Allow in this project and Deny in its editor's title bar (see answerFromDiff);
@@ -66,7 +68,7 @@ const MAX_FILES = 20;
 const MARKDOWN_IT = ['node_modules', 'markdown-it', 'dist', 'browser'];
 /* VS Code's icon font, for the page's buttons; without it the buttons show their tooltips' words only. */
 const CODICONS = ['node_modules', '@vscode', 'codicons', 'dist'];
-/* highlight.js's browser build with its common languages, for the code blocks of replies; without it they are plain. */
+/* highlight.js's browser build, with its common languages. Code blocks in replies stay plain without it. */
 const HIGHLIGHT = ['node_modules', '@highlightjs', 'cdn-assets'];
 const MAX_PATHS = 200;
 /* A file found is trusted for FILE_OK_MS and a missing one for FILE_MISS_MS, as a reply may name a file about to be written. */
@@ -426,7 +428,7 @@ ${hl}<script src="${media('kit.js')}"></script>
     this.post({ type: 'composer', ctrlEnter: c.ctrlEnter === true, attachFile: c.attachFile !== false, attachSelection: c.attachSelection !== false });
   }
 
-  /* After a setting of the message box changed. */
+  /* Called when a message box setting changes: sends the page the new settings and selection. */
   settingsChanged() {
     if (!this.ready || this.disposed) return;
     this.postComposer();
@@ -498,7 +500,7 @@ ${hl}<script src="${media('kit.js')}"></script>
       detached: !!this.detached });
   }
 
-  /* Lists the models again, as after a provider was connected; the page's list follows. */
+  /* Lists the models again, as is done after a provider is connected; the page then shows the new list. */
   reloadModels() {
     if (this.disposed) return;
     this.models = null;
@@ -523,7 +525,7 @@ ${hl}<script src="${media('kit.js')}"></script>
     return null;
   }
 
-  /* The selection the page's button adds, and what a message takes along without asking: { selection, file }
+  /* The selection the page's button adds, and what goes with a message automatically: { selection, file }
      (selection.js context()). */
   postSelection() {
     let label = '';
@@ -553,7 +555,7 @@ ${hl}<script src="${media('kit.js')}"></script>
     this.post({ type: 'view', focus, pin, toggle: !!(this.view && typeof this.view.setFocus === 'function') });
   }
 
-  /* Folders a relative path in a reply may be in: the workspace's, and the conversation's own. */
+  /* Folders a relative path in a reply is resolved against: the workspace folders and the conversation's own folder. */
   fileRoots() {
     const out = [];
     for (const f of (this.vscode.workspace && this.vscode.workspace.workspaceFolders) || []) if (f && f.uri && f.uri.scheme === 'file') out.push(f.uri.fsPath);
@@ -634,7 +636,7 @@ ${hl}<script src="${media('kit.js')}"></script>
     return out;
   }
 
-  /* What the page showed as taken along from the editor ({ kind, key }), if the editor still has it. */
+  /* The editor item ({ kind, key }) the page showed as going with the message, if the editor still has it. */
   addContext(want, files) {
     if (!want || typeof want.key !== 'string' || !this.selection) return;
     let ctx = null;
@@ -704,7 +706,7 @@ ${hl}<script src="${media('kit.js')}"></script>
         const text = String(msg.text || '');
         const extra = this.extraOf(msg);
         /* Without text, a message goes when the user attached something to it: images or a selection added with its
-           button. What the editor offers on its own does not make one. */
+           button. The file or selection the editor offers on its own does not count. */
         const attached = (extra.images && extra.images.length) || (Array.isArray(msg.selections) && msg.selections.length);
         if (!text.trim() && !attached) break;
         if (this.state.status !== 'idle') {
@@ -849,8 +851,8 @@ ${hl}<script src="${media('kit.js')}"></script>
     }
   }
 
-  /* 'build' is OpenCode's build mode with edits asking first and 'build:auto' the same without asking (composer.js
-     permissionModes); any other value is that mode of OpenCode's, with edits asking. */
+  /* 'build' is OpenCode's build mode, in which each edit asks first, and 'build:auto' the same mode with edits allowed
+     without asking (composer.js permissionModes); any other value selects that OpenCode mode, where edits ask first. */
   setPermissionMode(mode) {
     const pm = this.permissionMode;
     const auto = mode === 'build:auto';

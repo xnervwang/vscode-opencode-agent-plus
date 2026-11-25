@@ -6,8 +6,9 @@
 /*
  * The @ references the editor puts into a chat page's message box (Alt+K, Add to Conversation, Fix with OpenCode):
  * `@<path>` for a file and `@<path>#L<from>-<to>` for lines of it, the path relative to the workspace folder it is in,
- * or absolute outside them, always with forward slashes. The page sends a file as a link OpenCode reads itself and lines
- * as their text, which the extension reads when the message goes (rangeText), so the model sees them as they are then.
+ * or absolute outside them, always with forward slashes. The page sends a file as a link that OpenCode reads itself,
+ * and lines as their text, which the extension reads (rangeText) when the message is sent, so the model gets the lines
+ * as they are at that moment.
  */
 const fs = require('fs');
 const path = require('path');
