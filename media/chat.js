@@ -22,15 +22,20 @@
  *               addSelection, planBarOpen { part: 'plan' | 'answer' }, rewind { itemId }, info, setSound { on },
  *               image { id, src }, background, openConversation { sourceId, sessionId }.
  *
+ * The layout is the Claude Code panel's: each row of a reply hangs on a line down the left side with a dot that shows
+ * its state, a tool call is one row that opens to its input and result, and the message box carries its buttons in a
+ * row under the text. An open permission request or question sits right above the message box until it is answered;
+ * 1, 2 and 3 answer a permission request while the focus is not in a text field.
+ *
  * Esc stops the turn when no list or box is open. A chime (Agent Plus's kit.js, the same three as Claude Code Plus)
  * sounds when a turn ends and when a permission request or a question arrives, unless the footer's button has muted
  * the chimes. A local image in a reply is read by the extension and comes back as a data: URL; one from the web is
  * shown as a link and never fetched, so an image URL in a reply cannot send data anywhere.
  *
  * Replies link the other conversations they mention by title or id (agentPlusKit's mentions); a click opens one.
- * The Outline button shows a column of the user's messages and the compaction points beside the log; a click scrolls
- * to one. The Subagents button hides what subagents did and folds their progress, leaving a request of theirs that
- * still waits. Both choices live in the page's state.
+ * The rail on the right edge moves between the user's messages, and its middle button opens a list of them and of the
+ * compaction points; a click scrolls to one. The Subagents button hides what subagents did and folds their progress,
+ * leaving a request of theirs that still waits. Both choices live in the page's state.
  */
 (function () {
   const api = acquireVsCodeApi();
@@ -47,13 +52,18 @@
   const input = $('input');
   const form = $('composer');
   const bottom = $('bottom');
+  const dock = $('dock');
   const stopBtn = $('stop');
+  const sendBtn = $('send');
   const statusEl = $('status');
   const queuedEl = $('queued');
   const menuEl = $('menu');
   const attachEl = $('attachments');
   const noteEl = $('note');
   const selBtn = $('addSelection');
+  const attachBtn = $('attach');
+  const attachFile = $('attachFile');
+  const slashBtn = $('slashBtn');
   const modelSel = $('model');
   const infoBtn = $('infoBtn');
   const infoBox = $('infoBox');
@@ -63,8 +73,10 @@
   const soundBtn = $('sound');
   const navBtn = $('navBtn');
   const subBtn = $('subBtn');
+  const rail = $('rail');
   const outlineEl = $('outline');
   const outlineList = outlineEl.querySelector('.outline-list');
+  const outlineFilter = outlineEl.querySelector('.outline-filter');
   /* The settings shown next to the model, by the id the conversation's options() gives them. */
   const optionSels = { mode: $('mode'), effort: $('effort') };
   const ring = $('ring');
@@ -75,7 +87,8 @@
   const RING = 2 * Math.PI * 6;
   const MAX_IMAGES = 8;
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-  const BASE_PLACEHOLDER = 'Ask anything. Enter to send, Shift+Enter for a new line';
+  const BASE_PLACEHOLDER = 'Ask OpenCode…';
+  const BUSY_PLACEHOLDER = 'Queue another message…';
 
   const nodes = new Map();
   const toRender = new Set();
@@ -104,10 +117,9 @@
   /* agentPlusKit's mention index, or null. */
   let convIx = null;
   let convRev = -1;
-  /* The outline and the subagent filter, as the user last left them in this page; the outline starts open on a wide
-     page. */
+  /* The list of the user's messages and the subagent filter, as the user last left them in this page. */
   const kept = api.getState() || {};
-  let outlineOpen = typeof kept.outline === 'boolean' ? kept.outline : window.innerWidth >= 760;
+  let outlineOpen = kept.outline === true;
   let hideSubs = kept.hideSubagents === true;
   let sideFrame = 0;
 
@@ -121,12 +133,18 @@
   };
   const TOOL_STATE_WORDS = { running: 'Running…', done: '', error: 'Error', aborted: 'Stopped' };
   const CHILD_STATE_WORDS = { running: 'Running…', done: 'Done', stopped: 'Stopped', failed: 'Failed' };
+  const KEYS = { allowOnce: '1', allowSession: '2', deny: '3' };
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
     if (text != null) e.textContent = text;
     return e;
+  }
+  function icon(name) {
+    const i = el('i', `codicon codicon-${name}`);
+    i.setAttribute('aria-hidden', 'true');
+    return i;
   }
   const p2 = (n) => String(n).padStart(2, '0');
   function stamp(ms) {
@@ -143,6 +161,12 @@
     if (s < 60) return `${s}s`;
     const m = Math.floor(s / 60);
     return m < 60 ? `${m}m${p2(s % 60)}s` : `${Math.floor(m / 60)}h${p2(m % 60)}m`;
+  }
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function dayOf(ms) {
+    const d = new Date(ms);
+    return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
   }
   const hostNow = () => Date.now() + skew;
 
@@ -161,9 +185,11 @@
       const wrap = el('div', 'code');
       pre.replaceWith(wrap);
       wrap.appendChild(pre);
-      const btn = el('button', 'copy secondary', 'Copy');
+      const btn = el('button', 'copy');
       btn.type = 'button';
       btn.title = 'Copy code';
+      btn.setAttribute('aria-label', 'Copy code');
+      btn.appendChild(icon('copy'));
       wrap.appendChild(btn);
     }
   }
@@ -191,7 +217,19 @@
     return { meta, time };
   }
 
-  /* The label of a request or tool that came from a subagent. */
+  /* When each turn's message was sent, for the time a row of its reply took to come. */
+  const turnSent = new Map();
+  function stampIn(target, item) {
+    target.textContent = stamp(item.at);
+    const sent = item.turn != null ? turnSent.get(item.turn) : 0;
+    let after = target.nextElementSibling && target.nextElementSibling.classList.contains('elapsed') ? target.nextElementSibling : null;
+    if (sent && item.at >= sent) {
+      if (!after) { after = el('span', 'elapsed'); target.after(after); }
+      after.textContent = seconds(item.at - sent);
+    } else if (after) after.remove();
+  }
+
+  /* The tag on a request or tool that came from a subagent. */
   function fromSubagent(target, sub) {
     target.hidden = !sub;
     target.textContent = sub ? `from subagent ${sub.title || sub.childId}` : '';
@@ -267,7 +305,8 @@
     for (const f of item.fields || []) {
       const box = el('fieldset', 'q-field');
       box.append(el('legend', null, `${f.title}${f.required ? ' *' : ''}`));
-      if (f.description && f.description !== f.title) box.append(el('div', 'q-desc', f.description));
+      if (!inputs.length && item.message && item.message !== 'Questions') box.append(el('div', 'q-ask', item.message));
+      if (f.description && f.description !== f.title && f.description !== item.message) box.append(el('div', 'q-desc', f.description));
       if (f.type === 'choice' || f.type === 'multi') {
         const defaults = Array.isArray(f.default) ? f.default.map(String) : f.default != null ? [String(f.default)] : [];
         for (const o of f.options) {
@@ -332,6 +371,23 @@
     };
   }
 
+  /* What a call went in with: a command as it reads, anything else as the JSON it came in. */
+  function inputShown(text) {
+    const raw = String(text || '');
+    try {
+      const v = JSON.parse(raw);
+      if (v && typeof v.command === 'string') return v.command;
+    } catch (_) { /* clipped or not JSON */ }
+    return raw;
+  }
+
+  function toolRow(cls, label) {
+    const row = el('div', `tool-row ${cls}`);
+    const pre = el('pre');
+    row.append(el('div', 'tool-row-label', label), pre);
+    return { row, pre };
+  }
+
   function create(item) {
     const entry = { item: null, text: null, rendered: null };
     switch (item.kind) {
@@ -339,27 +395,30 @@
         entry.el = el('div', 'msg user');
         const { meta, time } = metaRow();
         entry.time = time;
-        entry.rewindBtn = el('button', 'rewind secondary', 'Rewind to here');
+        entry.rewindBtn = el('button', 'rewind');
         entry.rewindBtn.type = 'button';
+        entry.rewindBtn.append(icon('discard'), el('span', null, 'Rewind to here'));
         entry.rewindBtn.title = 'Experimental: in Git repositories, clicking immediately restores files changed after this '
           + 'message; Cancel undoes the restore.';
         entry.rewindBtn.hidden = true;
-        meta.appendChild(entry.rewindBtn);
+        const box = el('div', 'user-box');
         entry.body = el('div', 'bubble');
         entry.att = el('div', 'user-att');
-        entry.el.append(meta, entry.body, entry.att);
+        box.append(meta, entry.body, entry.att);
+        entry.el.append(box, entry.rewindBtn);
         break;
       }
       case 'text': {
-        entry.el = el('div', 'msg reply');
+        entry.el = el('div', 'msg reply tl');
         const { meta, time } = metaRow();
+        entry.meta = meta;
         entry.time = time;
         entry.body = el('div', 'md');
         entry.el.append(meta, entry.body);
         break;
       }
       case 'reasoning': {
-        entry.el = el('details', 'reasoning');
+        entry.el = el('details', 'reasoning tl');
         const summary = el('summary');
         entry.time = el('span', 'time');
         summary.append(entry.time, el('span', 'label', 'Thinking'));
@@ -368,20 +427,26 @@
         break;
       }
       case 'tool': {
-        entry.el = el('div', 'tool');
+        entry.el = el('div', 'tool tl');
         const { meta, time } = metaRow();
         entry.time = time;
-        const top = el('div', 'tool-head');
+        entry.head = el('div', 'tool-head');
+        entry.head.setAttribute('role', 'button');
+        entry.head.tabIndex = 0;
         entry.name = el('span', 'tool-name');
         entry.summary = el('span', 'tool-summary');
         entry.from = el('span', 'from-sub');
         entry.state = el('span', 'tool-state');
-        top.append(entry.name, entry.summary, entry.from, entry.state);
-        entry.inBox = el('details', 'tool-in');
-        entry.inBox.append(el('summary', null, 'Input'), (entry.inPre = el('pre')));
-        entry.outBox = el('details', 'tool-out');
-        entry.outBox.append((entry.outLabel = el('summary')), (entry.outPre = el('pre')));
-        entry.el.append(meta, top, entry.inBox, entry.outBox);
+        entry.head.append(entry.name, entry.summary, entry.from, entry.state, el('span', 'chev'));
+        entry.bodyBox = el('div', 'tool-body');
+        const inRow = toolRow('tool-in', 'IN');
+        const outRow = toolRow('tool-out', 'OUT');
+        entry.inBox = inRow.row;
+        entry.inPre = inRow.pre;
+        entry.outBox = outRow.row;
+        entry.outPre = outRow.pre;
+        entry.bodyBox.append(entry.inBox, entry.outBox);
+        entry.el.append(meta, entry.head, entry.bodyBox);
         break;
       }
       case 'permission': {
@@ -396,18 +461,20 @@
           const b = el('button', cls, label);
           b.type = 'button';
           b.dataset.decision = decision;
+          b.dataset.key = KEYS[decision];
           return b;
         };
         entry.decide = [
           button('allowOnce', 'Allow once', 'primary'),
-          button('allowSession', 'Allow in this project', 'secondary'),
-          button('deny', 'Deny', 'secondary'),
+          button('allowSession', 'Allow in this project', ''),
+          button('deny', 'Deny', ''),
         ];
-        entry.diffBtn = el('button', 'secondary diff', 'View diff');
+        entry.diffBtn = el('button', 'diff', 'View diff');
         entry.diffBtn.type = 'button';
         entry.actions.append(...entry.decide, entry.diffBtn);
+        entry.hint = el('div', 'prompt-hint', 'Press 1, 2 or 3 to answer · Esc stops the turn');
         entry.result = el('div', 'perm-result');
-        entry.el.append(meta, entry.heading, entry.detail, entry.path, entry.actions, entry.result);
+        entry.el.append(meta, entry.heading, entry.detail, entry.path, entry.actions, entry.hint, entry.result);
         break;
       }
       case 'question': {
@@ -421,12 +488,13 @@
         entry.actions = el('div', 'perm-actions');
         entry.submit = el('button', 'primary q-submit', 'Submit');
         entry.submit.type = 'button';
-        entry.cancel = el('button', 'secondary q-cancel', 'Cancel');
+        entry.cancel = el('button', 'q-cancel', 'Cancel');
         entry.cancel.type = 'button';
         entry.cancel.title = 'Stops the turn without answering';
         entry.actions.append(entry.submit, entry.cancel);
+        entry.hint = el('div', 'prompt-hint', 'Esc stops the turn');
         entry.result = el('div', 'perm-result');
-        entry.el.append(meta, entry.heading, entry.form, entry.errors, entry.actions, entry.result);
+        entry.el.append(meta, entry.heading, entry.form, entry.errors, entry.actions, entry.hint, entry.result);
         break;
       }
       case 'compaction': {
@@ -441,12 +509,12 @@
         break;
       }
       case 'subagent':
-        entry.el = el('div', 'tool subagent');
+        entry.el = el('div', 'tool subagent tl');
         entry.childC = childBox();
         entry.el.appendChild(entry.childC.box);
         break;
       case 'figures':
-        entry.el = el('div', 'figures');
+        entry.el = el('span', 'figures');
         break;
       default:
         entry.el = el('div', 'notice');
@@ -456,12 +524,45 @@
     return entry;
   }
 
+  /* The reply's last row of text in the same turn, which carries the turn's figures after its time; null when the turn
+     ended with something else. */
+  function figuresHost(item) {
+    let last = null;
+    for (const e of nodes.values()) {
+      if (!e.item || e.item.kind === 'figures' || e.item.turn !== item.turn || e.item.kind === 'user') continue;
+      last = e;
+    }
+    return last && last.item.kind === 'text' && last.meta ? last : null;
+  }
+  function placeFigures(entry, item) {
+    const host = figuresHost(item);
+    if (host) {
+      host.meta.classList.add('with-figures');
+      if (entry.el.parentElement !== host.meta) host.meta.appendChild(entry.el);
+      if (entry.row) { entry.row.remove(); entry.row = null; }
+      return;
+    }
+    if (!entry.row) {
+      entry.row = el('div', 'figures-row');
+      entry.row.dataset.id = `${item.id}-row`;
+    }
+    if (entry.el.parentElement !== entry.row) entry.row.appendChild(entry.el);
+    if (!entry.row.parentElement) log.appendChild(entry.row);
+  }
+
+  function setOpen(entry, open) {
+    entry.open = open;
+    entry.el.classList.toggle('open', open);
+    entry.head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   function fill(entry, item) {
     const prev = entry.item;
     entry.item = item;
     switch (item.kind) {
       case 'user':
         entry.time.textContent = stamp(item.at);
+        if (item.turn != null && item.at) turnSent.set(item.turn, item.at);
         showRewind(entry);
         entry.body.textContent = item.text;
         entry.att.replaceChildren(...(item.attachments || []).map((a) => el('span', `att att-${a.kind}`, a.kind === 'image' ? 'Image' : a.kind === 'selection' ? `Selection ${a.name}` : a.name)));
@@ -469,29 +570,31 @@
         break;
       case 'text':
       case 'reasoning':
-        entry.time.textContent = stamp(item.at);
+        stampIn(entry.time, item);
         if (item.text !== entry.text) {
           entry.text = item.text;
           scheduleRender(entry);
         }
         break;
       case 'tool': {
-        entry.el.className = `tool state-${item.state}`;
-        entry.time.textContent = item.doneAt ? `${stamp(item.at)}→${clock(item.doneAt)}` : stamp(item.at);
+        entry.el.className = `tool tl state-${item.state}${entry.open ? ' open' : ''}`;
+        stampIn(entry.time, item);
+        if (item.doneAt) entry.time.textContent = `${stamp(item.at)}→${clock(item.doneAt)}`;
         entry.name.textContent = item.name;
         entry.summary.textContent = item.summary || '';
         entry.summary.title = item.summary || '';
         fromSubagent(entry.from, item.subagent);
-        entry.state.textContent = TOOL_STATE_WORDS[item.state] || '';
-        entry.inPre.textContent = item.input || '';
-        entry.inBox.hidden = !item.input || item.input === '{}';
         const result = item.result || '';
-        entry.outBox.hidden = !result;
-        entry.outPre.textContent = result;
         const lines = result ? result.split('\n').length : 0;
         const label = item.display && typeof item.display.summary === 'string' ? item.display.summary : '';
-        entry.outLabel.textContent = `${item.state === 'error' ? 'Error' : 'Result'} · ${label || `${lines} line${lines === 1 ? '' : 's'}`}`;
-        if (item.state === 'error' && (!prev || prev.state !== 'error')) entry.outBox.open = true;
+        entry.state.textContent = TOOL_STATE_WORDS[item.state] || (result ? label || `${lines} line${lines === 1 ? '' : 's'}` : '');
+        entry.inPre.textContent = inputShown(item.input);
+        entry.inBox.hidden = !item.input || item.input === '{}';
+        entry.outBox.hidden = !result;
+        entry.outPre.textContent = result;
+        entry.head.title = entry.open ? 'Hide the input and result' : 'Show the input and result';
+        if (item.state === 'error' && (!prev || prev.state !== 'error')) setOpen(entry, true);
+        else entry.head.setAttribute('aria-expanded', entry.open ? 'true' : 'false');
         if (item.child) {
           if (!entry.childC) { entry.childC = childBox(); entry.el.appendChild(entry.childC.box); }
           entry.childC.box.hidden = false;
@@ -502,21 +605,22 @@
         break;
       }
       case 'subagent':
+        entry.el.className = `tool subagent tl state-${item.status === 'running' ? 'running' : item.status === 'done' ? 'done' : 'error'}`;
         fillChild(entry.childC, item);
         break;
       case 'permission': {
         const req = item.request || {};
+        const decided = !!item.decision;
         entry.time.textContent = stamp(item.at);
         const from = el('span', 'from-sub');
         fromSubagent(from, item.subagent);
-        entry.heading.replaceChildren(el('span', 'perm-label', 'Permission'), el('span', 'tool-name', req.tool || ''),
+        entry.heading.replaceChildren(el('span', 'perm-label', decided ? 'Permission' : 'Allow'), el('span', 'tool-name', decided ? req.tool || '' : `${req.tool || 'this'}?`),
           el('span', 'perm-summary', req.summary || ''), from);
         const detail = req.command || req.detail || '';
         entry.detail.textContent = detail;
         entry.detail.hidden = !detail || detail === req.summary;
         entry.path.textContent = req.path || '';
         entry.path.hidden = !req.path || (req.summary || '').includes(req.path);
-        const decided = !!item.decision;
         for (const b of entry.decide) {
           b.hidden = decided;
           if (!decided && !entry.sent) b.disabled = false;
@@ -526,7 +630,7 @@
         for (const b of entry.decide) b.dataset.request = item.requestId;
         entry.result.textContent = decided ? DECISION_WORDS[item.decision] || item.decision : '';
         entry.result.className = `perm-result decision-${item.decision || 'none'}`;
-        entry.el.classList.toggle('settled', decided);
+        entry.el.className = `permission${decided ? ` settled tl decision-${item.decision}` : ''}`;
         break;
       }
       case 'question': {
@@ -547,7 +651,7 @@
         const words = decided ? DECISION_WORDS[item.decision] || item.decision : '';
         entry.result.textContent = item.decision === 'answered' && entry.answerText ? `${words}: ${entry.answerText}` : words;
         entry.result.className = `perm-result decision-${item.decision || 'none'}`;
-        entry.el.classList.toggle('settled', decided);
+        entry.el.className = `question${decided ? ` settled tl decision-${item.decision}` : ''}`;
         break;
       }
       case 'compaction': {
@@ -572,6 +676,7 @@
         if (item.modelId) parts.push(`Model: ${item.modelId}`);
         if (item.effort) parts.push(`Effort: ${item.effort}`);
         entry.el.title = parts.join('\n');
+        placeFigures(entry, item);
         break;
       }
       default:
@@ -642,7 +747,7 @@
     if (!entry) {
       entry = create(item);
       nodes.set(item.id, entry);
-      log.appendChild(entry.el);
+      if (item.kind !== 'figures') log.appendChild(entry.el);
     }
     fill(entry, item);
   }
@@ -678,29 +783,49 @@
     for (const e of nodes.values()) if (e.item && (e.item.kind === 'text' || e.item.kind === 'reasoning') && e.text) scheduleRender(e);
   }
 
-  /* ---------- the outline and the subagent filter ---------- */
+  /* ---------- the rail, the list of your messages and the subagent filter ---------- */
 
   function keep(patch) { api.setState({ ...(api.getState() || {}), ...patch }); }
   function scheduleSide() {
     if (sideFrame) return;
     sideFrame = requestAnimationFrame(() => { sideFrame = 0; renderSide(); });
   }
+  /* The date line goes on the first message of each day. */
+  function markDays(entries) {
+    let last = '';
+    for (const e of entries) {
+      if (!e.item || e.item.kind !== 'user' || !e.item.at) continue;
+      const day = dayOf(e.item.at);
+      if (day !== last) e.el.dataset.day = day;
+      else delete e.el.dataset.day;
+      last = day;
+    }
+  }
   function renderSide() {
     const entries = [...nodes.values()];
+    markDays(entries);
     const rows = C.outlineRows(entries.map((e) => e.item).filter(Boolean));
+    const users = rows.filter((r) => r.kind === 'user').length;
+    rail.hidden = !users;
     navBtn.hidden = !rows.length;
     navBtn.setAttribute('aria-pressed', outlineOpen ? 'true' : 'false');
-    navBtn.title = outlineOpen ? 'Hide the list of your messages' : 'Show a list of your messages beside the conversation';
+    navBtn.title = outlineOpen ? 'Hide the list of your messages' : 'Show a list of your messages';
     outlineEl.hidden = !(outlineOpen && rows.length);
-    outlineList.replaceChildren(...rows.map((r) => {
+    const q = outlineFilter.value.trim().toLowerCase();
+    const shown = q ? rows.filter((r) => {
+      const full = r.kind === 'user' ? (nodes.get(r.id) && nodes.get(r.id).item.text) || r.label : r.label;
+      return String(full).toLowerCase().includes(q);
+    }) : rows;
+    outlineList.replaceChildren(...shown.map((r) => {
       const row = el('button', `outline-row outline-${r.kind}`);
       row.type = 'button';
       row.dataset.item = r.id;
-      if (r.kind === 'user') row.append(el('span', 'outline-n', `${r.n}`), el('span', 'outline-text', r.label));
+      if (r.kind === 'user') row.append(el('span', 'outline-n', r.at ? stamp(r.at) : `${r.n}`), el('span', 'outline-text', r.label));
       else row.append(el('span', 'outline-text', r.label));
       row.title = `${r.at ? `${stamp(r.at)}  ` : ''}${r.kind === 'user' ? (nodes.get(r.id) && nodes.get(r.id).item.text) || r.label : r.label}`;
       return row;
     }));
+    if (!shown.length && rows.length) outlineList.appendChild(el('div', 'outline-none', 'No message matches'));
     const subs = entries.filter((e) => e.share).length;
     subBtn.hidden = !subs;
     subBtn.textContent = hideSubs ? `Subagents hidden (${subs})` : 'Subagents';
@@ -720,7 +845,22 @@
     entry.el.classList.add('flash');
     setTimeout(() => entry.el.classList.remove('flash'), 1200);
   }
-  navBtn.addEventListener('click', () => { outlineOpen = !outlineOpen; keep({ outline: outlineOpen }); renderSide(); });
+  /* The user's message before (`dir` -1) or after (1) the one at the top of the log; before the first is the first,
+     after the last is the end. */
+  function stepTo(dir) {
+    const top = log.getBoundingClientRect().top;
+    const users = [...nodes.values()].filter((e) => e.item && e.item.kind === 'user' && !e.el.hidden);
+    const off = (e) => e.el.getBoundingClientRect().top - top - 8;
+    const target = dir < 0 ? users.filter((e) => off(e) < -4).pop() || users[0] : users.find((e) => off(e) > 4);
+    if (target) jumpTo(target);
+    else scrollEnd();
+  }
+  navBtn.addEventListener('click', () => { outlineOpen = !outlineOpen; keep({ outline: outlineOpen }); renderSide(); if (outlineOpen) outlineFilter.focus(); });
+  $('railTop').addEventListener('click', () => { log.scrollTop = 0; });
+  $('railBottom').addEventListener('click', () => { scrollEnd(); stick = true; });
+  $('railPrev').addEventListener('click', () => stepTo(-1));
+  $('railNext').addEventListener('click', () => stepTo(1));
+  outlineFilter.addEventListener('input', () => renderSide());
   subBtn.addEventListener('click', () => { hideSubs = !hideSubs; keep({ hideSubagents: hideSubs }); renderSide(); });
   outlineList.addEventListener('click', (e) => {
     const row = e.target.closest('.outline-row');
@@ -729,12 +869,21 @@
 
   /* ---------- head ---------- */
 
+  function paintSend() {
+    const busy = !!head && head.status !== 'idle';
+    const typed = !!input.value.trim();
+    stopBtn.hidden = !busy;
+    sendBtn.hidden = busy && !typed;
+    sendBtn.classList.toggle('empty', !typed);
+  }
+
   function applyHead(h) {
     head = h;
     titleEl.textContent = h.title || 'New conversation';
     titleEl.title = h.title || '';
     document.body.dataset.status = h.status;
-    stopBtn.hidden = h.status === 'idle';
+    paintSend();
+    placeholder();
 
     const pct = typeof h.contextPct === 'number' ? Math.max(0, Math.min(100, h.contextPct)) : null;
     ringFill.setAttribute('stroke-dasharray', `${pct == null ? 0 : (pct / 100) * RING} ${RING}`);
@@ -788,7 +937,7 @@
   }
   function paintSound() {
     soundBtn.hidden = !sound.shown;
-    soundBtn.textContent = '\u266A';
+    soundBtn.textContent = '♪';
     soundBtn.classList.toggle('muted', !sound.on);
     soundBtn.title = sound.on ? 'Chimes when a turn ends or OpenCode waits for you. Click to mute.'
       : 'Chimes are muted. Click to turn them on.';
@@ -807,8 +956,9 @@
   function renderBackground(list) {
     const items = Array.isArray(list) ? list : [];
     bgEl.hidden = !items.length;
-    if (!items.length) { bgList.replaceChildren(); return; }
+    if (!items.length) { bgList.replaceChildren(); bgEl.open = false; return; }
     bgSum.textContent = C.backgroundSummary(items);
+    bgSum.title = 'Show what runs in the background';
     bgList.replaceChildren(...items.map((b) => {
       const row = el('div', `bg-row bg-${b.kind}`);
       row.dataset.item = b.itemId || '';
@@ -824,6 +974,7 @@
     const entry = row && row.dataset.item ? nodes.get(row.dataset.item) : null;
     if (!entry) return;
     if (hideSubs && entry.share) { hideSubs = false; keep({ hideSubagents: false }); renderSide(); }
+    bgEl.open = false;
     scrollLogTo(entry.el, true);
     if (entry.childC && entry.childC.details) entry.childC.details.open = true;
     entry.el.classList.add('flash');
@@ -867,15 +1018,39 @@
     if (was) b.textContent = 'Copied';
     setTimeout(() => { b.classList.remove('copied'); if (was) b.textContent = was; }, 1200);
   });
-  document.addEventListener('click', () => { if (!infoBox.hidden) closeInfo(); });
+  document.addEventListener('click', (e) => {
+    if (!infoBox.hidden) closeInfo();
+    if (bgEl.open && !bgEl.contains(e.target)) bgEl.open = false;
+  });
 
-  /* Esc closes the open box or list, and otherwise stops the turn. */
+  /* The open permission request the number keys answer: the oldest one still waiting, if any. */
+  function openPermission() {
+    for (const e of nodes.values()) {
+      if (e.item && e.item.kind === 'permission' && !e.item.decision && !e.sent && !e.el.hidden) return e;
+    }
+    return null;
+  }
+  function answer(entry, decision) {
+    entry.sent = true;
+    for (const b of entry.decide) b.disabled = true;
+    api.postMessage({ type: 'permission', requestId: entry.item.requestId, decision });
+  }
+
+  /* Esc closes the open box or list, and otherwise stops the turn; 1, 2 and 3 answer a permission request. */
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
-    const act = C.escapeAction({ box: !infoBox.hidden, menu: !!menu, status: head ? head.status : 'idle' });
-    if (act === 'closeBox') { e.preventDefault(); closeInfo(); }
-    else if (act === 'closeMenu') { e.preventDefault(); closeMenu(); }
-    else if (act === 'abort') { e.preventDefault(); api.postMessage({ type: 'abort' }); }
+    if (e.defaultPrevented || e.isComposing) return;
+    if (e.key === 'Escape') {
+      const act = C.escapeAction({ box: !infoBox.hidden || bgEl.open, menu: !!menu, status: head ? head.status : 'idle' });
+      if (act === 'closeBox') { e.preventDefault(); closeInfo(); bgEl.open = false; }
+      else if (act === 'closeMenu') { e.preventDefault(); closeMenu(); }
+      else if (act === 'abort') { e.preventDefault(); api.postMessage({ type: 'abort' }); }
+      return;
+    }
+    if (/^[123]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '')) {
+      const entry = openPermission();
+      const decision = Object.keys(KEYS).find((k) => KEYS[k] === e.key);
+      if (entry && decision) { e.preventDefault(); answer(entry, decision); }
+    }
   });
 
   function renderStatus() {
@@ -883,8 +1058,8 @@
       statusEl.hidden = true;
       return;
     }
-    statusEl.hidden = false;
     const r = head.retry;
+    statusEl.hidden = head.status === 'waiting' && !r;
     if (r) {
       const left = Math.ceil((r.at + r.waitMs - hostNow()) / 1000);
       statusEl.className = 'retry';
@@ -977,12 +1152,15 @@
     const hints = [];
     if (commands.length) hints.push('/ for commands');
     if (caps.files) hints.push('@ for files');
-    input.placeholder = hints.length ? `Ask anything. ${hints.join(', ')}` : BASE_PLACEHOLDER;
+    const busy = !!head && head.status !== 'idle';
+    input.placeholder = busy ? BUSY_PLACEHOLDER : hints.length ? `Ask OpenCode. ${hints.join(', ')}` : BASE_PLACEHOLDER;
     const more = [];
     if (commands.length) more.push('/ for commands');
     if (caps.files) more.push('@ for workspace files');
     if (caps.images) more.push('paste or drop images');
     input.title = ['Enter to send, Shift+Enter for a new line', ...more].join('; ');
+    attachBtn.hidden = !caps.images;
+    slashBtn.hidden = !commands.length;
   }
 
   function showNote(text) {
@@ -1043,6 +1221,12 @@
     renderAttachments();
     input.focus();
   });
+  attachBtn.addEventListener('click', () => attachFile.click());
+  attachFile.addEventListener('change', () => {
+    [...(attachFile.files || [])].filter((f) => /^image\//.test(f.type)).forEach(addImageFile);
+    attachFile.value = '';
+    input.focus();
+  });
 
   input.addEventListener('paste', (e) => {
     const items = [...((e.clipboardData && e.clipboardData.items) || [])];
@@ -1064,7 +1248,7 @@
   function applySelection(label) {
     selectionLabel = label || '';
     selBtn.hidden = !(caps.selection && selectionLabel);
-    selBtn.textContent = `+ ${selectionLabel}`;
+    selBtn.textContent = selectionLabel;
     selBtn.title = `Attach ${selectionLabel} to the message`;
   }
   selBtn.addEventListener('click', () => api.postMessage({ type: 'addSelection' }));
@@ -1081,11 +1265,11 @@
   function renderMenu() {
     if (!menu) { closeMenu(); return; }
     const rows = menu.items.map((it, i) => {
-      const row = el('div', `menu-item${i === menu.index ? ' active' : ''}`);
+      const row = el('div', `menu-item ${menu.kind}${i === menu.index ? ' active' : ''}`);
       row.dataset.index = String(i);
       row.setAttribute('role', 'option');
       if (menu.kind === 'slash') row.append(el('span', 'menu-name', `/${it.name}`), el('span', 'menu-desc', it.description || ''));
-      else row.append(el('span', 'menu-name', it.name), el('span', 'menu-desc', it.rel));
+      else row.append(icon('file'), el('span', 'menu-name', it.name), el('span', 'menu-desc', it.rel === it.name ? '' : it.rel));
       return row;
     });
     if (!rows.length && menu.kind === 'at') rows.push(el('div', 'menu-empty', menu.loading ? 'Looking for files…' : 'No file matches'));
@@ -1142,6 +1326,7 @@
     closeMenu();
     autosize();
     saveDraft();
+    paintSend();
     input.focus();
   }
 
@@ -1150,6 +1335,16 @@
     if (!row) return;
     e.preventDefault();
     accept(Number(row.dataset.index));
+  });
+  slashBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  slashBtn.addEventListener('click', () => {
+    if (!input.value) input.value = '/';
+    input.focus();
+    if (input.value.startsWith('/')) input.setSelectionRange(input.value.length, input.value.length);
+    autosize();
+    saveDraft();
+    paintSend();
+    updateMenu();
   });
 
   /* ---------- composer ---------- */
@@ -1180,6 +1375,7 @@
     closeMenu();
     saveDraft();
     autosize();
+    paintSend();
     stick = true;
   }
 
@@ -1212,6 +1408,7 @@
   input.addEventListener('input', () => {
     autosize();
     saveDraft();
+    paintSend();
     updateMenu();
   });
   input.addEventListener('keyup', (e) => {
@@ -1245,30 +1442,28 @@
     if (copy) {
       const pre = copy.parentElement.querySelector('pre');
       api.postMessage({ type: 'copy', text: pre ? pre.textContent : '' });
-      copy.textContent = 'Copied';
-      setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+      copy.classList.add('copied');
+      copy.replaceChildren(icon('check'));
+      copy.title = 'Copied';
+      setTimeout(() => { copy.classList.remove('copied'); copy.replaceChildren(icon('copy')); copy.title = 'Copy code'; }, 1500);
       return;
     }
     const decision = target.closest('button[data-decision]');
     if (decision) {
       const entry = nodes.get(decision.closest('[data-id]').dataset.id);
-      if (entry) {
-        entry.sent = true;
-        for (const b of entry.decide) b.disabled = true;
-      }
-      api.postMessage({ type: 'permission', requestId: decision.dataset.request, decision: decision.dataset.decision });
+      if (entry) answer(entry, decision.dataset.decision);
       return;
     }
-    const answer = target.closest('button.q-submit, button.q-cancel');
-    if (answer) {
-      const entry = nodes.get(answer.closest('[data-id]').dataset.id);
+    const answerBtn = target.closest('button.q-submit, button.q-cancel');
+    if (answerBtn) {
+      const entry = nodes.get(answerBtn.closest('[data-id]').dataset.id);
       if (!entry || !entry.values) return;
-      const accepting = answer.classList.contains('q-submit');
+      const accepting = answerBtn.classList.contains('q-submit');
       entry.submit.disabled = true;
       entry.cancel.disabled = true;
       const values = accepting ? entry.values() : {};
       if (accepting) entry.answerText = answerText(entry.item, values);
-      api.postMessage({ type: 'question', requestId: answer.dataset.request, action: accepting ? 'accept' : 'cancel', values });
+      api.postMessage({ type: 'question', requestId: answerBtn.dataset.request, action: accepting ? 'accept' : 'cancel', values });
       return;
     }
     const diff = target.closest('button.diff');
@@ -1277,7 +1472,19 @@
     if (rewind) {
       const holder = rewind.closest('[data-id]');
       if (holder) api.postMessage({ type: 'rewind', itemId: holder.dataset.id });
+      return;
     }
+    const toolHead = target.closest('.tool-head');
+    if (toolHead) {
+      const entry = nodes.get(toolHead.closest('[data-id]').dataset.id);
+      if (entry && entry.head === toolHead) { setOpen(entry, !entry.open); fill(entry, entry.item); }
+    }
+  });
+  log.addEventListener('keydown', (e) => {
+    const toolHead = e.target.closest && e.target.closest('.tool-head');
+    if (!toolHead || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    toolHead.click();
   });
 
   /* ---------- scrolling ---------- */
@@ -1287,13 +1494,17 @@
     log.scrollTop = log.scrollHeight;
   }
   log.addEventListener('scroll', () => { stick = atBottom(); });
+  /* The scrollbar's width, which the rail and an open request allow for. */
+  const gutter = () => document.body.style.setProperty('--sb', `${Math.max(0, log.offsetWidth - log.clientWidth)}px`);
+  gutter();
   /* When the bottom bar grows (a list, attachments, a status line), a log scrolled to its end stays there. */
-  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (stick) scrollEnd(); }).observe(log);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { gutter(); if (stick) scrollEnd(); }).observe(log);
 
   /* ---------- the plan bar ---------- */
 
-  /* Agent Plus's fragment (media/plan-bar.js) draws the summary of this conversation's work plan above the input box.
-     A null summary hides it. The bar goes above the / and @ lists and the attachments so that those stay next to the box. */
+  /* Agent Plus's fragment (media/plan-bar.js) draws the summary of this conversation's work plan right above the
+     message box, as wide as it. A null summary hides it. The bar goes above the / and @ lists so that those stay next to
+     the box. */
   const PB = window.agentPlusPlanBar;
   let planBar = null;
   function applyPlanBar(summary) {
@@ -1304,7 +1515,7 @@
         onOpen: () => api.postMessage({ type: 'planBarOpen', part: 'plan' }),
         onAnswer: () => api.postMessage({ type: 'planBarOpen', part: 'answer' }),
       });
-      bottom.insertBefore(planBar.el, menuEl);
+      dock.insertBefore(planBar.el, menuEl);
     }
     planBar.update(summary || null);
   }
@@ -1317,6 +1528,7 @@
     if (m.type === 'reset') {
       heard = null;
       nodes.clear();
+      turnSent.clear();
       toRender.clear();
       log.replaceChildren();
       scheduleSide();
@@ -1368,6 +1580,7 @@
         input.value = m.text;
         autosize();
         saveDraft();
+        paintSend();
       }
       input.focus();
     } else if (m.type === 'selection') {
@@ -1400,6 +1613,7 @@
     input.value = saved.draft;
     autosize();
   }
+  paintSend();
   input.focus();
   let tz = '';
   try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { tz = ''; }

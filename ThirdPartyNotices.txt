@@ -27,3 +27,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Codicons
+
+node_modules/@vscode/codicons/dist/codicon.ttf and codicon.css are Codicons 0.0.45, the icons of Visual Studio Code,
+by Microsoft Corporation (https://github.com/microsoft/vscode-codicons). The chat page uses them for its buttons. The
+icons are licensed under the Creative Commons Attribution 4.0 International license
+(https://creativecommons.org/licenses/by/4.0/) and the style sheet under the MIT license; both texts are packed with
+them, as node_modules/@vscode/codicons/LICENSE and LICENSE-CODE.

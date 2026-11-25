@@ -52,3 +52,24 @@ test('abort ends the turn as aborted, even at a permission request', async () =>
   assert.equal(last.reason, 'aborted');
   assert.equal(c.aborts, 1);
 });
+
+test('a scripted question waits for respondQuestion, and abort ends a long wait at once', async () => {
+  const c = createFakeConversation({ turns: [] });
+  c.script([{ type: 'question', requestId: 'q-1', message: 'Which?', schema: { type: 'object', properties: { a: { type: 'string' } } } }, ...streamText('ok')]);
+  await c.send('ask me');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(c.events[c.events.length - 1].type, 'question');
+  assert.equal(c.respondQuestion('nope', { action: 'accept' }), false, 'no such question');
+  assert.equal(c.respondQuestion('q-1', { action: 'accept', content: { a: 'x' } }), true);
+  await c.idle();
+  const settled = c.events.find((e) => e.type === 'questionSettled');
+  assert.deepEqual([settled.requestId, settled.action], ['q-1', 'accept']);
+  c.script([{ wait: 600000 }]);
+  const started = Date.now();
+  await c.send('wait');
+  await new Promise((r) => setTimeout(r, 20));
+  c.abort();
+  await c.idle();
+  assert.ok(Date.now() - started < 2000, 'the wait ended with the abort');
+  assert.equal(c.events[c.events.length - 1].reason, 'aborted');
+});

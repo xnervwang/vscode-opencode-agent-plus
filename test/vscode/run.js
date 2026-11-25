@@ -25,7 +25,7 @@
  * chat tab's icon is checked for its state dot. Then a permission request is answered from its diff's title bar, the
  * conversation is rewound (cancelled first, which puts the files back, then for real, in a workspace with an empty git
  * repository so OpenCode can restore files), a reply shows a local image, a shell command moved to the background shows
- * on the Background line until it ends, Esc stops a turn, the info box and the MCP list show, and a fork opens from the
+ * on the background pill until it ends, Esc stops a turn, the info box and the MCP list show, and a fork opens from the
  * tab's menu while the Conversations view splits into its two groups. After the reload a replayed message keeps the time
  * it was sent. The icons are shot in the activity bar in both themes, in the Extensions view, and on Agent Plus's rows
  * once a second source is registered (Agent Plus draws a source's logo only then). With OpenCode 1 the notice that the
@@ -388,21 +388,44 @@ async function main() {
     await page.mouse.move(900, 500);
     await sleep(300);
   };
-  /* The outline step: the column lists the user's messages; a row scrolls to its message; the button hides and shows it. */
+  /* The outline step: the rail's middle button opens the list of the user's messages; a row scrolls to its message; the
+     button hides and shows the list, which is left closed. */
   const outlineStep = async (f, name, expect) => {
     await dropHover();
+    if (!(await outlineOf(f)).shown) await f.click('#navBtn').catch(() => {});
     const o = await until(async () => { const x = await outlineOf(f); return x.shown && x.rows.filter((r) => r.kind === 'user').length === x.users && x.users > 0 ? x : null; }, 15000);
     const jump = o ? await jumpWith(f, 0) : null;
     const still = await pageScroll(f);
     if (still.over > 0) console.log(`  note  the chat page is ${still.over} px taller than its frame; only its log scrolls`);
     check(!!o && !!jump && jump.flash && (!jump.canScroll || Math.abs(jump.offset) <= 40) && still.scrolled === 0 && still.top === 0,
-      'the outline beside the log lists each of your messages, and a click on the first scrolls the log to it, not the page', { outline: o || await outlineOf(f), jump, page: still });
+      'the list of your messages over the log lists each of them, and a click on the first scrolls the log to it, not the page', { outline: o || await outlineOf(f), jump, page: still });
     await shot(name, { features: ['conversation outline'], expect, part: '#workbench\\.parts\\.editor' });
     await f.click('#navBtn');
     const closed = await until(async () => { const x = await outlineOf(f); return !x.shown && x.button && x.pressed === 'false' ? x : null; }, 5000);
     await f.click('#navBtn');
     const back = await until(async () => { const x = await outlineOf(f); return x.shown && x.pressed === 'true' ? x : null; }, 5000);
-    check(!!closed && !!back, 'the Outline button hides the column and shows it again', { closed, back });
+    check(!!closed && !!back, "the rail's list button hides the list and shows it again", { closed, back });
+    /* The list's filter box keeps the rows whose message has the words typed. */
+    const word = await f.evaluate(() => { const u = [...document.querySelectorAll('#log .msg.user .bubble')].pop(); return u ? (u.textContent.match(/[A-Za-z]{4,}/g) || [u.textContent.trim()]).pop() : ''; });
+    const filtered = async (q) => { await f.fill('#outline .outline-filter', q); await sleep(300);
+      return f.evaluate(() => ({ rows: [...document.querySelectorAll('#outline .outline-row')].map((r) => r.title), none: !!document.querySelector('#outline .outline-none') })); };
+    const hit = await filtered(word), miss = await filtered('zzqx no such words'), all = await filtered('');
+    check(!!word && hit.rows.length >= 1 && hit.rows.every((t) => t.toLowerCase().includes(word.toLowerCase())) && !miss.rows.length && miss.none && all.rows.length === o.rows.length,
+      'the filter box keeps the messages with the words typed, says when none match, and shows all again when emptied', { word, hit, miss, all: all.rows.length });
+    await f.click('#navBtn');
+    await until(async () => !(await outlineOf(f)).shown, 5000);
+    /* The rail's other buttons: to the first message, to the end, and back to the message before. */
+    const where = () => f.evaluate(() => { const l = document.getElementById('log'); return { top: l.scrollTop, end: l.scrollHeight - l.scrollTop - l.clientHeight }; });
+    await f.click('#railTop'); await sleep(300);
+    const atTop = await where();
+    await f.click('#railBottom'); await sleep(300);
+    const atEnd = await where();
+    await f.click('#railPrev'); await sleep(300);
+    const prev = await f.evaluate(() => { const l = document.getElementById('log').getBoundingClientRect().top;
+      const u = [...document.querySelectorAll('#log .msg.user')].find((m) => m.classList.contains('flash'));
+      return u ? Math.round(u.getBoundingClientRect().top - l) : null; });
+    check(atTop.top === 0 && atEnd.end < 4 && prev !== null && Math.abs(prev) <= 40,
+      "the rail's buttons scroll to the first message, to the end, and back to the message before, which flashes", { atTop, atEnd, prev });
     return o;
   };
   /* Which subagent items the page draws, and the state of the Subagents button. */
@@ -576,7 +599,7 @@ async function main() {
     let chat = await frameWith(page, '#input', 30000);
     check(!!chat, 'the chat page loaded in the tab');
     await shot('02-new-conversation', { features: ['new conversation', 'chat editor tab'],
-      expect: `An editor tab is open with the chat page: a header with a model selector showing ${real ? 'the Grok model' : 'Fake Small'}, an empty message area, and a message box at the bottom with a Send button.`,
+      expect: `An editor tab is open with the chat page: a thin header with the conversation's title; in the middle of the empty page the OpenCode mark and a one-line hint; at the bottom a rounded message box, centred, whose row of buttons under the text has a model pill showing ${real ? 'the Grok model' : 'Fake Small'} and, at the right end, a square send button with an arrow.`,
       part: '#workbench\\.parts\\.editor' });
 
     let sessionId = tab ? tab.uri.replace(/^opencodeagentplus-session:\//, '') : '';
@@ -600,14 +623,14 @@ async function main() {
         check(!!waiting, 'the conversation is waiting for the user while the request is open', waiting);
         const waitIcon = await until(async () => { const t = await tabOf(sessionId); const i = t ? await iconOf(t.label) : ''; return /tab-waiting-dark-/.test(i) ? i : null; }, 10000);
         check(!!waitIcon, "while it waits, the chat tab's icon is the logo with a red dot", waitIcon || await iconOf((await tabOf(sessionId) || {}).label || ''));
-        await shot('03-permission', { features: ['streamed reply', 'tool cards', 'permission request'],
-          expect: 'The user message "Hello there, please fix the failing test", a reasoning block, a reply that starts "I\'ll look at the test first.", a read_file tool card with its result, and an edit_file card asking for permission with Allow once, Allow in this project, Deny and View diff buttons.',
+        await shot('03-permission', { features: ['streamed reply', 'tool rows', 'permission request'],
+          expect: 'The user message "Hello there, please fix the failing test", a reasoning block, a reply that starts "I\'ll look at the test first.", each on the thin line down the left with a dot; a read_file tool row (green dot, "2 lines"), an edit_file row still running (blue dot); and, right above the message box, a framed permission box "Allow edit_file? Edit sum.js" with the numbered rows 1 Allow once (highlighted), 2 Allow in this project, 3 Deny and a View diff row.',
           part: '#workbench\\.parts\\.editor' });
         /* Answered from its diff's title bar rather than the page. */
         let fromTitle = false;
         if (asked) {
           /* Agent Plus asks for a token mode on its first start, and in a small window such as a macOS runner's that
-             notification can cover the card's buttons. */
+             notification can cover the request's buttons. */
           await call('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
           await chat.click('#log .permission:not(.settled) button.diff');
           const allow = await page.waitForSelector('.editor-actions [aria-label="Allow Once"]', { timeout: 15000 }).catch(() => null);
@@ -630,7 +653,7 @@ async function main() {
         const stopIcon = await until(async () => { const t = await tabOf(sessionId); const i = t ? await iconOf(t.label) : ''; return /tab-stopped-dark-/.test(i) ? i : null; }, 10000);
         check(!!stopIcon, "once the turn is over, the chat tab's icon is the plain logo", stopIcon);
         await shot('04-reply', { features: ['reply', 'reply figures'],
-          expect: 'The edit_file card says it was allowed once, and the reply ends with "Fixed: sum subtracted instead of adding." and a code block; below the reply a line of figures such as a duration, ctx and the model name.',
+          expect: 'The conversation hangs on a thin line down the left with a dot on each row. The answered permission is one row for edit_file ending in "· Allowed once" and a small View diff button; the reply row reads "Fixed: sum subtracted instead of adding." with a code block, and its small grey time is followed by the turn\'s figures (a duration, ctx and the model name).',
           part: '#workbench\\.parts\\.editor' });
 
         // 4z. Rename from the chat tab's menu: the tab, the page and the list show the new title.
@@ -662,7 +685,7 @@ async function main() {
         const low = await until(() => chat.evaluate(() => document.getElementById('ring').classList.contains('low')), 5000);
         check(low, 'with 10% of the context left the ring is outlined');
         await shot('04y2-ring-low', { features: ['context ring outline'],
-          expect: 'In the chat header, right of the model picker, the context ring at 90% in the warning colour with a thin warning-coloured outline around the ring and its "90%" label; the footer has a music-note button left of Send.',
+          expect: 'In the row of buttons under the message box, the context ring nine-tenths full in the warning colour with a thin warning-coloured circle around it; further right a music-note button before the send button.',
           part: '#workbench\\.parts\\.editor' });
 
         // 4x. Fork from the chat tab's menu; with it closed, the Conversations view has its two groups.
@@ -722,7 +745,7 @@ async function main() {
 
         // 4u. The outline of the two messages.
         await outlineStep(chat, '04u-outline',
-          'Right of the conversation a column headed "YOUR MESSAGES" lists the two user messages, numbered 1 ("Hello there, please fix the failing test") and 2 ("Say: The copy is …"); the log is scrolled to the first message, which has a thin focus-coloured outline; the header has an "Outline" button drawn pressed, left of the round "i".');
+          'Over the top right of the conversation a framed list with a "Filter your messages" box lists the two user messages, each with its date and time ("Hello there, please fix the failing test", then "Say: The copy is …"); the log is scrolled to the first message, which has a thin focus-coloured outline; in the rail of five small buttons on the right edge the middle one, a list icon, is drawn pressed.');
 
         // 4t. The subagent filter, on subagent items posted to the page the way the extension posts them.
         const quiet = await subagentView(chat);
@@ -744,11 +767,11 @@ async function main() {
         check(!quiet.button && !!subShown && subShown.folded.every((x) => x.card && x.child) && subShown.hidden.every(Boolean)
           && !!subHidden && subHidden.text === 'Subagents hidden (4)' && subHidden.folded.length === 1 && subHidden.folded.every((x) => x.card && !x.child)
           && subHidden.hidden.length === 3 && subHidden.hidden.every((x) => !x) && subHidden.waiting.length === 1 && subHidden.waiting.every(Boolean),
-        "the Subagents button shows only once a subagent did something; pressed, it hides the subagents' cards, calls and answered requests, folds the call that started one, and keeps a request of theirs that still waits",
+        "the Subagents button shows only once a subagent did something; pressed, it hides the subagents' boxes, calls and answered requests, folds the call that started one, and keeps a request of theirs that still waits",
           { quiet, subShown, subHidden });
         await chat.evaluate(() => { const t = document.querySelector('#log [data-id="zz1"]'), l = document.getElementById('log'); if (t) l.scrollTop += t.getBoundingClientRect().top - l.getBoundingClientRect().top - 8; });
         await shot('04t-subagents-hidden', { features: ['subagent filter'],
-          expect: 'The header has a pressed button "Subagents hidden (4)". In the log, a task card "Look around the repository" with no Subagent box under it, then a permission card for "rm -rf build" marked "from subagent Look around" with its Allow once, Allow in this project and Deny buttons; no bash card, no answered permission card and no "Second helper" card.',
+          expect: 'In the row of buttons under the message box a pressed pill "Subagents hidden (4)". In the log, a task row "Look around the repository" with no Subagent box under it, then, right above the message box, the open permission box for "rm -rf build" tagged "#from subagent Look around" with its numbered Allow once, Allow in this project and Deny rows; no bash row, no answered permission row and no "Second helper" box.',
           part: '#workbench\\.parts\\.editor' });
         await chat.click('#subBtn');
         const subBack = await until(async () => { const v = await subagentView(chat); return v.pressed === 'false' && v.hidden.every(Boolean) && v.folded.every((x) => x.child) ? v : null; }, 5000);
@@ -783,7 +806,7 @@ async function main() {
               const t = await tabOf(sessionId);
               if (t) waitIcons.push(await iconOf(t.label));
               await shot(`${name}-permission`, { features: ['tool call', 'permission request'],
-                expect: 'The user message, a tool card for the call the model made, and a permission card with Allow once, Allow in this project and Deny buttons.',
+                expect: 'The user message, a tool row for the call the model made, and right above the message box the permission box: "Allow <tool>?", then the numbered rows 1 Allow once (highlighted), 2 Allow in this project and 3 Deny.',
                 part: '#workbench\\.parts\\.editor' });
             }
             await button.click();
@@ -823,7 +846,7 @@ async function main() {
         const idleIcon = await until(async () => { const t = await tabOf(sessionId); const i = t ? await iconOf(t.label) : ''; return /tab-stopped-dark-/.test(i) ? i : null; }, 10000);
         check(waitIcons.some((i) => /tab-waiting-dark-/.test(i)) && !!idleIcon, "the chat tab's icon has a red dot while the request waits, and is the plain logo once the turn is over", { waitIcons, idleIcon });
         await shot('04-answer', { features: ['answer', 'reply figures'],
-          expect: 'The tool card shows its result and the permission card says allowed; the model answer lists the files of the folder (README.md, notes.txt, src); under it a figures line with a duration, ctx, maybe a cost, and the model name grok.',
+          expect: 'The tool row is done (a green dot) and the answered permission row says allowed; the model answer lists the files of the folder (README.md, notes.txt, src), and its row\'s time is followed by the figures: a duration, ctx, maybe a cost, and the model name grok.',
           part: '#workbench\\.parts\\.editor' });
 
         if (line === 1) {
@@ -861,7 +884,7 @@ async function main() {
             part: '#workbench\\.parts\\.editor' });
           // 3z3. On OpenCode 1 the outline, the Subagents button and Find Conversation behave as on OpenCode 2.
           await outlineStep(chat, '04z3-v1-outline',
-            'The chat page of OpenCode 1.19.6 with a column "YOUR MESSAGES" on the right listing its user messages, numbered from 1; the header has "Outline" pressed; no "Subagents" button.');
+            'The chat page of OpenCode 1.19.6 with the framed list of its user messages open over the top right, each with its date and time; the middle button of the rail on the right edge is pressed; no "Subagents" pill under the message box.');
           const v1Subs = await subagentView(chat);
           check(!v1Subs.button, 'with no subagent in the conversation there is no Subagents button', v1Subs);
           await findStep(sessionId, '04z4-v1-find',
@@ -881,7 +904,7 @@ async function main() {
           await chat.selectOption('#mode', 'plan');
           const planShown = await until(async () => (await pickers())[0].value === 'plan', 10000);
           await shot('04d-mode-plan', { features: ['mode picker', 'effort picker'],
-            expect: 'The chat header has, right of the model picker, a mode picker now showing Plan and an effort picker; the rest of the page is unchanged.',
+            expect: 'In the row of buttons under the message box: the model pill with its effort after it in grey, and near the right end the mode, now Plan; the rest of the page is unchanged.',
             part: '#workbench\\.parts\\.editor' });
           await turn('Use the write tool to create a file named plan-test.txt containing the word hi. Then tell me in one line whether you could.', '04d');
           const planFile = path.join(p.folder, 'plan-test.txt');
@@ -898,7 +921,7 @@ async function main() {
           check(lowShown && / low$/.test(fig) && !!inLow && inLow.agent === 'build' && !!inLow.model && inLow.model.variant === 'low',
             'with Build and effort Low picked, the next turn runs with both, and its figures name the effort', { fig, agent: inLow && inLow.agent, model: inLow && inLow.model });
           await shot('04e-effort-low', { features: ['effort in reply figures'],
-            expect: 'The Plan turn says the file could not be written; then "Reply with only the word four." and the reply "four", whose figures line ends with the model name followed by "low"; the pickers show Build and Low.',
+            expect: 'The Plan turn says the file could not be written; then "Reply with only the word four." and the reply "four", whose figures after its time end with the model name followed by "low"; under the message box the effort shows Low and the mode Build.',
             part: '#workbench\\.parts\\.editor' });
 
           // 3f. A subagent: its session stays out of the list, and the turn OpenCode starts when it finishes shows here.
@@ -916,7 +939,7 @@ async function main() {
               /* Once it has done something, so the box has a last line to show. */
               await until(() => chat.evaluate(() => { const l = document.querySelector('#log .tool .child.state-running .child-last'); return !!l && !!l.textContent; }), 5000);
               await shot('04f0-subagent-running', { features: ['subagent progress'],
-                expect: 'Under the subagent tool card a "Subagent" box with the subagent\'s title, "Running…", and the last thing it did (such as a shell sleep command), maybe with "Its steps (n)"; a permission card for its shell command may be there too, marked "from subagent".',
+                expect: 'Under the subagent\'s task row a box "Subagent:" with the subagent\'s title, "Running…", and the last thing it did (such as a shell sleep command), maybe with "Its steps (n)"; a permission box for its shell command may be there too, tagged "#from subagent".',
                 part: '#workbench\\.parts\\.editor' });
             }
           };
@@ -949,7 +972,7 @@ async function main() {
           }), 20000);
           const fromSub = await chat.evaluate(() => [...document.querySelectorAll('#log .permission .from-sub')].filter((e) => !e.hidden).map((e) => e.textContent));
           check(runningShot && !!card && card.tools.length > 0 && fromSub.length > 0,
-            "the subagent's card showed it running and then done with its steps, and its request said it came from the subagent", { runningShot, card, fromSub });
+            "the subagent's box showed it running and then done with its steps, and its request said it came from the subagent", { runningShot, card, fromSub });
           /* Opening the steps lengthens the log above its end and pushes the end below the view, so this takes two pictures. */
           await chat.evaluate(() => {
             const c = [...document.querySelectorAll('#log .tool .child')].pop();
@@ -957,11 +980,11 @@ async function main() {
             if (c) log.scrollTop = c.closest('.tool').offsetTop - log.offsetTop;
           });
           await shot('04f-subagent', { features: ['subagent progress'],
-            expect: 'Near the top, the subagent tool card with a "Subagent" box below it: the subagent\'s title, "Done", and "Its steps (n)" opened, listing its steps (a shell sleep command among them). Below it the rest of that turn: possibly a shell card and a permission card (allowed once) marked "from subagent …", and the short reply.',
+            expect: 'Near the top, the subagent\'s task row with a "Subagent:" box below it: the subagent\'s title, "Done", and "Its steps (n)" opened, listing its steps (a shell sleep command among them). Below it the rest of that turn: possibly a shell row and an answered permission row (allowed once) tagged "#from subagent …", and the short reply.',
             part: '#workbench\\.parts\\.editor' });
           await chat.evaluate(() => { const log = document.getElementById('log'); log.scrollTop = log.scrollHeight; });
           await shot('04f2-subagent-reply', { features: ['turn OpenCode started itself'],
-            expect: 'The end of the conversation: the notice "OpenCode started this turn on its own, for a background subagent or command.", then the reply that the subagent has finished, with its figures line under it; the status line shows no work in progress.',
+            expect: 'The end of the conversation: the notice "OpenCode started this turn on its own, for a background subagent or command.", then the reply that the subagent has finished, its time followed by the figures; no Working line above the message box.',
             part: '#workbench\\.parts\\.editor' });
 
           // 3f2. The subagent filter: only this conversation's own output, the subagent's progress folded away.
@@ -970,10 +993,10 @@ async function main() {
           const subOff = await until(async () => { const v = await subagentView(chat); return v.pressed === 'true' ? v : null; }, 5000);
           check(subOn.button && subOn.folded.length + subOn.cards.length > 0 && !!subOff && /^Subagents hidden \(\d+\)$/.test(subOff.text)
             && subOff.folded.every((x) => x.card && !x.child) && subOff.cards.every((x) => !x) && subOff.hidden.every((x) => !x),
-          "the Subagents button hides what the subagent did and folds the card of the call that started it, which stays", { subOn, subOff });
+          "the Subagents button hides what the subagent did and folds the row of the call that started it, which stays", { subOn, subOff });
           await chat.evaluate(() => { const t = document.querySelector('#log .tool.sub-fold') || document.querySelector('#log .tool'), l = document.getElementById('log'); if (t) l.scrollTop += t.getBoundingClientRect().top - l.getBoundingClientRect().top - 8; });
           await shot('04f3-subagents-hidden', { features: ['subagent filter'],
-            expect: 'The header has a pressed button "Subagents hidden (n)". At the top of the log the subagent tool card stands alone, with no Subagent box under it; the subagent\'s shell card and its permission card are gone; the parent\'s own messages, replies and notice are there.',
+            expect: 'Under the message box a pressed pill "Subagents hidden (n)". At the top of the log the subagent\'s task row stands alone, with no Subagent box under it; the subagent\'s shell row and its permission row are gone; the parent\'s own messages, replies and notice are there.',
             part: '#workbench\\.parts\\.editor' });
           await chat.click('#subBtn').catch(() => {});
           const subAgain = await until(async () => { const v = await subagentView(chat); return v.pressed === 'false' && v.folded.every((x) => x.child) && v.hidden.every(Boolean) ? v : null; }, 5000);
@@ -997,7 +1020,7 @@ async function main() {
           const tools = await chat.evaluate(() => [...document.querySelectorAll('#log .tool')].map((e) => e.textContent.replace(/\s+/g, ' ').slice(0, 60)));
           check(!!row, "the model added a row to the conversation's work plan with the add_row tool", { rows: rows(), tools: tools.slice(-3) });
           await shot('04b-plan-row', { features: ['plan tool call'],
-            expect: 'The chat shows the request to call add_row, an add_row tool card (its one-line result, "row 1 added: doing", may be folded), and the reply "ok".',
+            expect: 'The chat shows the request to call add_row, an add_row tool row (folded to one line; its result "row 1 added: doing" shows only when opened), and the reply "ok".',
             part: '#workbench\\.parts\\.editor' });
 
           // 3c0. The plan bar: Agent Plus's summary of the plan right above the input box; a click opens its Work plan view.
@@ -1057,7 +1080,7 @@ async function main() {
             'in Interface the next message gets no work plan: no injection in the plugin log, .injected unchanged, the plan tools withdrawn, and the reply still comes',
             { promptsBefore: promptsBefore.length, promptsAfter: promptsAfter.length, added, injectedBefore, injectedAfter: mtime(injected), withdrawn });
           await shot('08-interface-mode', { features: ['token mode Interface'],
-            expect: 'The chat shows "Reply with only the word three." and the reply "three", with no plan tool card in that turn.',
+            expect: 'The chat shows "Reply with only the word three." and the reply "three", with no plan tool row in that turn.',
             part: '#workbench\\.parts\\.editor' });
           await call('await vscode.workspace.getConfiguration("agentPlus").update("tokenMode", undefined, vscode.ConfigurationTarget.Global); return true;').catch(() => {});
 
@@ -1073,9 +1096,9 @@ async function main() {
             box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
           }, solidPng(30, 80, 230).toString('base64'));
           const thumbs = await until(() => chat.evaluate(() => document.querySelectorAll('#attachments .att-image img').length), 10000);
-          check(onHaiku && thumbs === 1, 'with Claude Haiku 4.5 picked, a pasted image shows as a thumbnail above the box', { onHaiku, thumbs });
+          check(onHaiku && thumbs === 1, 'with Claude Haiku 4.5 picked, a pasted image shows as a thumbnail in the box', { onHaiku, thumbs });
           await shot('10-pasted-image', { features: ['pasted image'],
-            expect: 'Above the empty message box a chip with a small blue square thumbnail, the name square.png and a × button; the model picker shows Claude Haiku 4.5.',
+            expect: 'Inside the message box, above the empty text area, a chip with a small blue square thumbnail, the name square.png and a × button; the model pill under the box shows Claude Haiku 4.5.',
             part: '#workbench\\.parts\\.editor' });
           await turn('What colour is this image? Answer with one word and do not use any tool.', '10b');
           const colour = await lastReply();
@@ -1110,9 +1133,9 @@ async function main() {
           const selLabel = await until(() => chat.evaluate(() => { const b = document.getElementById('addSelection'); return b && !b.hidden ? b.textContent : ''; }), 15000);
           if (selLabel) await chat.click('#addSelection');
           const selChip = await until(() => chat.evaluate(() => [...document.querySelectorAll('#attachments .att-selection')].map((e) => e.textContent).join(' | ')), 10000);
-          check(/colours\.txt:2/.test(selLabel || '') && /colours\.txt:2/.test(selChip || ''), 'with text selected in an editor the page offers it, and adding it shows it above the box', { selLabel, selChip });
+          check(/colours\.txt:2/.test(selLabel || '') && /colours\.txt:2/.test(selChip || ''), 'with text selected in an editor the page offers it, and adding it shows it in the box', { selLabel, selChip });
           await shot('11c-selection', { features: ['selection button'],
-            expect: 'The editor is split: colours.txt on the right with line 2 selected; in the chat, right of the message box, a button "+ colours.txt:2", and above the box a chip "Selection colours.txt:2" with a × button.',
+            expect: 'The editor is split: colours.txt on the right with line 2 selected; in the chat, in the row of buttons under the message box, a pill "colours.txt:2" with a selection icon, and inside the box a chip "Selection colours.txt:2" with a × button.',
             part: '#workbench\\.parts\\.editor' });
           await turn('What colour of the day does the attached selection name? One word, no tools.', '11d');
           const dayColour = await lastReply();
@@ -1136,7 +1159,7 @@ async function main() {
           check(!!form && !!qWaiting && qWaiting.activity === 'waiting' && !!listedQ && !!listedQ.waitingFor && listedQ.waitingFor.kind === 'question',
             "the question tool's form shows in the page, and the conversation waits for an answer to a question", { form: !!form, activity: qWaiting && qWaiting.activity, waitingFor: listedQ && listedQ.waitingFor });
           await shot('12-question', { features: ['question form'],
-            expect: 'A question card with a "Question" badge, the question about red or blue with two round choices (Red, Blue), an own-answer box, and Submit and Cancel buttons; the status line says it waits for your answer.',
+            expect: 'Right above the message box, a framed question box headed "Question" with the question about red or blue, each choice a row with a round button (Red, Blue), an own-answer box, and Submit and Cancel buttons; the line above the message box says it waits for your answer.',
             part: '#workbench\\.parts\\.editor' });
           if (form) {
             await chat.evaluate(() => {
@@ -1149,9 +1172,9 @@ async function main() {
           }
           const chosen = await lastReply();
           const settledQ = await chat.evaluate(() => { const c = [...document.querySelectorAll('#log .question')].pop(); return c ? c.querySelector('.perm-result').textContent : ''; });
-          check(/blue/i.test(chosen) && /^Answered: .*Blue/i.test(settledQ), 'after Submit the model gets the answer: it replies with the colour chosen, and the card says what was answered', { chosen, settledQ });
+          check(/blue/i.test(chosen) && /^Answered: .*Blue/i.test(settledQ), 'after Submit the model gets the answer: it replies with the colour chosen, and the answered question says what was answered', { chosen, settledQ });
           await shot('12b-answered', { features: ['question answered'],
-            expect: 'Above it the question tool card (its result folded), then the question card, which now reads "Answered: … Blue": Blue\'s choice is checked and in bold, the other choice and the own-answer box are faded, and there are no buttons; below it the reply "Blue" (or "blue"), with a figures line.',
+            expect: 'Above it the question tool row (folded), then the answered question, now a row in the log reading "Answered: … Blue" under a framed copy of the form: Blue\'s choice is checked and in bold, the other choice and the own-answer box are faded, and there are no buttons; below it the reply "Blue" (or "blue"), its time followed by the figures.',
             part: '#workbench\\.parts\\.editor' });
 
           // 3l. Rename from the chat tab's menu: the tab, the page, the Conversations list, Agent Plus and OpenCode all show the
@@ -1315,23 +1338,23 @@ async function main() {
           }), 20000);
           check(!!img && img.w === 48, 'a reply that links a local image shows the image', img || await lastReply());
           await shot('18-reply-image', { features: ['images in replies'],
-            expect: 'The last reply shows a red square image (48 by 48 pixels) instead of the markdown text; under it the figures line.',
+            expect: 'The last reply shows a red square image (48 by 48 pixels) instead of the markdown text; that row\'s time is followed by the figures.',
             part: '#workbench\\.parts\\.editor' });
 
-          // 3r. A shell command moved to the background shows on the Background line while it runs.
+          // 3r. A shell command moved to the background shows on the background pill while it runs.
           await turn('Use the shell tool to start the command "sleep 25; echo bg-done" in the background, without waiting for it to finish. Then reply with only the word started and end your response at once.', '19');
           const bgLine = await until(() => chat.evaluate(() => { const b = document.getElementById('background'); return b && !b.hidden ? b.querySelector('summary').textContent : null; }), 20000);
           if (bgLine) await chat.click('#background summary');
           const bgRows = bgLine && await chat.evaluate(() => [...document.querySelectorAll('#background .bg-row')].map((r) => r.textContent));
-          check(/Background: 1 command running/.test(bgLine || '') && !!bgRows && bgRows.some((t) => /sleep 25/.test(t)), 'a command moved to the background shows on the Background line, with what it runs', { bgLine, bgRows });
-          await shot('19-background', { features: ['Background line'],
-            expect: 'Above the message box a framed line "Background: 1 command running", opened to show a row "Command  sleep 25; echo bg-done  process <n> · since <time>".',
+          check(/^1 command running$/.test(bgLine || '') && !!bgRows && bgRows.some((t) => /sleep 25/.test(t)), 'a command moved to the background shows on the background pill under the input box, with what it runs', { bgLine, bgRows });
+          await shot('19-background', { features: ['background pill'],
+            expect: 'In the row of buttons under the message box a pill with a green dot, "1 command running"; it is open, and a framed list above the message box headed BACKGROUND WORK has a row "Command  sleep 25; echo bg-done  process <n> · since <time>".',
             part: '#workbench\\.parts\\.editor' });
           const bgGone = await until(async () => {
             for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) await b.click();
             return chat.evaluate(() => document.getElementById('background').hidden && document.body.dataset.status === 'idle');
           }, 120000, 1000);
-          check(bgGone, 'once the command has ended (OpenCode goes on by itself), the Background line is gone');
+          check(bgGone, 'once the command has ended (OpenCode goes on by itself), the background pill is gone');
 
           // 3s. Esc stops a turn.
           const beforeEsc = await figures();
@@ -1356,7 +1379,7 @@ async function main() {
           const stopped = await until(() => chat.evaluate(() => document.body.dataset.status === 'idle' && [...document.querySelectorAll('#log .notice')].some((n) => /^Stopped\.$/.test(n.textContent))), 20000);
           check(running && stopped && (await figures()) > beforeEsc, 'Esc stops the running turn', { running, stopped });
           await shot('20-esc-stopped', { features: ['Esc stops'],
-            expect: 'The shell card for "sleep 45" ends in an error OpenCode gave it, saying the command was interrupted by the user; after its permission card (allowed once), a "Stopped." notice and a figures line; the Stop button is gone.',
+            expect: 'The shell row for "sleep 45" ends in an error OpenCode gave it (a red dot; opened, its OUT says the command was interrupted by the user); after its answered permission row (allowed once), a "Stopped." notice and the figures on a line of their own; the square stop button under the message box is back to the send arrow.',
             part: '#workbench\\.parts\\.editor' });
 
           // 3t. The info box.
@@ -1414,7 +1437,7 @@ async function main() {
             check(!!l && l.every((y) => y.session !== sessionId && y.source === 'opencode-plus'), "a reply naming another conversation by its session id links it, and the page's own id is never linked",
               { links: l || await convLinks(chat), reply: await lastReply() });
             await shot('23b-conversation-link', { features: ['links to other conversations'],
-              expect: 'The last reply reads "The copy is session ses_…" with the id drawn as a link (link colour, dotted underline); the column "YOUR MESSAGES" on the right lists the messages sent so far.',
+              expect: 'The last reply reads "The copy is session ses_…" with the id drawn as a link (link colour, dotted underline); the rail of five small buttons on the right edge is there; no list is open over the log.',
               part: '#workbench\\.parts\\.editor' });
             const went = await followLink(chat, forked);
             check(!!went, 'a click on the link opens that conversation in its tab', { went, active: await activeUri() });
@@ -1438,7 +1461,7 @@ async function main() {
 
           // 3z. The outline of the messages so far.
           await outlineStep(chat, '23e-outline',
-            'Right of the conversation a column headed "YOUR MESSAGES" lists every user message, numbered from 1 ("列出工作目录下的文件" first), each cut to one line; the log is scrolled to the first message, which has a thin focus-coloured outline; the header\'s "Outline" button is pressed.');
+            'Over the top right of the conversation a framed list lists every user message with its date and time ("列出工作目录下的文件" first), each cut to one line; the log is scrolled to the first message, which has a thin focus-coloured outline; the middle button of the rail on the right edge is pressed.');
 
           /* Last of these: the first message after compacting carries the work plan's reminder again, and a model may
              answer that instead of the message. */
@@ -1477,7 +1500,7 @@ async function main() {
             if (d) { d.open = true; log.scrollTop = d.closest('.compaction').offsetTop - log.offsetTop; }
           });
           await shot('09b-compacted', { features: ['compaction divider'],
-            expect: 'At the top, a horizontal line labelled "Conversation compacted" with a "Summary" below it, unfolded to show the summary OpenCode wrote (headings such as Objective); the figures line of the /compact turn follows the summary, possibly below the visible part. The column "YOUR MESSAGES" on the right ends with a dashed line and "Compacted" in italics.',
+            expect: 'At the top, a horizontal line labelled "Conversation compacted" with a "Summary" below it, unfolded to show the summary OpenCode wrote (headings such as Objective); the figures line of the /compact turn follows the summary, possibly below the visible part. The rail of five small buttons is on the right edge.',
             part: '#workbench\\.parts\\.editor' });
         }
       }
@@ -1571,7 +1594,7 @@ async function main() {
       check(again2 === 0, 'after the reload the notice is not shown again', { told: again2 });
     }
     await shot('07-after-reload', { features: ['reload', 'restored history'],
-      expect: 'After the reload the chat tab is open again and shows the same conversation: the user message, the tool cards and the final reply.',
+      expect: 'After the reload the chat tab is open again and shows the same conversation: the user message, the tool rows on the line down the left and the final reply.',
       part: '#workbench\\.parts\\.editor' });
 
     // 7. Every editor's title bar has the OpenCode mark, which starts another conversation.

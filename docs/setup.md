@@ -134,7 +134,7 @@ With OpenCode 1 or 2, run `opencode auth login` on the machine where OpenCode ru
 
 ## Checking the Connection
 
-Run `OpenCode Agent Plus: Test OpenCode Connection` from the Command Palette. The test checks only whether OpenCode is installed until you open a conversation in the current window, at which point it can report counts from OpenCode's model list. For example: "OpenCode 2.4.1 is connected: 120 models, 40 of them on Amazon Bedrock." To see model names, open the model dropdown in any conversation ([Models, Modes and the Line Under Each Reply](features.md#models-modes-and-the-line-under-each-reply)).
+Run `OpenCode Agent Plus: Test OpenCode Connection` from the Command Palette. The test checks only whether OpenCode is installed until you open a conversation in the current window, at which point it can report counts from OpenCode's model list. For example: "OpenCode 2.4.1 is connected: 120 models, 40 of them on Amazon Bedrock." To see model names, open the model list under the input box in any conversation ([Models, Modes and Reply Figures](features.md#models-modes-and-reply-figures)).
 
 OpenCode 1 lists only providers it can sign in to, but OpenCode 2's model list includes Bedrock models even if your credentials do not work. If Bedrock refuses them, you see the error when you send your first message to a Bedrock model. Run the test again to see Bedrock's error. The test result's "How to fix" button lists both ways to set up [Amazon Bedrock](#amazon-bedrock) credentials.
 

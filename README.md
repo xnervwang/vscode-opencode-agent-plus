@@ -36,14 +36,14 @@ In a [Remote-SSH](docs/setup.md#remote-ssh) window, the extension and OpenCode r
 
 | Feature | What it does |
 | --- | --- |
-| [Chat tabs](docs/features.md#messages-tools-and-permissions) | Each conversation opens in an editor tab with streaming replies and a card for each tool call, such as a command or a file edit. |
+| [Chat tabs](docs/features.md#messages-tools-and-permissions) | Each conversation opens in an editor tab with streaming replies and a row for each tool call, such as a command or a file edit, that opens to show what went in and came out. |
 | [Permission prompts](docs/features.md#permission-prompts) | OpenCode asks before it edits files, runs commands, fetches web pages or works outside the project, and you can review a proposed edit as a diff. |
 | [Questions from the model](docs/features.md#questions-from-the-model) | You answer them in a form. |
 | [Slash commands, files and images](docs/features.md#writing-a-message) | Type `/` to list OpenCode commands or `@` to list workspace files, or add your editor selection and images to a message. |
-| [Model, mode and effort](docs/features.md#models-modes-and-the-line-under-each-reply) | You choose them from dropdowns at the top of the page; effort sets how much the model reasons. |
-| [Line under each reply](docs/features.md#models-modes-and-the-line-under-each-reply) | Shows how long the reply took, context use, the conversation's cost so far, model and effort. |
+| [Model, mode and effort](docs/features.md#models-modes-and-reply-figures) | You choose them in the row of buttons under the input box; effort sets how much the model reasons. |
+| [Reply figures](docs/features.md#models-modes-and-reply-figures) | After the time on each reply's last row: how long the reply took, context use, the conversation's cost so far, model and effort. |
 | [Context and compaction](docs/features.md#context-compaction-and-retries) | A ring shows how full the context window is, and a divider marks where OpenCode summarized older turns to make room. |
-| [Outline, session information and chimes](docs/features.md#getting-around-a-long-conversation) | A column lists your messages, a box shows the conversation's details, and a chime sounds when a turn ends or OpenCode waits for you. |
+| [Outline, session information and chimes](docs/features.md#getting-around-a-long-conversation) | A rail on the right edge moves between your messages and opens a list of them, a box shows the conversation's details, and a chime sounds when a turn ends or OpenCode waits for you. |
 | [Links and images in replies](docs/features.md#links-and-images-in-replies) | Replies link to other conversations by title or ID and display images from the machine where OpenCode runs. |
 | [Rewind and Fork](docs/features.md#rewinding-and-forking) | You can rewind to before one of your messages, which in a Git repository also restores files, or fork a copy of the conversation. |
 | [Subagents and background work](docs/features.md#subagents-and-background-work) | You can track running commands and subagents, the helper agents the model starts for part of a task. |

@@ -118,7 +118,7 @@ async function run(t) {
     'the tool reported a handoff, and the reply says so in a sentence', { outcomes, reply: reply.slice(0, 400), toolCard });
   await chat.evaluate(() => { const l = document.getElementById('log'); l.scrollTop = l.scrollHeight; });
   await shot('S04-handoff', { features: ['steward handoff'],
-    expect: 'The chat page: the user message about the README, a steward_handoff tool card, and a reply of a sentence or two saying the request went to the steward. No error notice.',
+    expect: 'The chat page: the user message about the README, a steward_handoff tool row, and a reply of a sentence or two saying the request went to the steward. No error notice.',
     part: '#workbench\\.parts\\.editor' });
 
   // S5. The stand-in stops naming a steward and fires onDidChangeStewards: the steward file goes, and the folder is

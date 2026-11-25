@@ -149,7 +149,7 @@ async function run(t) {
   check(procs.length > 0 && procs.every((x) => real(x.argv[0]) === real(exe) && XDG.every((k) => x.xdg[k] === t.xdgEnv[k])),
     'every OpenCode process of this run is the downloaded executable, with the same XDG folders', procs);
   await shot('d04-reply', { features: ['conversation on the downloaded OpenCode'],
-    expect: 'A chat tab with the message "Reply with the single word READY and nothing else." and the model\'s reply READY, a figures line under it naming the model (Grok); the Conversations view in the side bar lists the conversation. No error text or error notification.' });
+    expect: 'A chat tab with the message "Reply with the single word READY and nothing else." and the model\'s reply READY, whose time is followed by the figures naming the model (Grok); the Conversations view in the side bar lists the conversation. No error text or error notification.' });
 }
 
 module.exports = { run, withoutOpenCode, processes, OFFER, READY };

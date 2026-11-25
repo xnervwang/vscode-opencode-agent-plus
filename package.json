@@ -457,6 +457,7 @@
     "url": "https://github.com/xnervwang/vscode-opencode-agent-plus"
   },
   "dependencies": {
+    "@vscode/codicons": "0.0.45",
     "markdown-it": "15.0.3"
   }
 }

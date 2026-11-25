@@ -121,8 +121,10 @@ test('the page links conversations as it renders a reply, opens one through the 
   /* scrollIntoView moves the page too, by the few pixels it is taller than its frame; only the log may scroll. */
   assert.doesNotMatch(PAGE, /\.scrollIntoView\(/);
   assert.match(PAGE, /function scrollLogTo\(el, center\)/);
-  /* The header's buttons wrap to a second row in a narrow pane rather than push out of it. */
-  assert.match(css, /#top \{\s*display: flex;\s*flex-wrap: wrap;/);
+  /* The buttons under the message box wrap to a second row in a narrow pane rather than push out of it, and the title
+     is cut short. */
+  assert.match(css, /#tools \{\s*display: flex;\s*flex-wrap: wrap;/);
+  assert.match(css, /#title \{[^}]*text-overflow: ellipsis;/);
 });
 
 function setup(extra = {}) {
@@ -153,9 +155,11 @@ function fakeLinks() {
 test('the page gets the conversations it may link to when it loads and when they change, and is told which one is its own', async () => {
   const links = fakeLinks();
   const { panel, chat } = setup({ links });
-  assert.match(panel.webview.html, /<div id="middle">\n<main id="log"[^>]*><\/main>\n<nav id="outline"[^>]*hidden>/);
-  assert.match(panel.webview.html, /<button id="subBtn" class="toggle"[^>]*hidden>Subagents<\/button>/);
-  assert.match(panel.webview.html, /<button id="navBtn" class="toggle"[^>]*hidden>Outline<\/button>/);
+  /* The rail and the list of the user's messages sit over the log's right edge, hidden until there are messages. */
+  assert.match(panel.webview.html, /<div id="middle">\n<main id="log"[^>]*><\/main>\n<div id="welcome"[^>]*>[\s\S]*?<\/div>\n<div id="rail" hidden>[\s\S]*?<\/div>\n<nav id="outline"[^>]*hidden>/);
+  assert.match(panel.webview.html, /<button id="subBtn" class="pill toggle"[^>]*hidden>Subagents<\/button>/);
+  assert.match(panel.webview.html, /<button id="navBtn" class="rail-btn toggle"[^>]*hidden>/);
+  for (const id of ['railTop', 'railPrev', 'railNext', 'railBottom']) assert.match(panel.webview.html, new RegExp(`<button id="${id}" class="rail-btn" type="button" title="[^"]+">`));
   links.fire();
   assert.equal(panel.posted.filter((m) => m.type === 'conversations').length, 0, 'nothing before the page is ready');
   panel.fromPage({ type: 'ready' });

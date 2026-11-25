@@ -12,10 +12,10 @@ OpenCode Agent Plus keeps the [download](setup.md#installing-opencode) fixed at 
 
 ## What a Reopened Conversation Does Not Show
 
-When you reopen a conversation from OpenCode's history, you see your messages, replies, tool cards and message times again.
+When you reopen a conversation from OpenCode's history, you see your messages, replies, tool rows and message times again.
 
-- The line under each older reply does not show the effort.
-- On OpenCode 2, permission cards you already answered do not reappear.
+- The figures on each older reply do not show the effort.
+- On OpenCode 2, permission requests you already answered do not reappear.
 - For a subagent, you see only the tool's result, without the Subagent box.
 - If OpenCode started a turn on its own, it appears as part of the previous turn, whose duration includes the wait for the background task.
 - Message times come from OpenCode's export of the conversation. If the export fails or takes longer than 5 seconds, each message shows the time you reopened the conversation.

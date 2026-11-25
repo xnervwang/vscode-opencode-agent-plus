@@ -48,7 +48,14 @@ test('sets the webview up with scripts from the extension only; inline styles on
     assert.equal(options.retainContextWhenHidden, undefined);
     const roots = options.localResourceRoots.map((u) => u.path);
     /* Uri.joinPath uses '/' on every system. */
-    assert.deepEqual(roots, [path.posix.join(ROOT, 'media'), path.posix.join(ROOT, 'node_modules/markdown-it/dist/browser')]);
+    assert.deepEqual(roots, [path.posix.join(ROOT, 'media'), path.posix.join(ROOT, 'node_modules/markdown-it/dist/browser'),
+      path.posix.join(ROOT, 'node_modules/@vscode/codicons/dist')]);
+    assert.match(html, /codicons\/dist\/codicon\.css">\n<link rel="stylesheet" href="[^"]*media\/chat\.css/, 'the icon font loads before the page style');
+    /* Drawn before chat.css applies, an svg without its own size fills the page and a shape without its own fill is black. */
+    const svgs = html.match(/<svg[^>]*>/g) || [];
+    assert.ok(svgs.length >= 2, 'the ring and the empty page\'s mark');
+    for (const t of svgs) assert.match(t, /\swidth="\d+" height="\d+"/, t);
+    for (const t of html.match(/<(circle|path|rect)\b[^>]*>/g) || []) assert.match(t, /\sfill="/, t);
     assert.match(html, /Content-Security-Policy" content="default-src 'none'; img-src https:\/\/fake\.webview data:; style-src https:\/\/fake\.webview 'unsafe-inline'; font-src https:\/\/fake\.webview; script-src https:\/\/fake\.webview;"/);
     assert.match(html, /media\/plan-bar\.js"><\/script>\n<script src="[^"]*media\/chat\.js/, 'the fragment loads before the page script');
     assert.match(html, /markdown-it\.umd\.min\.js/, 'the markdown library is installed and loaded');

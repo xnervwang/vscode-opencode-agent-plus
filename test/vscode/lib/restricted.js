@@ -264,8 +264,8 @@ async function run(t) {
   check(!ran(), "the folder's opencode program was still never run", ran() ? fs.readFileSync(prepared.marker, 'utf8') : '');
   await shot('r06-trusted-conversation', { features: ['conversation after trust'],
     expect: real
-      ? 'A chat tab with the message "Reply with the single word READY and nothing else." and the model\'s reply READY, a figures line under it; the Conversations view in the side bar lists the conversation. No Restricted Mode text anywhere.'
-      : 'A chat tab with the chat page (model selector, empty message area, message box with Send); the Conversations view in the side bar lists the conversation. No Restricted Mode text anywhere.' });
+      ? 'A chat tab with the message "Reply with the single word READY and nothing else." and the model\'s reply READY, whose time is followed by the figures; the Conversations view in the side bar lists the conversation. No Restricted Mode text anywhere.'
+      : 'A chat tab with the chat page (an empty area with the OpenCode mark and a hint, and the rounded message box with its row of buttons and a send arrow); the Conversations view in the side bar lists the conversation. No Restricted Mode text anywhere.' });
 }
 
 module.exports = { run, prepareFolder, openCodeProcesses, TRUST_SETTINGS, TEXT };

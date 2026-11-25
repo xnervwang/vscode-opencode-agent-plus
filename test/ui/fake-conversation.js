@@ -11,8 +11,10 @@
  *   an AgentEvent            emitted as is; `at` is filled in where the event has one and the step has none
  *   { wait: ms }             pauses
  *   a 'permission' event     pauses until respond(requestId, decision), then emits permissionSettled
+ *   a 'question' event       pauses until respondQuestion(requestId, answer), then emits questionSettled
  * turnStart, userMessage and turnEnd ('endTurn') are added around each turn unless the turn emits them itself.
- * When the script runs out, a send plays `fallback` (by default one short text reply).
+ * When the script runs out, a send plays `fallback` (by default one short text reply); script(steps) puts a turn of
+ * its own first.
  */
 
 const TIMED = new Set(['turnStart', 'userMessage', 'toolCall', 'toolResult', 'turnEnd']);
@@ -114,6 +116,20 @@ function createFakeConversation(opts = {}) {
       return true;
     },
 
+    respondQuestion(requestId, answer) {
+      fake.decisions.push({ requestId, answer });
+      const resolve = waiting.get(requestId);
+      if (!resolve) return false;
+      waiting.delete(requestId);
+      resolve(answer && typeof answer === 'object' ? answer : { action: 'cancel' });
+      return true;
+    },
+
+    /* The next send plays `steps` instead of the script's next turn. */
+    script(steps) {
+      turns.unshift(steps);
+    },
+
     /* Resolves once nothing plays and nothing waits in the queue. */
     idle() {
       return playing ? playing.then(() => fake.idle()) : Promise.resolve();
@@ -144,7 +160,8 @@ function createFakeConversation(opts = {}) {
       await pause(stepMs);
       if (aborted || fake.disposed) break;
       if (typeof step.wait === 'number') {
-        await pause(step.wait);
+        /* In steps of at most 100 ms, so that abort() ends a long wait. */
+        for (let left = step.wait; left > 0 && !aborted && !fake.disposed; left -= 100) await pause(Math.min(left, 100));
         continue;
       }
       if (step.type === 'turnEnd') ended = true;
@@ -153,6 +170,13 @@ function createFakeConversation(opts = {}) {
         fake.emit(step);
         const decision = await decided;
         if (decision) fake.emit({ type: 'permissionSettled', requestId: step.requestId, decision });
+        continue;
+      }
+      if (step.type === 'question') {
+        const answered = new Promise((resolve) => waiting.set(step.requestId, resolve));
+        fake.emit(step);
+        const answer = await answered;
+        if (answer) fake.emit({ type: 'questionSettled', requestId: step.requestId, action: answer.action === 'accept' ? 'accept' : 'cancel' });
         continue;
       }
       fake.emit({ turnId, ...step });

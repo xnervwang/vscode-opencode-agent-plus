@@ -4,15 +4,17 @@ Back to the [README](../README.md).
 
 ## Messages, Tools and Permissions
 
-Each conversation opens in a VS Code editor tab that shows the conversation's title and updates when the title changes. As the model replies, you see its text and reasoning stream in. Each tool call appears in its own tool card.
+Each conversation opens in a VS Code editor tab that shows the conversation's title and updates when the title changes. As the model replies, you see its text and reasoning stream in. Each tool call appears in one row in the conversation. The row shows the tool's name in bold followed by the arguments it received. Click the row to open a box with the tool's input (IN) and output (OUT). If the call fails, the box opens automatically.
 
 ### Permission Prompts
 
 By default, OpenCode asks you before it edits files, runs commands, fetches web pages, or reads or writes files outside the project. OpenCode Agent Plus keeps a separate folder outside the project for each conversation. Under the default rules, OpenCode can write to [the conversation's own folder](#links-and-images-in-replies) without asking.
 
-When OpenCode asks for permission, a permission card offers Allow once, Allow in this project and Deny. If you choose Allow in this project, OpenCode saves the pattern the request names, such as a command or file path. It then allows matching requests without asking in any conversation in this project, even after OpenCode restarts. If the request names no pattern, your choice allows only that request.
+When OpenCode asks for permission, a framed box just above the input box shows three rows: 1 Allow once, 2 Allow in this project and 3 Deny. When the input box does not have focus, you can press 1, 2 or 3 to answer. After you answer, the request appears as one row in the conversation showing your choice.
 
-If a subagent made the request, the card identifies the subagent. For a file edit, choose View diff to review the proposed changes in VS Code's diff view. While the request is open, you can use the same three permission buttons in the diff's title bar.
+If you choose Allow in this project, OpenCode saves the pattern the request names, such as a command or file path. It then allows matching requests without asking in any conversation in this project, even after OpenCode restarts. If the request names no pattern, your choice allows only that request.
+
+If a subagent made the request, the request names the subagent. For a file edit, choose View diff to review the proposed changes in VS Code's diff view. While the request is open, you can use the same three permission buttons in the diff's title bar.
 
 The `opencodeAgentPlus.opencode.askPermissions` setting applies these defaults in place of the `edit`, `bash` (`shell` on OpenCode 2), `webfetch` and `external_directory` rules in your OpenCode configuration. Turn it off to keep your own rules. Let any running turn finish before changing the setting because the change [restarts OpenCode](settings.md#settings-that-restart-opencode).
 
@@ -26,21 +28,23 @@ Type `/` at the start of the input box to list OpenCode's commands, such as `/co
 
 You can search for a workspace file by typing `@` at the start of your message or after a space. The list shows up to 50 matches and skips `node_modules`, `.git` and files hidden by `files.exclude` or `search.exclude`. Choosing a file inserts `@<relative path>`, its path within the workspace, into your message. Leave it in the text to send the file reference. Use `@` for files in the VS Code Explorer; dragging them from the Explorer does not attach them.
 
-Select text in the editor, then add it to your message by clicking the button beside the input box, such as `+ extension.js:12-20`.
+Select text in the editor, then click its button in the row under the input box to add the selection to your message. The button shows a selection icon followed by the file and line range, such as `extension.js:12-20`.
 
-You can paste images into the input box or drop image files onto it. You can include up to 8 images per message, with a 5 MB limit per image. Before you send, you see a thumbnail for each image. In the sent message, each image appears as an "Image" label.
+You can paste images into the input box, drop image files onto it, or pick them with its + button. You can include up to 8 images per message, with a 5 MB limit per image. Before you send, you see a thumbnail for each image. In the sent message, each image appears as an "Image" label.
 
 If you send a message while a turn is running, it waits in a "Queued" row until the turn ends, then sends. Click Stop to end the turn. You can also press Esc while the chat page has focus. If a list or box is open, Esc closes it first.
 
-## Models, Modes and the Line Under Each Reply
+## Models, Modes and Reply Figures
 
-At the top of the chat page, you can choose from every model OpenCode offers. The model dropdown groups them by provider. The Mode (build or plan) and Effort (how much the model reasons) dropdowns appear when OpenCode offers them for the model you choose. OpenCode remembers your mode and effort for each conversation. Changes to the model, mode or effort take effect with your next message, even if you make them during a turn.
+In the row of buttons under the input box, one pill shows the model followed by the effort in grey. Click the model to choose from every model OpenCode offers, grouped by provider. Click Effort to choose how much the model reasons, or click Mode near the right end of the row to choose build or plan. Each opens a drop-down list. Mode and Effort appear only when OpenCode offers them for the model you choose.
 
-Each reply ends with a line such as `2m10s · ctx 33% · $0.42 · grok-4.7 low`. The duration, model and effort are for that reply. The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the line to see the same values with labels.
+OpenCode remembers your mode and effort for each conversation. Changes to the model, mode or effort take effect with your next message, even if you make them during a turn.
+
+The last row of text in each reply starts with the time followed by figures such as `2m10s · ctx 33% · $0.42 · grok-4.7 low`. If the turn ends with something other than text, the figures appear on their own line. The duration, model and effort are for that reply. The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the figures to see the same values with labels.
 
 ## Context, Compaction and Retries
 
-The context ring at the top of the chat page shows how much of the model's context window your conversation uses. An outline appears around the ring when 15% or less of the window remains.
+The context ring under the input box shows how much of the model's context window your conversation uses. An outline appears around the ring when 15% or less of the window remains.
 
 A divider in the conversation reads "Compacting the conversation…" while OpenCode summarizes older turns to make room. It changes to "Conversation compacted" once the summary is ready. Expand "Summary" to see how OpenCode summarized the earlier turns. You can start compaction by typing `/compact`.
 
@@ -50,15 +54,17 @@ If OpenCode 2 is waiting to retry a request after a provider error, the status l
 
 ### Outline
 
-Click Outline to open the "Your messages" column beside the conversation. It lists your messages by number and first line and marks where OpenCode compacted the conversation. When you hover over a message row, you see its time and full text. Click any row to scroll to that point. The column is open by default when the page is at least 760 pixels wide.
+Five small buttons sit on the right edge of the conversation. In order, they take you to the first message, go to the previous message, open your message list, go to the next message and take you to the end of the conversation.
+
+The list opens over the conversation and has a Filter your messages box. Each row shows the time and first line of one of your messages. The list also marks where OpenCode compacted the conversation. Hover over a row to see the full text. Click a row to scroll to that message. The list is closed by default, and the page remembers whether you left it open.
 
 ### Subagents Filter
 
-You can hide cards and tool calls from subagents with the Subagents button. This also hides the [Subagent box](#subagents-and-background-work) under the call that started each subagent. Requests from subagents stay visible while they wait for you. The button then reads "Subagents hidden (n)", where n counts the subagent cards it hides or collapses.
+You can hide what subagents did, and their tool calls, with the Subagents button under the input box. This also hides the [Subagent box](#subagents-and-background-work) under the call that started each subagent. Requests from subagents stay visible while they wait for you. The button then reads "Subagents hidden (n)", where n counts the subagent items it hides or collapses.
 
 ### Session Information
 
-Click the "i" button beside the context ring to see the session ID and folder. The box also shows the OpenCode version, the process ID of `opencode acp`, the location of OpenCode's session database and Agent Plus's [token mode](#token-mode). Click a row to copy it, or choose Copy all.
+Click the "i" button under the input box to see the session ID and folder. The box also shows the OpenCode version, the process ID of `opencode acp`, the location of OpenCode's session database and Agent Plus's [token mode](#token-mode). Click a row to copy it, or choose Copy all.
 
 ### Chimes
 
@@ -92,9 +98,9 @@ Choose Fork Conversation from the context menu in the Conversations view, on the
 
 ## Subagents and Background Work
 
-A row above the input box counts running subagents and any shell commands still running in the background. For example, you might see "Background: 1 subagent, 1 command running". Expand the row to see each item's kind, command or title, process ID and start time. Click an item to scroll to its card. OpenCode Agent Plus checks whether a background command is still running only when a turn starts or ends or when you open the row.
+A pill with a green dot in the row of buttons under the input box counts running subagents and any shell commands still running in the background. For example, you might see "1 subagent, 1 command running". Click the pill to open a list above the input box. Each item shows its kind, command or title, process ID and start time. Click an item to scroll to its row in the conversation. OpenCode Agent Plus checks whether a background command is still running only when a turn starts or ends or when you open the list.
 
-In OpenCode 2, look below the tool card that started a subagent. The Subagent box there shows its title, status and latest output. Expand "Its steps (n)", where n counts all of the subagent's steps, to see the last 60 entries, including tool calls and text. Subagent conversations stay out of the Conversations view, `OpenCode Agent Plus: Find Conversation…` and Agent Plus. On OpenCode 1, OpenCode Agent Plus does not distinguish subagent conversations from other conversations.
+In OpenCode 2, look below the tool row that started a subagent. The Subagent box there shows its title, status and latest output. Expand "Its steps (n)", where n counts all of the subagent's steps, to see the last 60 entries, including tool calls and text. Subagent conversations stay out of the Conversations view, `OpenCode Agent Plus: Find Conversation…` and Agent Plus. On OpenCode 1, OpenCode Agent Plus does not distinguish subagent conversations from other conversations.
 
 A subagent or background command finishing can trigger a new turn. The page shows a separate turn with the line "OpenCode started this turn on its own, for a background subagent or command." During the turn, the conversation appears as working. If you aren't viewing it when the reply arrives, the reply counts as unread. The turn's cost is still unknown when it ends; the next time OpenCode reports usage, that cost is added to the conversation cost you see in the line under each reply.
 

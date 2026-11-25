@@ -39,7 +39,7 @@ Agent Plus's [Token Mode](features.md#token-mode) controls what OpenCode Agent P
 | Plan bar | Turn off `opencodeAgentPlus.planBar`. |
 | Links to other conversations | Turn off `opencodeAgentPlus.conversationLinks`. |
 | OpenCode Agent Plus's permission rules | Turn off `opencodeAgentPlus.opencode.askPermissions` to use your own OpenCode rules. |
-| Chimes | Click the note button beside Send. |
+| Chimes | Click the note button under the input box. |
 
 ## Commands
 

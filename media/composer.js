@@ -100,7 +100,7 @@
     return 'link';
   }
 
-  /* The Background line's summary for head().background, or '' when nothing runs. */
+  /* The words on the background pill for head().background, or '' when nothing runs. */
   function backgroundSummary(list) {
     const items = Array.isArray(list) ? list : [];
     if (!items.length) return '';
@@ -109,7 +109,7 @@
     const parts = [];
     if (subs) parts.push(`${subs} subagent${subs === 1 ? '' : 's'}`);
     if (cmds) parts.push(`${cmds} command${cmds === 1 ? '' : 's'}`);
-    return `Background: ${parts.join(', ')} running`;
+    return `${parts.join(', ')} running`;
   }
 
   const COMPACTION_WORDS = { running: 'Compacting…', completed: 'Compacted', failed: 'Compacting failed', cancelled: 'Compacting cancelled' };

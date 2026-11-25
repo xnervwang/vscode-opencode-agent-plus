@@ -44,6 +44,8 @@ const MAX_IMAGES = 8;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_FILES = 20;
 const MARKDOWN_IT = ['node_modules', 'markdown-it', 'dist', 'browser'];
+/* VS Code's icon font, for the page's buttons; without it the buttons show their tooltips' words only. */
+const CODICONS = ['node_modules', '@vscode', 'codicons', 'dist'];
 const FLUSH_MS = 16;
 /* This extension's source id at Agent Plus (src/host/agentplus-source.js). */
 const SOURCE_ID = 'opencode-plus';
@@ -178,11 +180,12 @@ class ChatPanel {
 
     const webview = this.panel.webview;
     const mdDir = vscode.Uri.joinPath(this.extensionUri, ...MARKDOWN_IT);
+    const iconDir = vscode.Uri.joinPath(this.extensionUri, ...CODICONS);
     webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media'), mdDir],
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media'), mdDir, iconDir],
     };
-    webview.html = this.html(webview, mdDir);
+    webview.html = this.html(webview, mdDir, iconDir);
 
     acquireDiffProvider(vscode);
     diffKeyVscode = vscode;
@@ -199,54 +202,71 @@ class ChatPanel {
     if (this.links) this.subs.push(toOff(this.links.onDidChange(() => { if (this.ready) this.postConversations(); })));
   }
 
-  html(webview, mdDir) {
+  html(webview, mdDir, iconDir) {
     const media = (name) => webview.asWebviewUri(this.vscode.Uri.joinPath(this.extensionUri, 'media', name));
     const mdFile = path.join(mdDir.fsPath || '', 'markdown-it.umd.min.js');
     const md = mdDir.fsPath && fs.existsSync(mdFile)
       ? `<script src="${webview.asWebviewUri(this.vscode.Uri.joinPath(mdDir, 'markdown-it.umd.min.js'))}"></script>`
       : '';
+    const icons = iconDir && iconDir.fsPath && fs.existsSync(path.join(iconDir.fsPath, 'codicon.css'))
+      ? `<link rel="stylesheet" href="${webview.asWebviewUri(this.vscode.Uri.joinPath(iconDir, 'codicon.css'))}">\n`
+      : '';
     const src = webview.cspSource;
-    /* The ring's size and fill are on its elements too: without them, a page drawn before chat.css applies shows the
-       ring as a black disc as wide as the page. */
+    const icon = (name) => `<i class="codicon codicon-${name}" aria-hidden="true"></i>`;
+    /* Each svg carries its own size and fill: drawn before chat.css applies, one without them fills the page's
+       width with a black disc. */
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${src} data:; style-src ${src} 'unsafe-inline'; font-src ${src}; script-src ${src};">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="${media('chat.css')}">
+${icons}<link rel="stylesheet" href="${media('chat.css')}">
 </head>
 <body>
 <header id="top">
   <div id="title"></div>
-  <div class="spacer"></div>
-  <select id="model" title="Model"><option>Loading models…</option></select>
-  <select id="mode" class="option" hidden></select>
-  <select id="effort" class="option" hidden></select>
-  <span id="ring" class="ring"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6" fill="none"></circle><circle class="fill" cx="8" cy="8" r="6" fill="none"></circle></svg></span>
-  <button id="subBtn" class="toggle" type="button" aria-pressed="false" hidden>Subagents</button>
-  <button id="navBtn" class="toggle" type="button" aria-pressed="false" hidden>Outline</button>
-  <button id="infoBtn" class="icon" type="button" title="About this conversation" hidden>i</button>
 </header>
-<div id="infoBox" role="dialog" hidden></div>
 <div id="middle">
 <main id="log" aria-live="polite"></main>
-<nav id="outline" aria-label="Your messages" hidden><div class="outline-head">Your messages</div><div class="outline-list"></div></nav>
+<div id="welcome" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M16 10V18H8V10H16Z" fill="currentColor" fill-opacity="0.35"/><path fill-rule="evenodd" clip-rule="evenodd" d="M20 22H4V2H20V22ZM16 6H8V18H16V6Z" fill="currentColor"/></svg><p>Ask OpenCode about this project, or tell it what to change.</p></div>
+<div id="rail" hidden>
+  <button id="railTop" class="rail-btn" type="button" title="To the first message">${icon('fold-up')}</button>
+  <button id="railPrev" class="rail-btn" type="button" title="To the message before">${icon('chevron-up')}</button>
+  <button id="navBtn" class="rail-btn toggle" type="button" aria-pressed="false" hidden>${icon('chevron-left')}</button>
+  <button id="railNext" class="rail-btn" type="button" title="To the message after">${icon('chevron-down')}</button>
+  <button id="railBottom" class="rail-btn" type="button" title="To the end">${icon('fold-down')}</button>
+</div>
+<nav id="outline" aria-label="Your messages" hidden><input class="outline-filter" type="text" placeholder="Filter your messages" aria-label="Filter your messages"><div class="outline-list"></div></nav>
 </div>
 <footer id="bottom">
-  <details id="background" hidden><summary></summary><div class="bg-list"></div></details>
   <div id="status" hidden></div>
-  <div id="queued"></div>
-  <div id="menu" role="listbox" hidden></div>
-  <div id="attachments"></div>
-  <div id="note" hidden></div>
-  <form id="composer">
-    <textarea id="input" rows="1" placeholder="Ask anything. Enter to send, Shift+Enter for a new line"></textarea>
-    <button id="addSelection" class="secondary" type="button" hidden></button>
-    <button id="sound" class="icon" type="button" hidden></button>
-    <button id="stop" type="button" title="Stop (Esc)" hidden>Stop</button>
-    <button id="send" type="submit" title="Send">Send</button>
-  </form>
+  <div id="dock">
+    <div id="infoBox" role="dialog" hidden></div>
+    <div id="queued"></div>
+    <div id="note" hidden></div>
+    <div id="menu" role="listbox" hidden></div>
+    <form id="composer">
+      <div id="attachments"></div>
+      <textarea id="input" rows="1" placeholder="Ask OpenCode…"></textarea>
+      <div id="tools">
+        <button id="attach" class="tool-btn" type="button" title="Add images" hidden>${icon('add')}</button>
+        <input id="attachFile" type="file" accept="image/*" multiple hidden>
+        <button id="slashBtn" class="tool-btn slash" type="button" title="Commands (/)" hidden><span>/</span></button>
+        <span id="ring" class="ring tool-btn"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6" fill="none"></circle><circle class="fill" cx="8" cy="8" r="6" fill="none"></circle></svg></span>
+        <details id="background" class="pill" hidden><summary></summary><div class="bg-list"></div></details>
+        <span class="pill model-pill"><select id="model" title="Model"><option>Loading models…</option></select><select id="effort" class="option" hidden></select></span>
+        <button id="addSelection" class="pill" type="button" hidden></button>
+        <span class="spacer"></span>
+        <button id="infoBtn" class="tool-btn" type="button" title="About this conversation" hidden>${icon('info')}</button>
+        <button id="subBtn" class="pill toggle" type="button" aria-pressed="false" hidden>Subagents</button>
+        <button id="sound" class="tool-btn" type="button" hidden></button>
+        <label class="mode-pick">${icon('robot')}<select id="mode" class="option" hidden></select></label>
+        <button id="stop" class="send-btn" type="button" title="Stop (Esc)" aria-label="Stop" hidden><span class="stop-mark" aria-hidden="true"></span></button>
+        <button id="send" class="send-btn" type="submit" title="Send (Enter)" aria-label="Send">${icon('arrow-up')}</button>
+      </div>
+    </form>
+  </div>
 </footer>
 ${md}
 <script src="${media('kit.js')}"></script>

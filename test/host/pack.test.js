@@ -25,6 +25,8 @@ test('build/pack-vsix.js packs the extension, its run-time packages and nothing 
   for (const f of ['[Content_Types].xml', 'extension.vsixmanifest', 'extension/package.json', 'extension/extension.js', 'extension/LICENSE.txt',
     'extension/README.md', 'extension/ThirdPartyNotices.txt', 'extension/images/icon.png', 'extension/images/icon.svg', 'extension/src/host/chat-editor.js', 'extension/src/ui/chat-panel.js', 'extension/media/chat.js', 'extension/images/sidebar.svg',
     'extension/node_modules/markdown-it/dist/browser/markdown-it.umd.min.js', 'extension/node_modules/markdown-it/LICENSE',
+    'extension/node_modules/@vscode/codicons/dist/codicon.css', 'extension/node_modules/@vscode/codicons/dist/codicon.ttf',
+    'extension/node_modules/@vscode/codicons/LICENSE', 'extension/node_modules/@vscode/codicons/LICENSE-CODE',
     'extension/opencode-plugin/agent-work-plan/index.js', 'extension/opencode-plugin/agent-work-plan/hooks/plan_agent.py',
     'extension/opencode-plugin/agent-work-plan/hooks/plan_common.py', 'extension/opencode-plugin/agent-work-plan/hooks/inject-work-plan.py',
     'extension/opencode-plugin/agent-work-plan/hooks/nudge-work-plan.py', 'extension/opencode-plugin/agent-work-plan/hooks/plan-row.py',
@@ -32,6 +34,9 @@ test('build/pack-vsix.js packs the extension, its run-time packages and nothing 
     'extension/src/shared/python-runtime.js', 'extension/src/shared/token-mode.js', 'extension/src/workplan/index.js']) {
     assert.ok(list.includes(f), `has ${f}`);
   }
+  /* Only the font, its style sheet, the two licences and package.json of the icon package. */
+  assert.deepStrictEqual(list.filter((f) => f.startsWith('extension/node_modules/@vscode/codicons/') && !f.endsWith('/')).sort(), ['LICENSE', 'LICENSE-CODE', 'dist/codicon.css', 'dist/codicon.ttf', 'package.json']
+    .map((f) => `extension/node_modules/@vscode/codicons/${f}`).sort());
   const bad = list.filter((f) => /^extension\/(test|build|docs)\/|\.git\/|CLAUDE\.md|TASKSPEC|\.vsix$|__pycache__|\.pyc$|launcher\.json$|bedrock-token-generator|\/dist-es\/|\/dist-types\/|node_modules\/(argparse|linkify-it|mdurl)\/|opencode$/.test(f));
   assert.deepStrictEqual(bad, []);
   const pkg = JSON.parse(cp.spawnSync('unzip', ['-p', out, 'extension/package.json'], { encoding: 'utf8' }).stdout);
@@ -79,4 +84,9 @@ test('ThirdPartyNotices.txt names every image with the OpenCode mark and carries
   /* The mark's own outline is in the extension icon as OpenCode draws it. */
   assert.ok(fs.readFileSync(path.join(ROOT, 'images', 'icon.svg'), 'utf8').includes('M384 416H128V96H384V416ZM320 160H192V352H320V160Z'));
   assert.ok(require('../../build/pack-vsix').OWN.includes('ThirdPartyNotices.txt'), 'packed');
+  /* The chat page's icons. */
+  const codicons = JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules', '@vscode', 'codicons', 'package.json'), 'utf8'));
+  assert.ok(text.includes(`Codicons ${codicons.version}`), 'names the Codicons version packed');
+  assert.match(text, /Creative Commons Attribution 4\.0 International/);
+  assert.strictEqual(pkg.dependencies['@vscode/codicons'], codicons.version);
 });

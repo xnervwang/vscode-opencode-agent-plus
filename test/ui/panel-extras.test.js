@@ -261,8 +261,8 @@ test('media/composer.js without a page: Esc, the chimes, the ring\'s outline, im
   assert.equal(C.imageKind('https://example.com/a.png', true), 'link', 'the web is never fetched');
   assert.equal(C.imageKind('chart.png', true), 'link', 'a relative path names no folder');
   assert.equal(C.backgroundSummary([]), '');
-  assert.equal(C.backgroundSummary([{ kind: 'subagent' }]), 'Background: 1 subagent running');
-  assert.equal(C.backgroundSummary([{ kind: 'subagent' }, { kind: 'shell' }, { kind: 'shell' }]), 'Background: 1 subagent, 2 commands running');
+  assert.equal(C.backgroundSummary([{ kind: 'subagent' }]), '1 subagent running');
+  assert.equal(C.backgroundSummary([{ kind: 'subagent' }, { kind: 'shell' }, { kind: 'shell' }]), '1 subagent, 2 commands running');
 });
 
 test("the page loads Agent Plus's kit for the chimes before its own script, and the kit has the tones and chime() the page uses", () => {
