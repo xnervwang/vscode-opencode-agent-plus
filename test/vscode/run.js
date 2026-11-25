@@ -5,7 +5,8 @@
 'use strict';
 /*
  * node test/vscode/run.js --local --vscode <executable> --out <dir> [--agent-plus <.vsix>] [--backend fake|opencode]
- *   [--opencode <executable>] [--model <provider/model>] [--deps <folder with node_modules>] [--fonts <fonts.conf>]
+ *   [--opencode <executable>] [--model <provider/model>] [--aws-profile <name>] [--aws-region <region>]
+ *   [--deps <folder with node_modules>] [--fonts <fonts.conf>]
  *   [--vsix <.vsix>] [--restricted | --download | --steward | --title-order [--claude-code <id or .vsix>] [--codex <id or .vsix>]]
  * CI=true node test/vscode/run.js --out <dir> --agent-plus <.vsix> [--vsix <.vsix>] [--cache <folder>] [--restricted]
  *
@@ -13,7 +14,7 @@
  * profile of its own, starts that VS Code (under xvfb-run on Linux) and goes through the steps below, saving a
  * screenshot of each to <out>/shots with a look.json that test/vscode/LOOK.md explains. `fake` (the default) puts
  * test/vscode/fake-backend.js behind the chat; `opencode` uses the real backend with the OpenCode at --opencode and
- * the user's AWS profile `self`, for a run against a real model.
+ * the AWS profile given with --aws-profile (AWS_PROFILE when it is left out), for a run against a real model.
  * With OpenCode 2 the page's mode and effort pickers are switched and the next turns checked against what OpenCode
  * recorded, a subagent's session stays out of the list and the turn OpenCode starts after the subagent finishes shows in
  * the page, the model adds a row to the work plan with the plugin's tool and Agent Plus's Work plan view shows it,
@@ -87,6 +88,7 @@ const DOWNLOAD = has('--download');
 const BACKEND = DOWNLOAD ? 'opencode' : flag('--backend', 'fake');
 const OPENCODE = flag('--opencode');
 const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-bedrock/us.xai.grok-4.7');
+const AWS = { profile: flag('--aws-profile', process.env.AWS_PROFILE || ''), region: flag('--aws-region', process.env.AWS_REGION || 'us-east-1') };
 const DEPS = flag('--deps');
 const FONTS = flag('--fonts');
 const RESTRICTED = has('--restricted');
@@ -207,6 +209,7 @@ async function main() {
   if (EXE && !fs.existsSync(EXE)) throw new Error(`no VS Code at ${EXE}`);
   if (VSIX && !fs.existsSync(VSIX)) throw new Error(`no .vsix at ${VSIX}`);
   if (DOWNLOAD && (OPENCODE || RESTRICTED)) throw new Error('--download finds no OpenCode: it takes neither --opencode nor --restricted');
+  if (BACKEND !== 'fake' && !DOWNLOAD && !AWS.profile) throw new Error('--backend opencode needs the AWS profile to sign in with: pass --aws-profile <name> or set AWS_PROFILE');
   if (TITLE_ORDER && (DOWNLOAD || RESTRICTED || STEWARD_RUN || BACKEND !== 'fake')) throw new Error('--title-order runs on the fake backend alone');
   if (STEWARD_RUN && (DOWNLOAD || RESTRICTED || BACKEND === 'fake')) throw new Error('--steward needs --backend opencode, and neither --download nor --restricted');
   if (!AGENT_PLUS || !fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix${AGENT_PLUS ? ` at ${AGENT_PLUS}` : ' beside this repository'}; pass --agent-plus <.vsix>`);
@@ -239,9 +242,9 @@ async function main() {
   }
 
   /*
-   * The real backend signs in with the AWS profile `self` given through the extension's own settings, so that run keeps
-   * the real home (the profile's credential_process reads it); OpenCode's data, config, state and cache folders all go
-   * under <out>/xdg, away from the user's own OpenCode. The fake one gets a home of its own.
+   * The real backend signs in with the AWS profile of --aws-profile, given through the extension's own settings, so that
+   * run keeps the real home (the profile's credential_process reads it); OpenCode's data, config, state and cache
+   * folders all go under <out>/xdg, away from the user's own OpenCode. The fake one gets a home of its own.
    */
   const real = BACKEND !== 'fake';
   if (real) emptyGitRepo(p.folder);
@@ -282,7 +285,7 @@ async function main() {
   }
   console.log(code(['--list-extensions', '--show-versions', `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`], env).out);
   writeSettings(p.user, { 'opencodeAgentPlus.model': MODEL, ...(OPENCODE ? { 'opencodeAgentPlus.opencode.path': OPENCODE } : {}),
-    ...(real ? { 'opencodeAgentPlus.bedrock.profile': 'self', 'opencodeAgentPlus.bedrock.region': 'us-east-1' } : {}), ...(RESTRICTED ? restricted.TRUST_SETTINGS : {}) });
+    ...(real ? { 'opencodeAgentPlus.bedrock.profile': AWS.profile, 'opencodeAgentPlus.bedrock.region': AWS.region } : {}), ...(RESTRICTED ? restricted.TRUST_SETTINGS : {}) });
 
   const steps = [];
   let failed = 0, passed = 0;
@@ -527,7 +530,7 @@ async function main() {
       await w.hostUp();
       await until(() => ext('return !!(api && api.test);'), 60000);
       await restricted.run({ page, call, ext, check, shot, until, sleep, frameWith, control: p.control, home: p.agentHome, real, opencode: OPENCODE, prepared,
-        windowPid: w.proc.pid });
+        windowPid: w.proc.pid, aws: AWS });
     } catch (e) {
       check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
       try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }

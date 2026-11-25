@@ -150,7 +150,7 @@ async function run(t) {
   // R5. The settings the extension reads ignore the folder's values.
   const seen = await call(`const c = vscode.workspace.getConfiguration("opencodeAgentPlus");
     return arg.map((k) => { const i = c.inspect(k) || {}; return { key: k, get: c.get(k), globalValue: i.globalValue, workspaceValue: i.workspaceValue, workspaceFolderValue: i.workspaceFolderValue }; });`, KEYS);
-  const want = { 'opencode.path': userPath, 'opencode.askPermissions': true, 'bedrock.profile': real ? 'self' : '', 'bedrock.region': real ? 'us-east-1' : '',
+  const want = { 'opencode.path': userPath, 'opencode.askPermissions': true, 'bedrock.profile': real ? t.aws.profile : '', 'bedrock.region': real ? t.aws.region : '',
     'opencode.environment': {} };
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   console.log(`  note  settings as VS Code gives them to the extension in Restricted Mode: ${JSON.stringify(seen)}`);
@@ -256,7 +256,7 @@ async function run(t) {
     check(!!info && info.path === userPath && !!acp && realPath(acp.argv[0]) === realPath(userPath) && acp.argv.includes('acp'),
       "the OpenCode running is the one in the user settings, started as `opencode acp`", { info: info && { path: info.path, pid: info.pid }, acp });
     if (after.some((x) => !x.env)) console.log(`  note  ${process.platform} does not show another process's environment: the AWS profile and Region of these processes are not checked`);
-    check(after.length > 0 && after.every((x) => realPath(x.argv[0]) === realPath(userPath) && (!x.env || (x.env.AWS_PROFILE === 'self' && x.env.AWS_REGION === 'us-east-1'))),
+    check(after.length > 0 && after.every((x) => realPath(x.argv[0]) === realPath(userPath) && (!x.env || (x.env.AWS_PROFILE === t.aws.profile && x.env.AWS_REGION === t.aws.region))),
       "every OpenCode process of this run is the user's, with the user's AWS profile and Region", after);
   } else {
     check(after.length === 0, 'with the fake backend no OpenCode process runs', after);
