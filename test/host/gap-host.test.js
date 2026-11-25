@@ -259,8 +259,8 @@ test('package.json: the commands, menus, keys and settings of the message box an
   for (const id of ['focusInput', 'blurInput', 'insertAtMention', 'addToConversation', 'fixWithOpenCode']) assert.ok(cmd(`opencodeAgentPlus.${id}`), id);
   const keys = (id) => c.keybindings.filter((k) => k.command === id);
   /* As the Claude Code extension's: Cmd on macOS, Ctrl elsewhere; Alt+K on all. */
-  assert.deepEqual(keys('opencodeAgentPlus.focusInput').map((k) => [k.key, k.mac]), [['ctrl+escape', 'cmd+escape']]);
-  assert.deepEqual(keys('opencodeAgentPlus.blurInput').map((k) => [k.key, k.mac]), [['ctrl+escape', 'cmd+escape']]);
+  assert.deepEqual(keys('opencodeAgentPlus.focusInput').map((k) => [k.key, k.mac]), [['cmd+escape', 'cmd+escape']]);
+  assert.deepEqual(keys('opencodeAgentPlus.blurInput').map((k) => [k.key, k.mac]), [['cmd+escape', 'cmd+escape']]);
   assert.deepEqual(keys('opencodeAgentPlus.insertAtMention').map((k) => [k.key, k.mac]), [['alt+k', 'alt+k']]);
   assert.match(keys('opencodeAgentPlus.focusInput')[0].when, /editorTextFocus && !opencodeAgentPlus\.otherChatLast/);
   assert.match(keys('opencodeAgentPlus.blurInput')[0].when, /^isWorkspaceTrusted && activeCustomEditorId == 'opencodeAgentPlus\.chat' && !editorTextFocus/);

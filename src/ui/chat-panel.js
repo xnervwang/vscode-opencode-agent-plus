@@ -707,7 +707,9 @@ ${hl}<script src="${media('kit.js')}"></script>
            button. What the editor offers on its own does not make one. */
         const attached = (extra.images && extra.images.length) || (Array.isArray(msg.selections) && msg.selections.length);
         if (!text.trim() && !attached) break;
-        if (this.state.status !== 'idle') this.dispatch({ type: 'ui.queued', text });
+        if (this.state.status !== 'idle') {
+          this.dispatch({ type: 'ui.queued', text, images: (extra.images || []).length, selections: Array.isArray(msg.selections) ? msg.selections.length : 0 });
+        }
         Promise.resolve().then(() => (this.beforeSend ? this.beforeSend() : undefined)).catch(() => {})
           .then(() => (Object.keys(extra).length ? this.conversation.send(text, extra) : this.conversation.send(text))).catch((err) => this.showError(err));
         break;

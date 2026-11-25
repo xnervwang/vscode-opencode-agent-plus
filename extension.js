@@ -90,7 +90,7 @@ const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
 const CONTEXT_RENAME = `${brand.prefix}.canRename`;
 const ZONE_KEY = `${brand.prefix}.timeZone`;
 const CONTEXT_FORK = `${brand.prefix}.canFork`;
-/* True while the Claude Code panel was in front after this extension's chat tab, so that Ctrl+Esc and Alt+K in an
+/* True while the Claude Code panel was in front after this extension's chat tab, so that Cmd+Esc and Alt+K in an
    editor go to that panel and not here (package.json keybindings). */
 const CONTEXT_OTHER_CHAT = `${brand.prefix}.otherChatLast`;
 const OTHER_CHAT = /claudeVSCodePanel/;

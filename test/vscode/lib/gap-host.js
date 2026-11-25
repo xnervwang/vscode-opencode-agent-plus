@@ -8,15 +8,15 @@
  * terminal (a stand-in program records what it was given) and the models are listed again once it closes; Ctrl+Enter
  * sends when the setting asks for it; the mode pill's Edit automatically lets an edit through without a request and is
  * kept when the tab is reopened; Fork from here (OpenCode 2) opens the history before a message in a new tab; the file
- * open in the editor and the selection go along with a message unless removed (where the page takes files); Ctrl+Esc
+ * open in the editor and the selection go along with a message unless removed (where the page takes files); Cmd+Esc
  * moves between an editor and the message box, Alt+K and Add to Conversation (the editor's and the Explorer's menus) put
  * @ references in it; Fix with OpenCode Agent Plus in the quick fixes of a JSON error drafts a message after what the box
  * holds; on Linux a process carrying the conversation's OPENCODE_SESSION_ID shows as detached on the background pill;
  * a message of an image alone goes (where the page takes images); on OpenCode 2 the effort chosen comes back after a
  * model without it, and stays when OpenCode starts again, in the page and in what OpenCode records; and with no chat tab
- * open, Ctrl+Esc starts a conversation.
+ * open, Cmd+Esc starts a conversation.
  *
- * Keys are pressed on Linux and macOS; on Windows, where Ctrl+Esc belongs to the system, the commands are run instead.
+ * Keys are pressed on Linux and macOS; on Windows, where the Windows key belongs to the system, the commands are run instead.
  */
 const fs = require('fs');
 const path = require('path');
@@ -256,7 +256,7 @@ async function run(ctx) {
     note('this backend takes no files with a message, so the open file and the selection are not offered (the steps that send them run against a real OpenCode)');
   }
 
-  // 11f. Ctrl+Esc from an editor to the message box and back; Alt+K puts the file and selection in as an @ reference.
+  // 11f. Cmd+Esc from an editor to the message box and back; Alt+K puts the file and selection in as an @ reference.
   const notes = path.join(folder, 'notes.txt');
   await clearBox(f);
   await openFile(notes, { beside: true, keep: false, sel: [0, 0, 0, 5] });
@@ -265,7 +265,7 @@ async function run(ctx) {
     else await page.keyboard.press(key);
   };
   await sleep(500);
-  await press(`${MOD}+Escape`, 'opencodeAgentPlus.focusInput');
+  await press('Meta+Escape', 'opencodeAgentPlus.focusInput');
   /* The chat page whose message box has the focus, among all those on screen. */
   const focusedBox = async () => {
     for (const fr of page.frames()) {
@@ -274,11 +274,11 @@ async function run(ctx) {
     return null;
   };
   const focused = await until(async () => ((await activeChat()) ? focusedBox() : null), 15000);
-  check(!!focused, `${WINDOWS ? 'Focus the Message Box' : `${MOD}+Esc in the editor`} moves to the message box of the chat tab in front`);
-  await press(`${MOD}+Escape`, 'opencodeAgentPlus.blurInput');
+  check(!!focused, `${WINDOWS ? 'Focus the Message Box' : 'Meta+Esc in the editor'} moves to the message box of the chat tab in front`);
+  await press('Meta+Escape', 'opencodeAgentPlus.blurInput');
   const inFront = () => call('const e = vscode.window.activeTextEditor; const t = vscode.window.tabGroups.activeTabGroup.activeTab; return { editor: e ? e.document.uri.fsPath : "", tab: t ? t.label : "", text: !!t && t.input instanceof vscode.TabInputText };');
   const backInEditor = await until(async () => { const a = await inFront(); return a.text && a.editor === notes ? a : null; }, 15000);
-  check(!!backInEditor, `${WINDOWS ? 'Back to the Editor' : `${MOD}+Esc again`} goes back to the editor`, backInEditor || await inFront());
+  check(!!backInEditor, `${WINDOWS ? 'Back to the Editor' : 'Meta+Esc again'} goes back to the editor`, backInEditor || await inFront());
   await openFile(notes, { beside: false, keep: false, sel: [0, 0, 0, 5] });
   await sleep(400);
   await press('Alt+k', 'opencodeAgentPlus.insertAtMention');
@@ -450,13 +450,13 @@ async function run(ctx) {
     note('this backend takes no images, so the image-only message is not sent here');
   }
 
-  // 11j. With no chat tab open, Ctrl+Esc in an editor starts a conversation and focuses its box.
+  // 11j. With no chat tab open, Cmd+Esc in an editor starts a conversation and focuses its box.
   await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat");
     await vscode.window.tabGroups.close(tabs); return true;`);
   await until(async () => ((await chatUris()).length === 0 ? true : null), 15000);
   await openFile(notes, { beside: false, keep: false });
   await sleep(500);
-  await press(`${MOD}+Escape`, 'opencodeAgentPlus.focusInput');
+  await press('Meta+Escape', 'opencodeAgentPlus.focusInput');
   const started = await until(async () => ((await chatUris()).length === 1 && await focusedBox() ? true : null), 30000);
   check(!!started, 'with no chat tab open, it starts a conversation and focuses its message box');
   void ID;

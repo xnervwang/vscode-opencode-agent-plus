@@ -385,3 +385,17 @@ test('a reported window does not replace the one the model list gave', () => {
   assert.equal(vm.head(s).contextWindow, 200000);
   assert.equal(s.items[s.items.length - 1].contextPct, 20, 'the turn uses what the agent reported for it');
 });
+
+test('a message of images or selections alone shows as queued, and leaves the queue when it arrives', () => {
+  let s = run([
+    { type: 'turnStart', turnId: 't1', at: T0 },
+    { type: 'userMessage', text: 'first', at: T0 },
+  ]);
+  s = vm.reduce(s, { type: 'ui.queued', text: '', images: 2 }, T0 + 5000);
+  s = vm.reduce(s, { type: 'ui.queued', text: '  ' }, T0 + 5100);
+  assert.deepEqual(vm.head(s).queued.map((q) => [q.text, q.images, q.selections]), [['', 2, undefined]]);
+  s = vm.reduce(s, { type: 'turnEnd', turnId: 't1', reason: 'endTurn', at: T0 + 6000 }, T0 + 6000);
+  s = vm.reduce(s, { type: 'turnStart', turnId: 't2', at: T0 + 6001 }, T0 + 6001);
+  s = vm.reduce(s, { type: 'userMessage', text: '', at: T0 + 6001 }, T0 + 6001);
+  assert.deepEqual(vm.head(s).queued, []);
+});

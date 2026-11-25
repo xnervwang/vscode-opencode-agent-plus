@@ -259,3 +259,25 @@ test('without text a message goes when it has images or a selection added with i
   assert.deepEqual(conv.sent[1][1].files.map((f) => f.name), ['a.js']);
   chat.dispose();
 });
+
+test('a queued message without text says what went with it', () => {
+  assert.equal(C.queuedText({ text: 'next one', images: 1 }), 'next one');
+  assert.equal(C.queuedText({ text: '', images: 1 }), '1 image');
+  assert.equal(C.queuedText({ text: ' ', images: 2, selections: 1 }), '2 images and 1 selection');
+  assert.equal(C.queuedText({ text: '', selections: 3 }), '3 selections');
+});
+
+test('a message sent without text while a turn runs is queued with what went with it', () => {
+  const sent = [];
+  const conversation = { state: () => ({ status: 'working' }), send: async (text, extra) => { sent.push([text, extra]); }, on() { return { dispose() {} }; } };
+  const p = Object.create(ChatPanel.prototype);
+  p.disposed = false;
+  p.state = { status: 'working' };
+  p.conversation = conversation;
+  const dispatched = [];
+  p.dispatch = (ev) => dispatched.push(ev);
+  p.extraOf = () => ({ images: [{ mediaType: 'image/png', data: 'AAAA', name: 'a.png' }] });
+  p.showError = () => {};
+  p.onMessage({ type: 'send', text: '', images: [{ mediaType: 'image/png', data: 'AAAA' }] });
+  assert.deepEqual(dispatched, [{ type: 'ui.queued', text: '', images: 1, selections: 0 }]);
+});

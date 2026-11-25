@@ -13,7 +13,8 @@
  *
  * The reducer also takes two actions of the panel:
  *   { type: 'ui.model', model }   the model now in use (ModelInfo, or { id, contextWindow } when not in the list)
- *   { type: 'ui.queued', text }   a message sent while a turn runs; it leaves the queue when its userMessage arrives
+ *   { type: 'ui.queued', text, images?, selections? }   a message sent while a turn runs (the counts say what went with
+ *                     one without text); it leaves the queue when its userMessage arrives
  *
  * A subagent's progress is drawn on the tool card of the call that started it (`child` of that item), or on a card
  * of its own (kind 'subagent') when no such call is known. Only its last CHILD_ENTRIES steps are kept. A question
@@ -844,9 +845,14 @@ function reduce(s, ev, now) {
 
     case 'ui.queued': {
       const text = String(ev.text || '');
-      if (!text.trim()) return s;
+      const images = Math.max(0, Math.floor(Number(ev.images) || 0));
+      const selections = Math.max(0, Math.floor(Number(ev.selections) || 0));
+      if (!text.trim() && !images && !selections) return s;
       const qseq = s.qseq + 1;
-      return { ...s, qseq, queued: [...s.queued, { id: `q${qseq}`, text, at }] };
+      const q = { id: `q${qseq}`, text, at };
+      if (images) q.images = images;
+      if (selections) q.selections = selections;
+      return { ...s, qseq, queued: [...s.queued, q] };
     }
 
     default:

@@ -570,13 +570,13 @@
       },
       {
         "command": "opencodeAgentPlus.focusInput",
-        "key": "ctrl+escape",
+        "key": "cmd+escape",
         "mac": "cmd+escape",
         "when": "isWorkspaceTrusted && editorTextFocus && !opencodeAgentPlus.otherChatLast"
       },
       {
         "command": "opencodeAgentPlus.blurInput",
-        "key": "ctrl+escape",
+        "key": "cmd+escape",
         "mac": "cmd+escape",
         "when": "isWorkspaceTrusted && activeCustomEditorId == 'opencodeAgentPlus.chat' && !editorTextFocus && !sideBarFocus && !panelFocus && !auxiliaryBarFocus"
       },

@@ -943,7 +943,7 @@ async function main() {
           check(lowShown && / low$/.test(fig) && !!inLow && inLow.agent === 'build' && !!inLow.model && inLow.model.variant === 'low',
             'with Build and effort Low picked, the next turn runs with both, and its figures name the effort', { fig, agent: inLow && inLow.agent, model: inLow && inLow.model });
           await shot('04e-effort-low', { features: ['effort in reply figures'],
-            expect: 'The Plan turn says the file could not be written; then "Reply with only the word four." and the reply "four", whose figures after its time end with the model name followed by "low"; under the message box the effort shows Low and the mode Build.',
+            expect: 'The Plan turn says the file could not be written; then "Reply with only the word four." and the reply "four", whose figures after its time end with the model name followed by "low"; under the message box the effort shows Low and the mode Ask before edits.',
             part: '#workbench\\.parts\\.editor' });
 
           // 3f. A subagent: its session stays out of the list, and the turn OpenCode starts when it finishes shows here.

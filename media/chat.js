@@ -1284,8 +1284,9 @@
 
     queuedEl.replaceChildren(...(h.queued || []).map((q) => {
       const row = el('div', 'chip');
-      const text = el('span', 'chip-text', q.text);
-      text.title = q.text;
+      const words = C.queuedText(q);
+      const text = el('span', 'chip-text', words);
+      text.title = words;
       row.append(el('span', 'chip-label', 'Queued'), text);
       return row;
     }));

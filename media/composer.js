@@ -253,6 +253,14 @@
     return '';
   }
 
+  /* The words on a queued message's row: its text, or for one without text what went with it. */
+  function queuedText(q) {
+    const text = String((q && q.text) || '').trim();
+    if (text) return text;
+    const n = (k, one) => { const c = Math.max(0, Math.floor(Number(q && q[k]) || 0)); return c ? `${c} ${one}${c === 1 ? '' : 's'}` : ''; };
+    return [n('images', 'image'), n('selections', 'selection')].filter(Boolean).join(' and ');
+  }
+
   /* Whether the models listed are only OpenCode's own free ones (opencode/…), as before any provider is connected. */
   function onlyFreeModels(list) {
     const l = Array.isArray(list) ? list.filter((m) => m && typeof m.id === 'string') : [];
@@ -260,5 +268,5 @@
   }
 
   return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl, escapeAction, chimeKind, ringLow, imageKind, driveSlashes, backgroundSummary,
-    outlineRows, subagentShare, onlyFreeModels, hasToken, insertRefs, appendDraft, enterAction, permissionModes, contextPill, autoContext, ASK, AUTO };
+    outlineRows, subagentShare, onlyFreeModels, queuedText, hasToken, insertRefs, appendDraft, enterAction, permissionModes, contextPill, autoContext, ASK, AUTO };
 }));
