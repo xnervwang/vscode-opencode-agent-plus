@@ -280,9 +280,18 @@ async function run(ctx) {
   };
   const focused = await until(async () => ((await activeChat()) ? focusedBox() : null), 15000);
   check(!!focused, `${WINDOWS ? 'Focus the Message Box' : 'Meta+Esc in the editor'} moves to the message box of the chat tab in front`);
-  await press('Meta+Escape', 'opencodeAgentPlus.blurInput');
   const inFront = () => call('const e = vscode.window.activeTextEditor; const t = vscode.window.tabGroups.activeTabGroup.activeTab; return { editor: e ? e.document.uri.fsPath : "", tab: t ? t.label : "", text: !!t && t.input instanceof vscode.TabInputText };');
-  const backInEditor = await until(async () => { const a = await inFront(); return a.text && a.editor && path.relative(a.editor, notes) === '' ? a : null; }, 15000);
+  const isBack = async () => { const a = await inFront(); return a.text && a.editor && path.relative(a.editor, notes) === '' ? a : null; };
+  /* VS Code takes a moment to note that the text editor lost the focus; pressed before it has, the key focuses the box
+     again. A person does not press twice that fast, so the key is pressed once more if the first did not take. */
+  await sleep(400);
+  await press('Meta+Escape', 'opencodeAgentPlus.blurInput');
+  let backInEditor = await until(isBack, 5000);
+  if (!backInEditor) {
+    note('the first key press to go back came before VS Code noted the box had the focus; pressed again');
+    await press('Meta+Escape', 'opencodeAgentPlus.blurInput');
+    backInEditor = await until(isBack, 15000);
+  }
   check(!!backInEditor, `${WINDOWS ? 'Back to the Editor' : 'Meta+Esc again'} goes back to the editor`, backInEditor || await inFront());
   await openFile(notes, { beside: false, keep: false, sel: [0, 0, 0, 5] });
   await sleep(400);
