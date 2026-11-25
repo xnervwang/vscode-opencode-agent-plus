@@ -34,6 +34,7 @@ function setup(opts = {}) {
     },
     model: MODELS[0],
     history: opts.history,
+    beforeSend: opts.beforeSend,
   });
   return { vscode, panel, conversation, chat, responses };
 }
@@ -183,6 +184,24 @@ test('a hidden tab gets nothing until it shows, then what changed; a page that l
   await settle();
   const reset = panel.posted.find((m) => m.type === 'reset');
   assert.deepEqual(reset.items.map((i) => i.kind), ['user', 'text', 'figures']);
+  chat.dispose();
+});
+
+test('beforeSend runs before the message goes, and a failure in it does not stop the message', async () => {
+  const order = [];
+  let fail = false;
+  const { panel, conversation, chat } = setup({ turns: [[{ type: 'text', delta: 'one' }], [{ type: 'text', delta: 'two' }]],
+    beforeSend: async () => { order.push('saved'); if (fail) throw new Error('read-only'); } });
+  const send = conversation.send.bind(conversation);
+  conversation.send = (...a) => { order.push('sent'); return send(...a); };
+  panel.fromPage({ type: 'send', text: 'first' });
+  await conversation.idle();
+  await settle();
+  fail = true;
+  panel.fromPage({ type: 'send', text: 'second' });
+  await conversation.idle();
+  await settle();
+  assert.deepStrictEqual(order, ['saved', 'sent', 'saved', 'sent']);
   chat.dispose();
 });
 

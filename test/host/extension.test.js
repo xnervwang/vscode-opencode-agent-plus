@@ -46,6 +46,10 @@ test('activate registers, and starts nothing', async () => {
   assert.strictEqual(control.state.context['opencodeAgentPlus.agentPlus'], false);
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   for (const c of pkg.contributes.commands) assert.ok(control.state.registered.includes(c.command), `${c.command} in package.json is registered`);
+  for (const k of pkg.contributes.keybindings) {
+    assert.ok(pkg.contributes.commands.some((c) => c.command === k.command), `${k.command} of a keybinding is a command`);
+    assert.match(k.when, /activeCustomEditorId == 'opencodeAgentPlus\.chat'/, 'a keybinding works only in a chat tab, so it does not take the official Claude Code panel\'s keys');
+  }
   const home = process.env.OPENCODE_AGENT_PLUS_HOME;
   assert.ok(fs.existsSync(path.join(home, 'opencode-plugin', 'agent-work-plan', 'index.js')));
   assert.ok(fs.existsSync(path.join(home, 'opencode-plugin', 'agent-work-plan', 'hooks', 'plan_agent.py')));
@@ -73,8 +77,18 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   await provider.resolveCustomEditor(provider.openCustomDocument(uri), panel);
   assert.match(panel.webview.html, /media\/chat\.js/, 'the chat page is in the tab');
   assert.match(panel.webview.html, /Content-Security-Policy/);
-  const ext = extension;
-  void ext;
+  const settle = () => new Promise((r) => setTimeout(r, 30));
+  const saves = control.state.saves;
+  panel.fromPage({ type: 'send', text: 'Say: saved first' });
+  await settle();
+  assert.strictEqual(control.state.saves, saves + 1, 'edited files are saved before a message goes');
+  control.state.config['opencodeAgentPlus.autosave'] = false;
+  panel.fromPage({ type: 'send', text: 'Say: not saved' });
+  await settle();
+  assert.strictEqual(control.state.saves, saves + 1, 'with autosave off nothing is saved');
+  delete control.state.config['opencodeAgentPlus.autosave'];
+  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.showLogs'](), true);
+  assert.strictEqual(control.state.shownChannel, 'OpenCode Agent Plus', 'Show Logs opens the extension\'s output channel');
   const tree = control.state.trees['opencodeAgentPlus.sessions'].opts.treeDataProvider;
   const rows = await tree.getChildren();
   assert.strictEqual(rows.length, 1);

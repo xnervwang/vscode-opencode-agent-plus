@@ -28,6 +28,18 @@ test('empty settings add nothing; set ones become the environment OpenCode start
   assert.deepStrictEqual(s.restarts, [], 'reading the key at activation is no change');
 });
 
+test('opencode.environment adds variables under the Bedrock ones; a bad name or value is left out and logged once', async () => {
+  const s = setup({ 'opencodeAgentPlus.opencode.environment': { OPENAI_BASE_URL: 'https://x', AWS_PROFILE: 'other', 'bad name': 'v', N: 3 },
+    'opencodeAgentPlus.bedrock.profile': 'self' });
+  await s.cfg.ready;
+  assert.deepStrictEqual(s.cfg.options().env, { OPENAI_BASE_URL: 'https://x', AWS_PROFILE: 'self' });
+  s.cfg.options();
+  assert.deepStrictEqual(s.lines.filter((l) => /left out/.test(l)), ['opencode.environment: left out bad name, N (a name of letters, digits and _ with a string value is needed)']);
+  const off = setup({ 'opencodeAgentPlus.opencode.environment': ['A=1'] });
+  await off.cfg.ready;
+  assert.deepStrictEqual(off.cfg.options().env, {}, 'a list is not an object of variables');
+});
+
 test('a change of setting or key starts OpenCode again, once per real change, and the key is never logged', async () => {
   const s = setup();
   await s.cfg.ready;
@@ -42,8 +54,12 @@ test('a change of setting or key starts OpenCode again, once per real change, an
   s.control.setConfig('opencodeAgentPlus.opencode.askPermissions', false);
   await new Promise((r) => setImmediate(r));
   assert.strictEqual(s.restarts.at(-1).permissions, false);
-  assert.strictEqual(s.restarts.length, 3);
+  s.control.setConfig('opencodeAgentPlus.opencode.environment', { EXTRA_TOKEN: 'extra-value' });
+  await new Promise((r) => setImmediate(r));
+  assert.strictEqual(s.restarts.at(-1).env.EXTRA_TOKEN, 'extra-value');
+  assert.strictEqual(s.restarts.length, 4);
   assert.ok(!s.lines.join('\n').includes('secret-value'));
+  assert.ok(!s.lines.join('\n').includes('extra-value'), 'the log names variables, not their values');
 });
 
 test('setting and clearing the API key', async () => {

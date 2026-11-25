@@ -17,7 +17,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const TEXT = 'OpenCode Agent Plus does nothing in Restricted Mode. It starts when you trust this workspace.';
-const KEYS = ['opencode.path', 'opencode.askPermissions', 'bedrock.profile', 'bedrock.region'];
+const KEYS = ['opencode.path', 'opencode.askPermissions', 'bedrock.profile', 'bedrock.region', 'opencode.environment'];
 const PROBE = 'ses_restrictedprobe000000001';
 
 /* Writes the folder's own settings and the program they name; returns the marker file, the program and those settings. */
@@ -30,7 +30,8 @@ function prepareFolder(folder, root) {
   fs.writeFileSync(program, windows ? `@echo %~f0 %*>> "${marker}"\r\n@exit /b 1\r\n`
     : `#!/bin/sh\necho "$$ $0 $*" >> ${JSON.stringify(marker)}\nexit 1\n`, { mode: 0o755 });
   const workspace = { 'opencodeAgentPlus.opencode.path': program, 'opencodeAgentPlus.opencode.askPermissions': false,
-    'opencodeAgentPlus.bedrock.profile': 'workspace-profile', 'opencodeAgentPlus.bedrock.region': 'eu-west-3' };
+    'opencodeAgentPlus.bedrock.profile': 'workspace-profile', 'opencodeAgentPlus.bedrock.region': 'eu-west-3',
+    'opencodeAgentPlus.opencode.environment': { SET_BY_THE_FOLDER: 'yes' } };
   fs.mkdirSync(path.join(folder, '.vscode'), { recursive: true });
   fs.writeFileSync(path.join(folder, '.vscode', 'settings.json'), JSON.stringify(workspace, null, 2));
   return { marker, program, workspace };
@@ -149,10 +150,12 @@ async function run(t) {
   // R5. The settings the extension reads ignore the folder's values.
   const seen = await call(`const c = vscode.workspace.getConfiguration("opencodeAgentPlus");
     return arg.map((k) => { const i = c.inspect(k) || {}; return { key: k, get: c.get(k), globalValue: i.globalValue, workspaceValue: i.workspaceValue, workspaceFolderValue: i.workspaceFolderValue }; });`, KEYS);
-  const want = { 'opencode.path': userPath, 'opencode.askPermissions': true, 'bedrock.profile': real ? 'self' : '', 'bedrock.region': real ? 'us-east-1' : '' };
+  const want = { 'opencode.path': userPath, 'opencode.askPermissions': true, 'bedrock.profile': real ? 'self' : '', 'bedrock.region': real ? 'us-east-1' : '',
+    'opencode.environment': {} };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   console.log(`  note  settings as VS Code gives them to the extension in Restricted Mode: ${JSON.stringify(seen)}`);
-  check(Array.isArray(seen) && seen.every((s) => s.get === want[s.key] && s.get !== prepared.workspace[`opencodeAgentPlus.${s.key}`]),
-    "the four settings read as the user's values, not the folder's", seen);
+  check(Array.isArray(seen) && seen.every((s) => same(s.get, want[s.key]) && !same(s.get, prepared.workspace[`opencodeAgentPlus.${s.key}`])),
+    "the settings that pick what runs read as the user's values, not the folder's", seen);
 
   // R6. Nothing ran and nothing was written.
   await sleep(5000);
@@ -198,14 +201,15 @@ async function run(t) {
   check(!!started, 'OpenCode Agent Plus starts once trusted, in the same extension host (no reload)', { started, host });
   const settings = await ext('return api.test.settings();');
   const env = (settings && settings.env) || {};
-  check(!!settings && settings.binaryPath === userPath && settings.permissions === true && (env.AWS_PROFILE || '') === want['bedrock.profile'] && (env.AWS_REGION || '') === want['bedrock.region'],
+  check(!!settings && settings.binaryPath === userPath && settings.permissions === true && (env.AWS_PROFILE || '') === want['bedrock.profile'] && (env.AWS_REGION || '') === want['bedrock.region']
+    && !('SET_BY_THE_FOLDER' in env),
     "once trusted it still starts OpenCode with the user's settings, not the folder's", settings);
   /* Once the folder is trusted, restrictedConfigurations no longer applies; the machine scope still keeps its values out. */
   const seenTrusted = await call(`const c = vscode.workspace.getConfiguration("opencodeAgentPlus");
     return arg.map((k) => { const i = c.inspect(k) || {}; return { key: k, get: c.get(k), globalValue: i.globalValue, workspaceValue: i.workspaceValue, workspaceFolderValue: i.workspaceFolderValue }; });`, KEYS);
   console.log(`  note  settings as VS Code gives them to the extension once trusted: ${JSON.stringify(seenTrusted)}`);
-  check(Array.isArray(seenTrusted) && seenTrusted.every((x) => x.get === want[x.key] && x.workspaceValue === undefined && x.workspaceFolderValue === undefined),
-    "once trusted the four settings still read as the user's values: VS Code gives no workspace value for them", seenTrusted);
+  check(Array.isArray(seenTrusted) && seenTrusted.every((x) => same(x.get, want[x.key]) && x.workspaceValue === undefined && x.workspaceFolderValue === undefined),
+    "once trusted the settings that pick what runs still read as the user's values: VS Code gives no workspace value for them", seenTrusted);
   await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
   const listed = await until(async () => {
     const text = await textOf(sidebar);

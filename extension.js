@@ -102,14 +102,21 @@ function activate(context) {
   /* The window tests' handle; its other members come with start(). */
   const api = process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL ? { test: { restricted: () => !gate.started, waitingTabs: () => gate.waiting() } } : undefined;
   gate.whenTrusted(() => {
-    const test = start(context, log, gate);
+    const test = start(context, log, gate, channel);
     if (api && test) Object.assign(api.test, test);
   });
   return api;
 }
 
-function start(context, log, gate) {
+function start(context, log, gate, channel) {
   const subs = context.subscriptions;
+
+  /* Edited files are saved before a message goes and before a request is allowed (opencodeAgentPlus.autosave):
+     OpenCode reads and writes the files on disk, not what the editor holds. */
+  const saveEdited = () => {
+    if (vscode.workspace.getConfiguration(brand.prefix).get('autosave') === false) return Promise.resolve();
+    return Promise.resolve().then(() => vscode.workspace.saveAll(false)).catch((e) => log(`saving edited files failed: ${(e && e.message) || e}`));
+  };
 
   const folder = () => {
     const f = vscode.workspace.workspaceFolders;
@@ -295,7 +302,8 @@ function start(context, log, gate) {
       extensionUri: context.extensionUri,
       conversation: conv,
       listModels: () => models.list(),
-      respond: (requestId, decision) => conv.respond(requestId, decision),
+      respond: (requestId, decision) => (decision === 'deny' ? conv.respond(requestId, decision) : saveEdited().then(() => conv.respond(requestId, decision))),
+      beforeSend: saveEdited,
       history: conv.saved ? conv.saved.records : [],
       model: conv.model || infoOf(conv.modelName),
       modelInfo: (providerId, modelId) => models.cached(providerId ? `${providerId}/${modelId}` : modelId) || models.cached(modelId),
@@ -564,6 +572,7 @@ function start(context, log, gate) {
       return openSession(f.id);
     }),
     vscode.commands.registerCommand(`${brand.prefix}.showMcpServers`, () => showMcp()),
+    vscode.commands.registerCommand(`${brand.prefix}.showLogs`, () => { channel.show(true); return true; }),
     vscode.commands.registerCommand(`${brand.prefix}.findConversation`, () => findConversation({ vscode,
       list: () => backend.listSessions().finally(() => backend.listen()), open: (id) => openSession(id), openHere: (id) => manager.has(id) })),
     vscode.commands.registerCommand(`${brand.prefix}.clearRecentlyClosed`, () => { recent.clear(); return true; }),

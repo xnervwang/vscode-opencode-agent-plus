@@ -26,6 +26,7 @@
  *              widen (VS Code reloads a page whose options change)
  *   links      the conversations a reply may name (src/host/conversation-links.js), which the page turns into links
  *              ('conversations' { rev, list, self }); a click opens one
+ *   beforeSend runs before a message goes to the conversation, such as saving edited files; its failure does not stop it
  *
  * The plan bar's fragment brings its own style element, so the page's policy lets inline styles in. A diff opened from
  * a permission card gets Allow once, Allow in this project and Deny in its editor's title bar (see answerFromDiff);
@@ -169,6 +170,7 @@ class ChatPanel {
     this.sound = opts.sound && typeof opts.sound.on === 'function' ? opts.sound : null;
     this.loadImage = typeof opts.loadImage === 'function' ? opts.loadImage : null;
     this.links = opts.links && typeof opts.links.current === 'function' ? opts.links : null;
+    this.beforeSend = typeof opts.beforeSend === 'function' ? opts.beforeSend : null;
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
     if (opts.model) state = vm.reduce(state, { type: 'ui.model', model: opts.model });
@@ -469,7 +471,8 @@ ${md}
         if (!text.trim()) break;
         const extra = this.extraOf(msg);
         if (this.state.status !== 'idle') this.dispatch({ type: 'ui.queued', text });
-        Promise.resolve().then(() => (Object.keys(extra).length ? this.conversation.send(text, extra) : this.conversation.send(text))).catch((err) => this.showError(err));
+        Promise.resolve().then(() => (this.beforeSend ? this.beforeSend() : undefined)).catch(() => {})
+          .then(() => (Object.keys(extra).length ? this.conversation.send(text, extra) : this.conversation.send(text))).catch((err) => this.showError(err));
         break;
       }
       case 'question':

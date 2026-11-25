@@ -4,10 +4,11 @@
 
 'use strict';
 /*
- * The settings OpenCode starts with: opencodeAgentPlus.opencode.path and .askPermissions, and for Amazon Bedrock the settings
- * opencodeAgentPlus.bedrock.profile and .region plus an API key kept only in VS Code's secret storage. OpenCode gets these
- * three as AWS_PROFILE, AWS_REGION and AWS_BEARER_TOKEN_BEDROCK in its environment. An empty setting adds nothing, so
- * what the user set up in OpenCode or in the environment stays in force. A change restarts OpenCode (backend.restart).
+ * The settings OpenCode starts with: opencodeAgentPlus.opencode.path, .askPermissions and .environment, and for Amazon
+ * Bedrock the settings opencodeAgentPlus.bedrock.profile and .region plus an API key kept only in VS Code's secret
+ * storage. OpenCode gets these three as AWS_PROFILE, AWS_REGION and AWS_BEARER_TOKEN_BEDROCK in its environment, over the
+ * same names in .environment. An empty setting adds nothing, so what the user set up in OpenCode or in the environment
+ * stays in force. A change restarts OpenCode (backend.restart).
  */
 const brand = require('../brand');
 
@@ -33,13 +34,32 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
       permissions: c.get('opencode.askPermissions') !== false,
       profile: String(c.get('bedrock.profile') || '').trim(),
       region: String(c.get('bedrock.region') || '').trim(),
+      environment: c.get('opencode.environment'),
     };
+  };
+
+  /* Names a shell would accept, with string values; anything else in the setting is left out and logged once. */
+  const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  let skipped = '';
+  const extraEnv = (value) => {
+    const out = {};
+    const bad = [];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [k, v] of Object.entries(value)) {
+        if (NAME.test(k) && typeof v === 'string') out[k] = v;
+        else bad.push(k);
+      }
+    }
+    const note = bad.join(', ');
+    if (note && note !== skipped) log(`opencode.environment: left out ${note} (a name of letters, digits and _ with a string value is needed)`);
+    skipped = note;
+    return out;
   };
 
   /* What createOpenCode and restart() take. */
   function options() {
     const s = read();
-    const env = {};
+    const env = extraEnv(s.environment);
     if (s.profile) env.AWS_PROFILE = s.profile;
     if (s.region) env.AWS_REGION = s.region;
     if (key) env.AWS_BEARER_TOKEN_BEDROCK = key;

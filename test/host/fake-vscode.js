@@ -70,7 +70,7 @@ function create() {
   const groups = [{ viewColumn: 1, tabs: [], activeTab: null, isActive: true }];
   const state = { commands: [], handlers: {}, registered: [], said: [], answers: [], config: {}, configWrites: [], secrets: new Map(),
     picks: [], pickAnswer: null, inputs: [], inputAnswer: undefined, extensions: new Map(), context: {}, progress: [],
-    editors: {}, trees: {}, log: [], closedTabs: [], treeProviders: {}, live: new Map(), unregistered: [], strictCommands: false };
+    editors: {}, trees: {}, log: [], closedTabs: [], treeProviders: {}, live: new Map(), unregistered: [], strictCommands: false, saves: 0 };
   const say = (kind) => async (message, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
     state.said.push({ kind, message, buttons });
@@ -157,6 +157,7 @@ function create() {
       }),
       onDidChangeConfiguration: configChanged.event,
       onDidGrantWorkspaceTrust: trustGranted.event,
+      saveAll: async () => { state.saves++; return true; },
       registerTextDocumentContentProvider: () => ({ dispose() {} }),
       createFileSystemWatcher: () => ({ onDidCreate: () => ({ dispose() {} }), onDidChange: () => ({ dispose() {} }), onDidDelete: () => ({ dispose() {} }), dispose() {} }),
     },

@@ -1733,6 +1733,50 @@ async function main() {
       check(opened.length > 0 && Math.max(...openedBlack) < DISC, 'a new conversation opens without a black disc in any frame', { frames: opened.length, black: openedBlack });
     }
     await cdp.detach().catch(() => {});
+
+    // 10. Show Logs, saving edited files before a message goes, the new-conversation key in a chat tab, and VS Code
+    //     reopening a closed chat tab.
+    await call('return vscode.commands.executeCommand("opencodeAgentPlus.showLogs");');
+    const logShown = await until(() => call(`return vscode.workspace.textDocuments.some((d) => d.uri.scheme === "output" && decodeURIComponent(d.uri.toString()).includes(arg)) || null;`, ID), 10000);
+    check(!!logShown, "Show Logs opens the extension's log in the Output panel");
+    const chats10 = await chatUris();
+    const folder10 = await call('return vscode.workspace.workspaceFolders[0].uri.fsPath;');
+    const unsaved = path.join(folder10, 'autosave-me.txt');
+    fs.writeFileSync(unsaved, 'as on disk\n');
+    const dirty = await call(`const d = await vscode.workspace.openTextDocument(arg);
+      const e = await vscode.window.showTextDocument(d, { viewColumn: vscode.ViewColumn.Two, preview: false });
+      await e.edit((b) => b.replace(new vscode.Range(0, 0, d.lineCount, 0), "as in the editor\\n"));
+      return d.isDirty;`, unsaved);
+    check(dirty === true, 'a file edited in the editor is not saved yet', dirty);
+    if (chats10.length) {
+      await front(chats10[chats10.length - 1]);
+      const chat10 = await frameWith(page, '#input', 20000);
+      if (chat10) {
+        await chat10.fill('#input', 'Say: Sent once the files were saved.');
+        await chat10.press('#input', 'Enter');
+        await until(() => chat10.evaluate(() => document.querySelector('#log').textContent.includes('Sent once the files were saved.') || null), 20000);
+      }
+      const after = await call('const d = vscode.workspace.textDocuments.find((x) => x.uri.fsPath === arg); return { dirty: !!d && d.isDirty };', unsaved);
+      check(!after.dirty && fs.readFileSync(unsaved, 'utf8') === 'as in the editor\n', 'sending a message saves the edited file first, so OpenCode reads what the editor shows', after);
+      if (process.platform !== 'win32') {
+        await front(chats10[chats10.length - 1]);
+        await sleep(500);
+        const before = (await chatUris()).length;
+        await page.keyboard.press('Meta+Shift+Escape');
+        const more = await until(async () => ((await chatUris()).length > before ? true : null), 15000);
+        check(!!more, 'Meta+Shift+Esc in a chat tab starts a new conversation', { before, after: (await chatUris()).length });
+      } else {
+        console.log('  note  the new-conversation key is not pressed on Windows, where the Windows key belongs to the system');
+      }
+      const reopen = chats10[0];
+      await call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === arg);
+        await vscode.window.tabGroups.close(t); return true;`, reopen);
+      await until(async () => (!(await chatUris()).includes(reopen) ? true : null), 10000);
+      await call('await vscode.commands.executeCommand("workbench.action.reopenClosedEditor"); return true;');
+      const back10 = await until(async () => ((await chatUris()).includes(reopen) ? true : null), 15000);
+      const page10 = back10 ? await frameWith(page, '#input', 20000) : null;
+      check(!!back10 && !!page10, "VS Code's Reopen Closed Editor brings a closed chat tab back with its page", { back: !!back10, page: !!page10 });
+    }
   } catch (e) {
     check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
     try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }

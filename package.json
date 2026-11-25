@@ -37,7 +37,8 @@
         "opencodeAgentPlus.opencode.path",
         "opencodeAgentPlus.opencode.askPermissions",
         "opencodeAgentPlus.bedrock.profile",
-        "opencodeAgentPlus.bedrock.region"
+        "opencodeAgentPlus.bedrock.region",
+        "opencodeAgentPlus.opencode.environment"
       ]
     }
   },
@@ -147,6 +148,11 @@
       {
         "command": "opencodeAgentPlus.showMcpServers",
         "title": "Show MCP Servers",
+        "category": "OpenCode Agent Plus"
+      },
+      {
+        "command": "opencodeAgentPlus.showLogs",
+        "title": "Show Logs",
         "category": "OpenCode Agent Plus"
       },
       {
@@ -323,6 +329,10 @@
         {
           "command": "opencodeAgentPlus.showMcpServers",
           "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodeAgentPlus.showLogs",
+          "when": "isWorkspaceTrusted"
         }
       ],
       "webview/context": [
@@ -341,6 +351,11 @@
           "default": "",
           "description": "Model for new conversations, as provider/model, such as amazon-bedrock/us.xai.grok-4.7. Leave it empty to choose one when you send your first message."
         },
+        "opencodeAgentPlus.autosave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Save edited files before a message is sent or a request is allowed, so OpenCode reads and changes what the editor shows."
+        },
         "opencodeAgentPlus.opencode.path": {
           "type": "string",
           "default": "",
@@ -352,6 +367,15 @@
           "default": true,
           "scope": "machine",
           "description": "Ask before OpenCode edits files, runs commands, fetches web pages or reads or writes files outside the project. This replaces the edit, bash (shell on OpenCode 2), webfetch and external_directory rules of your own OpenCode configuration; turn it off to keep those."
+        },
+        "opencodeAgentPlus.opencode.environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "scope": "machine",
+          "markdownDescription": "Environment variables for the OpenCode that the extension starts, such as `{ \"OPENAI_BASE_URL\": \"https://…\" }`. The Bedrock settings below take precedence over the same names. A change restarts OpenCode."
         },
         "opencodeAgentPlus.bedrock.profile": {
           "type": "string",
@@ -417,6 +441,14 @@
         "view": "opencodeAgentPlus.sessions",
         "contents": "OpenCode Agent Plus does nothing in Restricted Mode. It starts when you trust this workspace.\n[Manage Workspace Trust](command:workbench.trust.manage)",
         "when": "!isWorkspaceTrusted"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "opencodeAgentPlus.newConversation",
+        "key": "cmd+shift+escape",
+        "mac": "cmd+shift+escape",
+        "when": "activeCustomEditorId == 'opencodeAgentPlus.chat'"
       }
     ]
   },

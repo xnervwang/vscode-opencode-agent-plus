@@ -25,7 +25,8 @@ const gate = require('../../src/host/trust-gate');
 
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const COMMANDS = PKG.contributes.commands.map((c) => c.command);
-const KEYS = ['opencodeAgentPlus.opencode.path', 'opencodeAgentPlus.opencode.askPermissions', 'opencodeAgentPlus.bedrock.profile', 'opencodeAgentPlus.bedrock.region'];
+const KEYS = ['opencodeAgentPlus.opencode.path', 'opencodeAgentPlus.opencode.askPermissions', 'opencodeAgentPlus.bedrock.profile', 'opencodeAgentPlus.bedrock.region',
+  'opencodeAgentPlus.opencode.environment'];
 const SESSION = 'ses_00000000000000restricted';
 const loaded = (part) => Object.keys(require.cache).some((k) => k.includes(part));
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
@@ -152,7 +153,7 @@ test('once trust is granted it starts without a reload, and the chat tab already
   extension.deactivate();
 });
 
-test('package.json: the four settings that pick what runs are read from user or remote machine settings only', () => {
+test('package.json: the settings that pick what runs are read from user or remote machine settings only', () => {
   const props = PKG.contributes.configuration.properties;
   for (const k of KEYS) assert.strictEqual(props[k].scope, 'machine', k);
   for (const [k, v] of Object.entries(props)) if (!KEYS.includes(k)) assert.notStrictEqual(v.scope, 'machine', `${k} keeps its scope`);
