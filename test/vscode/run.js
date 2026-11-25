@@ -1175,7 +1175,7 @@ async function main() {
           await turn('What colour of the day does the attached selection name? One word, no tools.', '11d');
           const dayColour = await lastReply();
           check(/magenta/i.test(dayColour) && (await lastUserChips()).some((c) => /colours\.txt:2/.test(c)), 'the model answers from the selection sent with the message', { dayColour });
-          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputText && t.input.uri.fsPath === ${JSON.stringify(colours)});
+          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputText && t.input.uri.toString() === vscode.Uri.file(${JSON.stringify(colours)}).toString());
             await vscode.window.tabGroups.close(tabs); return true;`).catch(() => {});
 
           // 3k. The question tool asks with a form in the page; the answer reaches the model.

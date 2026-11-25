@@ -68,7 +68,7 @@ async function run(ctx) {
   const ask = (fakeText, realText) => (real ? realText : `Say: ${fakeText}`);
   /* Opens `file` beside, or where it is already on screen (else in the active group); `keep` leaves the focus where it is. */
   const openFile = (file, opts) => call(`const d = await vscode.workspace.openTextDocument(vscode.Uri.file(arg.file));
-    const there = vscode.window.visibleTextEditors.find((x) => x.document.uri.fsPath === arg.file);
+    const there = vscode.window.visibleTextEditors.find((x) => x.document.uri.toString() === vscode.Uri.file(arg.file).toString());
     const col = arg.beside ? vscode.ViewColumn.Beside : there ? there.viewColumn : vscode.ViewColumn.Active;
     const e = await vscode.window.showTextDocument(d, { viewColumn: col, preserveFocus: !!arg.keep, preview: false });
     if (arg.sel) e.selection = new vscode.Selection(arg.sel[0], arg.sel[1], arg.sel[2], arg.sel[3]);
@@ -282,7 +282,7 @@ async function run(ctx) {
   check(!!focused, `${WINDOWS ? 'Focus the Message Box' : 'Meta+Esc in the editor'} moves to the message box of the chat tab in front`);
   await press('Meta+Escape', 'opencodeAgentPlus.blurInput');
   const inFront = () => call('const e = vscode.window.activeTextEditor; const t = vscode.window.tabGroups.activeTabGroup.activeTab; return { editor: e ? e.document.uri.fsPath : "", tab: t ? t.label : "", text: !!t && t.input instanceof vscode.TabInputText };');
-  const backInEditor = await until(async () => { const a = await inFront(); return a.text && a.editor === notes ? a : null; }, 15000);
+  const backInEditor = await until(async () => { const a = await inFront(); return a.text && a.editor && path.relative(a.editor, notes) === '' ? a : null; }, 15000);
   check(!!backInEditor, `${WINDOWS ? 'Back to the Editor' : 'Meta+Esc again'} goes back to the editor`, backInEditor || await inFront());
   await openFile(notes, { beside: false, keep: false, sel: [0, 0, 0, 5] });
   await sleep(400);
