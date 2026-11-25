@@ -13,7 +13,8 @@
  * `said` is the user's latest messages, oldest first; `reply` is the text the conversation wrote after the user's last
  * message (no reasoning, no tool output), its parts joined by a blank line and cut to its last MAX_REPLY_CHARS. Text a
  * plugin added for the model (a synthetic userMessage) is not the user's. For a conversation opened from history the
- * state is first built from its stored events. Deleting the conversation deletes the file (src/workplan removePlan).
+ * state is first built from its stored events, and written at once when one of its turns has ended. Deleting the
+ * conversation deletes the file (src/workplan removePlan).
  */
 const fs = require('fs');
 const path = require('path');
@@ -88,11 +89,13 @@ function createReplyFiles(deps) {
 
   return {
     fileOf,
-    /* Replays `history`, then rewrites the file at the end of each turn of `conversation`; call the returned function
-       to stop. */
+    /* Replays `history`, writing the file once if a turn in it ended, then rewrites it at the end of each turn of
+       `conversation`; call the returned function to stop. */
     track(id, conversation, history) {
       const r = createReplyState();
-      for (const ev of Array.isArray(history) ? history : []) r.take(ev);
+      let ended = false;
+      for (const ev of Array.isArray(history) ? history : []) if (r.take(ev)) ended = true;
+      if (ended) write(id, r.body());
       const off = conversation.on((ev) => { if (r.take(ev)) write(id, r.body()); });
       return () => { try { if (typeof off === 'function') off(); else if (off && off.dispose) off.dispose(); } catch (_) { /* gone */ } };
     },

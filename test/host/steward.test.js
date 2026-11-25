@@ -103,10 +103,15 @@ test('the latest reply file is written beside the plan when a turn ends, from th
     const listeners = new Set();
     const conv = { on: (fn) => { listeners.add(fn); return () => listeners.delete(fn); } };
     const fire = (e) => listeners.forEach((f) => f(e));
+    const unfinished = files.track(B, conv, [{ type: 'userMessage', text: 'never answered', at: 1 }]);
+    assert.ok(!fs.existsSync(files.fileOf(B)), 'opening a conversation none of whose turns has ended writes nothing');
+    unfinished();
     const stop = files.track(A, conv, [{ type: 'userMessage', text: 'from the history', at: 1 }, { type: 'text', delta: 'old reply' }, { type: 'turnEnd', reason: 'endTurn', at: 2 }]);
     const file = path.join(dir, `${A}.reply.json`);
     assert.strictEqual(files.fileOf(A), file);
-    assert.ok(!fs.existsSync(file), 'opening a conversation writes nothing');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')),
+      { format: 1, at: 2, lastUserAt: 1, said: [{ text: 'from the history', at: 1 }], reply: 'old reply' },
+      'opening a conversation whose history has an ended turn writes that turn at once');
     fire({ type: 'turnStart', at: 3 });
     fire({ type: 'text', delta: 'more of it' });
     fire({ type: 'turnEnd', reason: 'endTurn', at: 4 });
