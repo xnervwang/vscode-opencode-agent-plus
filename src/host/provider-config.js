@@ -13,10 +13,16 @@
  * opencodeAgentPlus.todoList adds `todo` to OPENCODE_FLAGS, which turns on OpenCode 2's experimental todowrite tool.
  * OpenCode reads that variable as names separated by commas, `-name` turning one off; a list that already names todo
  * either way is kept as it is. OpenCode 1 has no such variable and ignores it.
+ *
+ * opencodeAgentPlus.openCodeModels set to `hide` has OpenCode leave out its own provider (`disabled_providers`), whose
+ * free models run on opencode.ai; `auto` and `show` leave OpenCode as it is, and the model lists sort out the rest
+ * (src/host/models.js visibleModels).
  */
 const brand = require('../brand');
 
 const SECRET_KEY = `${brand.prefix}.bedrock.apiKey`;
+/* OpenCode's own provider: its free models, run on opencode.ai. */
+const OPENCODE_PROVIDER = 'opencode';
 const SECTION = brand.prefix;
 const OUR_WAY = `Or set "${brand.displayName} › Bedrock: Profile" and "Region" in the settings, or run "${brand.displayName}: Set Amazon Bedrock API Key".`;
 
@@ -41,6 +47,7 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {}, baseEn
       region: String(c.get('bedrock.region') || '').trim(),
       environment: c.get('opencode.environment'),
       todoList: c.get('todoList') !== false,
+      openCodeModels: String(c.get('openCodeModels') || 'auto'),
     };
   };
 
@@ -77,7 +84,7 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {}, baseEn
     if (s.profile) env.AWS_PROFILE = s.profile;
     if (s.region) env.AWS_REGION = s.region;
     if (key) env.AWS_BEARER_TOKEN_BEDROCK = key;
-    return { binaryPath: s.binaryPath, permissions: s.permissions, env };
+    return { binaryPath: s.binaryPath, permissions: s.permissions, env, disabledProviders: s.openCodeModels === 'hide' ? [OPENCODE_PROVIDER] : [] };
   }
 
   /* The options with the key's value replaced by its length, for comparing and logging. */
@@ -98,7 +105,8 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {}, baseEn
   last = shape(options());
 
   subs.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration(`${SECTION}.bedrock`) || e.affectsConfiguration(`${SECTION}.opencode`) || e.affectsConfiguration(`${SECTION}.todoList`)) changed('settings');
+    if (e.affectsConfiguration(`${SECTION}.bedrock`) || e.affectsConfiguration(`${SECTION}.opencode`) || e.affectsConfiguration(`${SECTION}.todoList`)
+      || e.affectsConfiguration(`${SECTION}.openCodeModels`)) changed('settings');
   }));
   if (typeof secrets.onDidChange === 'function') {
     subs.push(secrets.onDidChange((e) => {

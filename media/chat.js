@@ -1486,7 +1486,7 @@
     if (free && caps.connect) modelSel.appendChild(option('__connect', 'Connect a provider…'));
     const byVendor = new Map();
     for (const model of list) {
-      const vendor = free ? "OpenCode's free models" : model.vendor || 'Other';
+      const vendor = free ? "OpenCode's free models" : model.group || model.vendor || 'Other';
       if (!byVendor.has(vendor)) byVendor.set(vendor, []);
       byVendor.get(vendor).push(model);
     }

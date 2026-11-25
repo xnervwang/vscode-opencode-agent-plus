@@ -27,6 +27,8 @@ const { createFakeConversation, demoTurns, streamText } = require(path.join(__di
 const MODELS = [
   { id: 'fake/fake-small', invokeId: 'fake-small', providerId: 'fake', name: 'Fake Small', vendor: 'Test', contextWindow: 32000, maxOutputTokens: 4096, known: false },
   { id: 'fake/fake-large', invokeId: 'fake-large', providerId: 'fake', name: 'Fake Large', vendor: 'Test', contextWindow: 200000, maxOutputTokens: 8192, known: false },
+  /* One of OpenCode's own free models, which the lists leave out while another provider is listed. */
+  { id: 'opencode/fake-free', invokeId: 'fake-free', providerId: 'opencode', name: 'Fake Free', vendor: 'OpenCode', contextWindow: 32000, maxOutputTokens: 4096, known: false },
 ];
 
 const DEMO = process.env.OPENCODE_AGENT_PLUS_FAKE_DEMO === '1';

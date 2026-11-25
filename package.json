@@ -427,6 +427,17 @@
           "default": "",
           "description": "Model for new conversations, as provider/model, such as amazon-bedrock/us.xai.grok-4.7. Leave it empty to choose one when you send your first message."
         },
+        "opencodeAgentPlus.openCodeModels": {
+          "type": "string",
+          "enum": ["auto", "show", "hide"],
+          "enumDescriptions": [
+            "List them only while no other provider is connected.",
+            "Always list them.",
+            "Never list them, and have OpenCode leave them out."
+          ],
+          "default": "auto",
+          "description": "Whether the model lists include OpenCode's own free models, which run on opencode.ai. The model a conversation uses stays listed."
+        },
         "opencodeAgentPlus.autosave": {
           "type": "boolean",
           "default": true,

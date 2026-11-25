@@ -23,10 +23,10 @@ const TODO = { OPENCODE_FLAGS: 'todo' };
 test('empty settings add only the todo flag; settings that are set become the environment OpenCode starts with', async () => {
   const empty = setup();
   await empty.cfg.ready;
-  assert.deepStrictEqual(empty.cfg.options(), { binaryPath: '', permissions: true, env: TODO });
+  assert.deepStrictEqual(empty.cfg.options(), { binaryPath: '', permissions: true, env: TODO, disabledProviders: [] });
   const s = setup({ 'opencodeAgentPlus.bedrock.profile': 'self', 'opencodeAgentPlus.bedrock.region': 'us-east-1', 'opencodeAgentPlus.opencode.path': '/opt/oc', 'opencodeAgentPlus.opencode.askPermissions': false }, 'k-1');
   await s.cfg.ready;
-  assert.deepStrictEqual(s.cfg.options(), { binaryPath: '/opt/oc', permissions: false, env: { ...TODO, AWS_PROFILE: 'self', AWS_REGION: 'us-east-1', AWS_BEARER_TOKEN_BEDROCK: 'k-1' } });
+  assert.deepStrictEqual(s.cfg.options(), { binaryPath: '/opt/oc', permissions: false, env: { ...TODO, AWS_PROFILE: 'self', AWS_REGION: 'us-east-1', AWS_BEARER_TOKEN_BEDROCK: 'k-1' }, disabledProviders: [] });
   assert.deepStrictEqual(s.restarts, [], 'reading the key at activation is no change');
 });
 

@@ -47,7 +47,7 @@ const { createLocks, windowToken } = require('./src/host/locks');
 const { createSessionManager } = require('./src/host/session-manager');
 const { chatColumn } = require('./src/host/chat-group');
 const { createBackend } = require('./src/host/backend');
-const { createModels } = require('./src/host/models');
+const { createModels, visibleModels } = require('./src/host/models');
 const { withModelChoice } = require('./src/host/model-choice');
 const { createSessionsList } = require('./src/host/sessions-list');
 const { createProviderConfig } = require('./src/host/provider-config');
@@ -317,6 +317,10 @@ function start(context, log, gate, channel) {
     log,
   });
   subs.push(links, vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration(`${brand.prefix}.conversationLinks`)) links.settingChanged(); }));
+  /* Which of OpenCode's own models the chat pages list follows the setting at once. */
+  subs.push(vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration(`${brand.prefix}.openCodeModels`)) for (const c of chats) c.postModels();
+  }));
 
   /* Shared by the chat tabs. A tab lists files only while @ is being typed, and follows the selection only while it is
      open. */
@@ -333,6 +337,7 @@ function start(context, log, gate, channel) {
       extensionUri: context.extensionUri,
       conversation: conv,
       listModels: () => models.list(),
+      visibleModels: (list, current) => visibleModels(list, String(vscode.workspace.getConfiguration(brand.prefix).get('openCodeModels') || 'auto'), current),
       respond: (requestId, decision) => (decision === 'deny' ? conv.respond(requestId, decision) : saveEdited().then(() => conv.respond(requestId, decision))),
       beforeSend: saveEdited,
       history: conv.saved ? conv.saved.records : [],

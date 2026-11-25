@@ -81,6 +81,7 @@ function create() {
     EventEmitter, Uri, TabInputCustom, TabInputText, TabInputWebview, ThemeIcon, ThemeColor, TreeItem, RelativePattern,
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
+    QuickPickItemKind: { Separator: -1, Default: 0 },
     ProgressLocation: { SourceControl: 1, Window: 10, Notification: 15 },
     ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2 },
     window: {

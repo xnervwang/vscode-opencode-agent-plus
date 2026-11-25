@@ -73,6 +73,9 @@ const CHILD_STATUS = Object.freeze({ created: 'running', running: 'running', com
 /* The events of a subagent's own stream that its card shows. */
 const CHILD_EVENTS = new Set(['text', 'reasoning', 'toolCall', 'toolResult']);
 const SUBAGENT_TOOLS = new Set(['subagent', 'task']);
+/* Provider ids OpenCode is to leave out (its `disabled_providers`), from a launch option. */
+const providerList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(x)) : []);
+
 /* Opening a conversation waits this long for its export after session/load has answered. */
 const EXPORT_WAIT_MS = 5000;
 const EXPORT_BUFFER = 64 * 1024 * 1024;
@@ -196,7 +199,7 @@ function createOpenCode(opts = {}) {
   /* The session capabilities OpenCode last said it has, kept when its process stops. */
   let knownSessionCaps = null;
   let settings = { binaryPath: opts.binaryPath || '', env: { ...(opts.env || {}) }, permissions: opts.permissions !== false, config: opts.config || null,
-    quietFolder: typeof opts.quietFolder === 'function' ? opts.quietFolder : null };
+    quietFolder: typeof opts.quietFolder === 'function' ? opts.quietFolder : null, disabledProviders: providerList(opts.disabledProviders) };
 
   let proc = null;
   let gen = 0;
@@ -390,6 +393,7 @@ function createOpenCode(opts = {}) {
     } catch (e) {
       log(`building the extra OpenCode config failed: ${e.message}`);
     }
+    if (settings.disabledProviders.length) config = { ...(config && typeof config === 'object' ? config : {}), disabled_providers: settings.disabledProviders };
     const started = start({ bin: found.path, version: found.version, env: settings.env, permissions: settings.permissions, config, cwd: fs.existsSync(root) ? root : undefined });
     const conn = createConnection(started.child, { log, onRequest, onNotification, onExit: (info) => onExit(g, info) });
     const p = { gen: g, conn, child: started.child, stderrTail: started.stderrTail, found, info: null, ready: null };
@@ -1425,6 +1429,7 @@ function createOpenCode(opts = {}) {
         permissions: next.permissions !== undefined ? next.permissions !== false : settings.permissions,
         config: next.config !== undefined ? next.config : settings.config,
         quietFolder: next.quietFolder !== undefined ? (typeof next.quietFolder === 'function' ? next.quietFolder : null) : settings.quietFolder,
+        disabledProviders: next.disabledProviders !== undefined ? providerList(next.disabledProviders) : settings.disabledProviders,
       };
       lastAuthError = null;
       await stopProcess();

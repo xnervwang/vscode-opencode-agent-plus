@@ -35,6 +35,7 @@
  * links those ('paths' { results: [{ path, ok }] }). A relative path counts only inside a workspace folder or the
  * conversation's folder, an absolute one anywhere; answers are kept for a while in FILE_CACHE, which the paths listed in
  * `fresh` skip. 'openFile' { path, line } opens one beside the chat, at that line, after checking it again.
+ *   visibleModels  (list, current) => the models the page lists, of those OpenCode offers (src/host/models.js)
  *   connectProvider   opens OpenCode's sign-in for a model provider; the model list offers it (reloadModels() lists
  *              the models again afterwards)
  *   composer   () => { ctrlEnter, attachFile, attachSelection }, the settings of the message box; settingsChanged()
@@ -57,6 +58,7 @@
 const path = require('path');
 const fs = require('fs');
 const vm = require('./view-model');
+const { groupOf } = require('../host/models');
 const { PERMISSION_DECISIONS } = require('../contracts');
 
 const DIFF_SCHEME = 'opencodeAgentPlus-diff';
@@ -161,7 +163,7 @@ async function findFile(ref, roots) {
 }
 
 function modelForPage(m) {
-  return { id: m.id, name: m.name || m.id, vendor: m.vendor || '', contextWindow: m.contextWindow || 0 };
+  return { id: m.id, name: m.name || m.id, vendor: m.vendor || '', group: groupOf(m), contextWindow: m.contextWindow || 0 };
 }
 
 class ChatPanel {
@@ -224,6 +226,7 @@ class ChatPanel {
     this.beforeSend = typeof opts.beforeSend === 'function' ? opts.beforeSend : null;
     this.view = opts.view && typeof opts.view.focus === 'function' ? opts.view : null;
     this.connectProvider = typeof opts.connectProvider === 'function' ? opts.connectProvider : null;
+    this.visibleModels = typeof opts.visibleModels === 'function' ? opts.visibleModels : null;
     this.composer = typeof opts.composer === 'function' ? opts.composer : null;
     this.permissionMode = opts.permissionMode && typeof opts.permissionMode.get === 'function' ? opts.permissionMode : null;
     this.forkFrom = typeof opts.forkFrom === 'function' ? opts.forkFrom : null;
@@ -688,7 +691,9 @@ ${hl}<script src="${media('kit.js')}"></script>
 
   postModels() {
     const current = this.state.model ? this.state.model.id : '';
-    this.post({ type: 'models', models: (this.models || []).map(modelForPage), current, error: this.modelsError });
+    let shown = this.models || [];
+    try { if (this.visibleModels) shown = this.visibleModels(shown, current); } catch (_) { /* all of them */ }
+    this.post({ type: 'models', models: shown.map(modelForPage), current, error: this.modelsError });
   }
 
   onMessage(msg) {
