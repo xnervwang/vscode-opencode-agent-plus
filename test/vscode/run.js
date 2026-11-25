@@ -1716,12 +1716,16 @@ async function main() {
         const size = (el) => { const r = el.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; };
         const ring = document.querySelector('#ring svg');
         const out = { ring: ring ? size(ring) : 'none', fills: ring ? [...ring.querySelectorAll('circle')].map((c) => getComputedStyle(c).fill) : [],
-          large: [...document.querySelectorAll('svg')].map(size).filter((s) => s.split('x').some((n) => Number(n) > 24)) };
+          oversized: [...document.querySelectorAll('svg')].filter((v) => {
+            const r = v.getBoundingClientRect();
+            const w = Number(v.getAttribute('width')), h = Number(v.getAttribute('height'));
+            return !(w && h) || Math.round(r.width) > w || Math.round(r.height) > h;
+          }).map(size) };
         for (const s of sheets) s.disabled = false;
         return out;
       }) : null;
-      check(!!bare && bare.ring === '16x16' && bare.fills.length === 2 && bare.fills.every((f) => f === 'none') && !bare.large.length,
-        'with the stylesheet off, the ring stays small and unfilled, and no svg is over 24 pixels', bare);
+      check(!!bare && bare.ring === '16x16' && bare.fills.length === 2 && bare.fills.every((f) => f === 'none') && !bare.oversized.length,
+        'with the stylesheet off, the ring stays 16 by 16 and unfilled, and every svg keeps the size written on it', bare);
       await front(uris9[0]);
       await sleep(1000);
       const back = await record(() => front(uris9[1]));
