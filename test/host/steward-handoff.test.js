@@ -211,13 +211,16 @@ test("deliver()'s outcome and reason are written as they came; a request that ca
 
 test('the folder watch and the poll take requests, and a result nobody read is removed', async () => {
   const dir = tmp();
-  const watched = createStewards({ dir: () => dir, ids: () => [A], title: () => 'Fix the build', pollMs: 60000 });
+  let fire = null;
+  const watched = createStewards({ dir: () => dir, ids: () => [A], title: () => 'Fix the build', pollMs: 60000,
+    watch: (d, fn) => { fire = fn; return { close() {} }; } });
   try {
     const core = fakeCore();
     watched.attach(core);
     request(dir, A, 'w1000000');
+    fire('rename', `.${A}.handoff-w1000000.json.tmp`);
     const got = await until(() => fs.existsSync(path.join(dir, `${A}.handoff-w1000000.result.json`)));
-    assert.ok(got, 'fs.watch saw the request');
+    assert.ok(got, 'an event in the folder takes the request, whatever file it names');
     assert.strictEqual(core.delivered.length, 1);
   } finally { watched.dispose(); }
   const polled = createStewards({ dir: () => dir, ids: () => [B], title: () => '', pollMs: 50, watch: () => ({ close() {} }) });

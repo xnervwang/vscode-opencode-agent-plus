@@ -199,7 +199,8 @@ function createStewards(deps) {
     const want = !gone && !!core && [...known.values()].some(Boolean);
     if (want && !timer) {
       try {
-        watcher = watchDir(deps.dir(), (type, name) => { if (name && REQUEST.test(String(name))) taking(String(name)); });
+        /* Any event: on macOS one may name the temporary file a request was renamed from, or none. */
+        watcher = watchDir(deps.dir(), () => scan());
         if (watcher && typeof watcher.on === 'function') watcher.on('error', () => { try { watcher.close(); } catch (_) { /* gone */ } watcher = null; });
       } catch (e) { watcher = null; log(`watching the plans folder failed: ${(e && e.message) || e}`); }
       timer = setInterval(scan, pollMs);
