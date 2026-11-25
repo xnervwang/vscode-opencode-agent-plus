@@ -52,5 +52,8 @@ function fail(text) {
   const said = childProcess.execFileSync(found.path, ['--version'], { encoding: 'utf8', timeout: 120000 }).trim();
   console.log(`--version: ${said}`);
   if (!said.includes(download.VERSION)) fail(`--version did not report ${download.VERSION}.`);
-  fs.rmSync(root, { recursive: true, force: true });
+  /* Windows can keep opencode.exe locked for a moment after it exits, so removing the folder may need a few tries. */
+  try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 }); } catch (e) {
+    console.log(`note: the temporary folder was left in place: ${(e && e.message) || e}`);
+  }
 })().catch((e) => fail((e && e.stack) || String(e)));
