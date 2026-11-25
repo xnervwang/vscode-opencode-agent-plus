@@ -27,6 +27,13 @@
  *   links      the conversations a reply may name (src/host/conversation-links.js), which the page turns into links
  *              ('conversations' { rev, list, self }); a click opens one
  *   beforeSend runs before a message goes to the conversation, such as saving edited files; its failure does not stop it
+ *   view       the Focus view and pinned-prompt settings ('view' { focus, pin, toggle }); the page's Focus button sets the
+ *              first through it ('setFocusView')
+ *
+ * The page asks which of the paths a reply names are files ('checkPaths' { paths }, at most MAX_PATHS at a time) and
+ * links those ('paths' { results: [{ path, ok }] }). A relative path counts only inside a workspace folder or the
+ * conversation's folder, an absolute one anywhere; answers are kept for a while in FILE_CACHE, which the paths listed in
+ * `fresh` skip. 'openFile' { path, line } opens one beside the chat, at that line, after checking it again.
  *
  * The plan bar's fragment brings its own style element, so the page's policy lets inline styles in. A diff opened from
  * a permission card gets Allow once, Allow in this project and Deny in its editor's title bar (see answerFromDiff);
@@ -46,6 +53,13 @@ const MAX_FILES = 20;
 const MARKDOWN_IT = ['node_modules', 'markdown-it', 'dist', 'browser'];
 /* VS Code's icon font, for the page's buttons; without it the buttons show their tooltips' words only. */
 const CODICONS = ['node_modules', '@vscode', 'codicons', 'dist'];
+/* highlight.js's browser build with its common languages, for the code blocks of replies; without it they are plain. */
+const HIGHLIGHT = ['node_modules', '@highlightjs', 'cdn-assets'];
+const MAX_PATHS = 200;
+/* A file found is trusted for FILE_OK_MS and a missing one for FILE_MISS_MS, as a reply may name a file about to be written. */
+const FILE_OK_MS = 60000;
+const FILE_MISS_MS = 5000;
+const FILE_CACHE = new Map();
 const FLUSH_MS = 16;
 /* This extension's source id at Agent Plus (src/host/agentplus-source.js). */
 const SOURCE_ID = 'opencode-plus';
@@ -111,6 +125,26 @@ function subscribe(conversation, listener) {
   return () => {};
 }
 
+const fileRef = (p) => (typeof p === 'string' && p && p.length <= 1024 && !/[\0\r\n]/.test(p) ? p : '');
+
+/* The regular file `ref` names: an absolute path as it is, a relative one inside one of `roots` without leaving it. '' when
+   there is none. */
+async function findFile(ref, roots) {
+  const candidates = [];
+  if (path.isAbsolute(ref)) candidates.push(path.normalize(ref));
+  else {
+    for (const root of roots) {
+      const abs = path.resolve(root, ref);
+      const rel = path.relative(root, abs);
+      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) candidates.push(abs);
+    }
+  }
+  for (const c of candidates) {
+    try { if ((await fs.promises.stat(c)).isFile()) return c; } catch (_) { /* not there */ }
+  }
+  return '';
+}
+
 function modelForPage(m) {
   return { id: m.id, name: m.name || m.id, vendor: m.vendor || '', contextWindow: m.contextWindow || 0 };
 }
@@ -173,6 +207,7 @@ class ChatPanel {
     this.loadImage = typeof opts.loadImage === 'function' ? opts.loadImage : null;
     this.links = opts.links && typeof opts.links.current === 'function' ? opts.links : null;
     this.beforeSend = typeof opts.beforeSend === 'function' ? opts.beforeSend : null;
+    this.view = opts.view && typeof opts.view.focus === 'function' ? opts.view : null;
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
     if (opts.model) state = vm.reduce(state, { type: 'ui.model', model: opts.model });
@@ -181,11 +216,12 @@ class ChatPanel {
     const webview = this.panel.webview;
     const mdDir = vscode.Uri.joinPath(this.extensionUri, ...MARKDOWN_IT);
     const iconDir = vscode.Uri.joinPath(this.extensionUri, ...CODICONS);
+    const hlDir = vscode.Uri.joinPath(this.extensionUri, ...HIGHLIGHT);
     webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media'), mdDir, iconDir],
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media'), mdDir, iconDir, hlDir],
     };
-    webview.html = this.html(webview, mdDir, iconDir);
+    webview.html = this.html(webview, mdDir, iconDir, hlDir);
 
     acquireDiffProvider(vscode);
     diffKeyVscode = vscode;
@@ -202,11 +238,14 @@ class ChatPanel {
     if (this.links) this.subs.push(toOff(this.links.onDidChange(() => { if (this.ready) this.postConversations(); })));
   }
 
-  html(webview, mdDir, iconDir) {
+  html(webview, mdDir, iconDir, hlDir) {
     const media = (name) => webview.asWebviewUri(this.vscode.Uri.joinPath(this.extensionUri, 'media', name));
     const mdFile = path.join(mdDir.fsPath || '', 'markdown-it.umd.min.js');
     const md = mdDir.fsPath && fs.existsSync(mdFile)
       ? `<script src="${webview.asWebviewUri(this.vscode.Uri.joinPath(mdDir, 'markdown-it.umd.min.js'))}"></script>`
+      : '';
+    const hl = hlDir && hlDir.fsPath && fs.existsSync(path.join(hlDir.fsPath, 'highlight.min.js'))
+      ? `<script src="${webview.asWebviewUri(this.vscode.Uri.joinPath(hlDir, 'highlight.min.js'))}"></script>\n`
       : '';
     const icons = iconDir && iconDir.fsPath && fs.existsSync(path.join(iconDir.fsPath, 'codicon.css'))
       ? `<link rel="stylesheet" href="${webview.asWebviewUri(this.vscode.Uri.joinPath(iconDir, 'codicon.css'))}">\n`
@@ -269,7 +308,7 @@ ${icons}<link rel="stylesheet" href="${media('chat.css')}">
   </div>
 </footer>
 ${md}
-<script src="${media('kit.js')}"></script>
+${hl}<script src="${media('kit.js')}"></script>
 <script src="${media('composer.js')}"></script>
 <script src="${media('plan-bar.js')}"></script>
 <script src="${media('chat.js')}"></script>
@@ -346,6 +385,7 @@ ${md}
     this.postSelection();
     this.postPlanBar();
     this.postConversations();
+    this.postView();
     if (this.models || this.modelsError) this.postModels();
     else this.loadModels();
   }
@@ -409,6 +449,60 @@ ${md}
     try { got = this.links.current(); } catch (_) { got = null; }
     const id = typeof this.conversation.id === 'string' ? this.conversation.id : '';
     this.post({ type: 'conversations', rev: got && Number(got.rev) || 0, list: got && Array.isArray(got.list) ? got.list : [], self: { sourceId: SOURCE_ID, sessionId: id } });
+  }
+
+  postView() {
+    let focus = false;
+    let pin = true;
+    try {
+      focus = this.view ? this.view.focus() === true : false;
+      pin = this.view && typeof this.view.pin === 'function' ? this.view.pin() !== false : true;
+    } catch (_) { /* the defaults */ }
+    this.post({ type: 'view', focus, pin, toggle: !!(this.view && typeof this.view.setFocus === 'function') });
+  }
+
+  /* Folders a relative path in a reply may be in: the workspace's, and the conversation's own. */
+  fileRoots() {
+    const out = [];
+    for (const f of (this.vscode.workspace && this.vscode.workspace.workspaceFolders) || []) if (f && f.uri && f.uri.scheme === 'file') out.push(f.uri.fsPath);
+    const cwd = this.conversation && typeof this.conversation.cwd === 'string' ? this.conversation.cwd : '';
+    if (cwd && path.isAbsolute(cwd) && !out.includes(cwd)) out.push(cwd);
+    return out;
+  }
+
+  /* The absolute path of the file `ref` names, or ''. */
+  async resolveFile(ref, fresh) {
+    const roots = this.fileRoots();
+    const key = `${roots.join('\0')}\0${ref}`;
+    const now = Date.now();
+    const got = FILE_CACHE.get(key);
+    if (!fresh && got && now - got.at < (got.file ? FILE_OK_MS : FILE_MISS_MS)) return got.file;
+    const file = await findFile(ref, roots);
+    FILE_CACHE.delete(key);
+    FILE_CACHE.set(key, { file, at: now });
+    while (FILE_CACHE.size > 2000) FILE_CACHE.delete(FILE_CACHE.keys().next().value);
+    return file;
+  }
+
+  checkPaths(list, fresh) {
+    const refs = [...new Set((Array.isArray(list) ? list : []).map(fileRef).filter(Boolean))].slice(0, MAX_PATHS);
+    if (!refs.length) return Promise.resolve();
+    const again = new Set(Array.isArray(fresh) ? fresh : []);
+    return Promise.all(refs.map((r) => this.resolveFile(r, again.has(r)).then((file) => ({ path: r, ok: !!file }), () => ({ path: r, ok: false }))))
+      .then((results) => this.post({ type: 'paths', results }));
+  }
+
+  async openFile(ref, line, col) {
+    const file = ref ? await this.resolveFile(ref, true) : '';
+    if (!file) { this.post({ type: 'paths', results: [{ path: ref, ok: false }] }); throw new Error(`${ref || 'That file'} is not there any more.`); }
+    const { Uri, Range, ViewColumn, commands } = this.vscode;
+    const options = { preview: true };
+    if (ViewColumn) options.viewColumn = ViewColumn.Beside;
+    if (line > 0 && typeof Range === 'function') {
+      const c = col > 0 ? col - 1 : 0;
+      options.selection = new Range(line - 1, c, line - 1, c);
+    }
+    await commands.executeCommand('vscode.open', Uri.file(file), options);
   }
 
   postPlanBar() {
@@ -531,6 +625,18 @@ ${md}
         Promise.resolve().then(() => this.links.open(sourceId, sessionId)).catch((err) => this.showError(err));
         break;
       }
+      case 'checkPaths':
+        this.checkPaths(msg.paths, msg.fresh).catch(() => {});
+        break;
+      case 'openFile': {
+        const line = Math.floor(Number(msg.line)) || 0;
+        const col = Math.floor(Number(msg.col)) || 0;
+        this.openFile(fileRef(msg.path), line, col).catch((err) => this.showError(err));
+        break;
+      }
+      case 'setFocusView':
+        if (this.view && typeof this.view.setFocus === 'function') Promise.resolve().then(() => this.view.setFocus(msg.on === true)).catch((err) => this.showError(err));
+        break;
       case 'background':
         Promise.resolve().then(() => (typeof this.conversation.checkBackground === 'function' ? this.conversation.checkBackground() : undefined)).catch(() => {});
         break;

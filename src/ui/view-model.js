@@ -22,6 +22,10 @@
  *
  * What still runs in the background goes to the page in head().background, each with the item it is drawn on:
  * subagents not done yet, and shell commands the agent moved to the background (`background` events).
+ *
+ * A tool item may also carry `change` (changeOf: the rows of what an edit, write or patch changes, replaced by the whole
+ * file's change once a permission request brings it), `todos` (todowrite's list) and `file` (the file it reads or
+ * writes, which the page links once the extension has found it).
  */
 
 const MAX_SHOWN = 20000;
@@ -364,6 +368,175 @@ function onSubagent(s, ev, at) {
   return { ...s, children: { ...s.children, [childId]: c }, lastAt: at };
 }
 
+/* ---------- what an edit changed, a todo list, a file ---------- */
+
+/* A tool row shows at most DIFF_ROWS rows of a change, each line clipped to DIFF_LINE characters; unchanged runs keep
+   DIFF_CONTEXT lines on each side of a change. Two texts are compared line by line only up to DIFF_CELLS line pairs
+   between their first and last difference; beyond that the old lines are all shown removed and the new ones added. */
+const DIFF_ROWS = 160;
+const DIFF_LINE = 400;
+const DIFF_CONTEXT = 3;
+const DIFF_CELLS = 400000;
+
+function textLines(s) {
+  const t = String(s == null ? '' : s).replace(/\r\n?/g, '\n');
+  if (!t) return [];
+  const lines = t.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
+
+/* Rows { k: ' ' | '-' | '+', t, o?, n? } turning lines `a` into `b`; o and n are 1-based line numbers in each. */
+function lineOps(a, b) {
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let q = 0;
+  while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+  const A = a.slice(p, a.length - q);
+  const B = b.slice(p, b.length - q);
+  const out = [];
+  let o = 1;
+  let n = 1;
+  const same = (t) => out.push({ k: ' ', t, o: o++, n: n++ });
+  const del = (t) => out.push({ k: '-', t, o: o++ });
+  const add = (t) => out.push({ k: '+', t, n: n++ });
+  for (let i = 0; i < p; i++) same(a[i]);
+  if (A.length && B.length && A.length * B.length <= DIFF_CELLS) {
+    const w = B.length + 1;
+    const L = new Uint32Array((A.length + 1) * w);
+    for (let i = A.length - 1; i >= 0; i--) {
+      for (let j = B.length - 1; j >= 0; j--) L[i * w + j] = A[i] === B[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+    }
+    let i = 0;
+    let j = 0;
+    while (i < A.length && j < B.length) {
+      if (A[i] === B[j]) { same(A[i]); i++; j++; } else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) del(A[i++]); else add(B[j++]);
+    }
+    while (i < A.length) del(A[i++]);
+    while (j < B.length) add(B[j++]);
+  } else {
+    for (const t of A) del(t);
+    for (const t of B) add(t);
+  }
+  for (let i = a.length - q; i < a.length; i++) same(a[i]);
+  return out;
+}
+
+/* Keeps DIFF_CONTEXT unchanged lines next to each change and puts { k: '~', count } where the rest were. */
+function foldUnchanged(rows) {
+  const out = [];
+  let i = 0;
+  while (i < rows.length) {
+    if (rows[i].k !== ' ') { out.push(rows[i++]); continue; }
+    let j = i;
+    while (j < rows.length && rows[j].k === ' ') j++;
+    const head = i === 0 ? 0 : DIFF_CONTEXT;
+    const tail = j === rows.length ? 0 : DIFF_CONTEXT;
+    if (j - i > head + tail + 1) {
+      out.push(...rows.slice(i, i + head), { k: '~', count: j - i - head - tail }, ...rows.slice(j - tail, j));
+    } else {
+      out.push(...rows.slice(i, j));
+    }
+    i = j;
+  }
+  return out;
+}
+
+/* The rows of a patch: OpenCode's apply_patch text (*** Update File: …) or a unified diff. */
+function patchOps(text) {
+  const rows = [];
+  const files = [];
+  const lines = textLines(text);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let m;
+    if (/^\*\*\* (Begin|End) Patch/.test(line) || /^(diff --git |index )/.test(line) || line.startsWith('\\')) continue;
+    /* A file's two header lines; a removed line that starts with "--" is not one. */
+    if (line.startsWith('--- ') && (lines[i + 1] || '').startsWith('+++ ')) continue;
+    if ((m = /^\*\*\* (Add|Update|Delete) File: (.+)$/.exec(line))) { files.push(m[2].trim()); rows.push({ k: 'f', t: `${m[1]} ${m[2].trim()}` }); continue; }
+    if ((m = /^\*\*\* Move to: (.+)$/.exec(line))) { rows.push({ k: 'f', t: `Move to ${m[1].trim()}` }); continue; }
+    if ((m = /^\+\+\+ (?:b\/)?(.+)$/.exec(line)) && (lines[i - 1] || '').startsWith('--- ')) { const f = m[1].trim(); if (f !== '/dev/null') { files.push(f); rows.push({ k: 'f', t: f }); } continue; }
+    if (line.startsWith('@@')) { rows.push({ k: '@', t: line }); continue; }
+    if (line.startsWith('+')) rows.push({ k: '+', t: line.slice(1) });
+    else if (line.startsWith('-')) rows.push({ k: '-', t: line.slice(1) });
+    else rows.push({ k: ' ', t: line.startsWith(' ') ? line.slice(1) : line });
+  }
+  return { rows, path: files[0] || '' };
+}
+
+/* { kind, path, rows, added, removed, more } for the page, `more` being the rows past DIFF_ROWS. */
+function changeView(kind, path, rows) {
+  let added = 0;
+  let removed = 0;
+  for (const r of rows) { if (r.k === '+') added++; else if (r.k === '-') removed++; }
+  const shown = rows.slice(0, DIFF_ROWS).map((r) => (typeof r.t === 'string' && r.t.length > DIFF_LINE ? { ...r, t: `${r.t.slice(0, DIFF_LINE)}…` } : r));
+  return { kind, path: String(path || ''), rows: shown, added, removed, more: Math.max(0, rows.length - DIFF_ROWS) };
+}
+
+const pick = (o, keys) => { for (const k of keys) if (typeof o[k] === 'string') return o[k]; return undefined; };
+const PATH_KEYS = ['filePath', 'file_path', 'filepath', 'path'];
+
+/*
+ * What an edit, write or patch call changes, from what it was called with: old and new strings (edit, multiedit), the
+ * whole content (a write), or a patch's text. null for any other call.
+ */
+function changeOf(name, input) {
+  if (!input || typeof input !== 'object') return null;
+  const where = pick(input, PATH_KEYS) || '';
+  const before = pick(input, ['oldString', 'old_string', 'old_str']);
+  const after = pick(input, ['newString', 'new_string', 'new_str']);
+  if (before !== undefined && after !== undefined) return changeView('edit', where, foldUnchanged(lineOps(textLines(before), textLines(after))).map(({ k, t, count }) => (k === '~' ? { k, count } : { k, t })));
+  if (Array.isArray(input.edits) && input.edits.length) {
+    const rows = [];
+    for (const e of input.edits) {
+      if (!e || typeof e !== 'object') continue;
+      const o = pick(e, ['oldString', 'old_string', 'old_str']);
+      const n = pick(e, ['newString', 'new_string', 'new_str']);
+      if (o === undefined || n === undefined) continue;
+      if (rows.length) rows.push({ k: '@', t: '' });
+      rows.push(...foldUnchanged(lineOps(textLines(o), textLines(n))).map(({ k, t, count }) => (k === '~' ? { k, count } : { k, t })));
+    }
+    return rows.length ? changeView('edit', where, rows) : null;
+  }
+  const patch = pick(input, ['patchText', 'patch_text', 'patch']);
+  if (patch !== undefined) {
+    const p = patchOps(patch);
+    return p.rows.length ? changeView('patch', where || p.path, p.rows) : null;
+  }
+  const content = pick(input, ['content']);
+  if (content !== undefined && /write|create/i.test(String(name || ''))) return changeView('write', where, textLines(content).map((t) => ({ k: '+', t })));
+  return null;
+}
+
+/* A permission request's whole before and after texts, with line numbers and the unchanged runs folded. */
+function changeOfTexts(path, before, after) {
+  const b = typeof before === 'string' ? before : '';
+  return changeView(b ? 'edit' : 'write', path, foldUnchanged(lineOps(textLines(b), textLines(after))));
+}
+
+const TODO_STATES = new Set(['pending', 'in_progress', 'completed', 'cancelled']);
+/* The list a todowrite call sets: [{ content, status }], or null. */
+function todosOf(name, input) {
+  if (!/^todo_?write$/i.test(String(name || '')) || !input || !Array.isArray(input.todos)) return null;
+  const list = input.todos.filter((t) => t && typeof t.content === 'string' && t.content.trim())
+    .slice(0, 100).map((t) => ({ content: oneLine(t.content, 300), status: TODO_STATES.has(t.status) ? t.status : 'pending' }));
+  return list.length ? list : null;
+}
+
+function todoSummary(todos) {
+  const done = todos.filter((t) => t.status === 'completed').length;
+  return `${todos.length} item${todos.length === 1 ? '' : 's'}${done ? ` · ${done} done` : ''}`;
+}
+
+/* The file a call reads or writes, { path, line? }, for the page to link once the extension has found it. */
+function fileOf(input, change) {
+  const where = input && typeof input === 'object' ? pick(input, PATH_KEYS) : undefined;
+  const p = where || (change && change.path) || '';
+  if (!p || p.length > 1024 || /[\n\0]/.test(p)) return null;
+  const from = input && Number(input.offset);
+  return from >= 1 ? { path: p, line: Math.floor(from) } : { path: p };
+}
+
 /* ---------- forms ---------- */
 
 function optionsOf(list) {
@@ -506,10 +679,15 @@ function reduce(s, ev, now) {
 
     case 'toolCall': {
       s = ensureTurn(s, at);
+      const change = changeOf(ev.name, ev.input);
+      const todos = todosOf(ev.name, ev.input);
+      const file = fileOf(ev.input, change);
       const r = append(s, {
         kind: 'tool', turn: s.turn.id, at, toolId: ev.id, name: ev.name || 'tool',
-        summary: summarizeInput(ev.name, ev.input), input: inputText(ev.input),
+        /* A patch names its files only inside its text, whose first line says nothing. */
+        summary: todos ? todoSummary(todos) : change && change.kind === 'patch' && change.path ? oneLine(change.path) : summarizeInput(ev.name, ev.input), input: inputText(ev.input),
         state: 'running', result: '', doneAt: null,
+        ...(change ? { change } : {}), ...(todos ? { todos } : {}), ...(file ? { file } : {}),
         ...(subagentOf(ev) ? { subagent: subagentOf(ev) } : {}),
       });
       return { ...r.s, retry: null, lastAt: at, turn: { ...r.s.turn, tools: { ...r.s.turn.tools, [ev.id]: r.id } } };
@@ -541,7 +719,13 @@ function reduce(s, ev, now) {
         ...(subagentOf(ev) ? { subagent: subagentOf(ev) } : {}),
       });
       s = { ...r.s, pending: { ...r.s.pending, [ev.requestId]: r.id } };
-      if (diff && typeof diff === 'object') s = rememberDiff(s, ev.requestId, diff);
+      if (diff && typeof diff === 'object') {
+        s = rememberDiff(s, ev.requestId, diff);
+        /* The call asking is the latest running one of that name; its row shows the whole file's change, with line
+           numbers, in place of what its input alone tells. */
+        const callId = [...Object.values(s.turn.tools)].reverse().find((id) => { const it = s.items[indexOf(id)]; return it && it.state === 'running' && it.name === req.tool; });
+        if (callId && typeof diff.after === 'string') s = replace(s, callId, { change: changeOfTexts(diff.path || req.path, diff.before, diff.after) });
+      }
       return settle(s);
     }
 
@@ -818,4 +1002,9 @@ module.exports = {
   errorText,
   formFields,
   formContent,
+  changeOf,
+  changeOfTexts,
+  lineOps,
+  todosOf,
+  fileOf,
 };

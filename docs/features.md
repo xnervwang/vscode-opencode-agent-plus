@@ -6,6 +6,16 @@ Back to the [README](../README.md).
 
 Each conversation opens in a VS Code editor tab that shows the conversation's title and updates when the title changes. As the model replies, you see its text and reasoning stream in. Each tool call appears in one row in the conversation. The row shows the tool's name in bold followed by the arguments it received. Click the row to open a box with the tool's input (IN) and output (OUT). If the call fails, the box opens automatically.
 
+Code blocks in replies use the colours of your current VS Code theme, light or dark, when the opening fence names a language, as in `` ```js `` or `` ```python ``. A block without a language stays plain text because language guessing can misidentify logs and command output. The model's thinking appears as one grey row labelled "Thinking". Click it to read the reasoning, then click it again to fold it.
+
+### Edits in the Conversation
+
+Edit, write and patch tool rows show line counts: an edit or patch shows lines added and removed, such as "+3 -1", and a write shows how many lines it writes. Click the row to see the change in place of the tool's input (IN): removed lines have a red background and a "-" mark, and added lines have a green background and a "+" mark. When OpenCode asks permission for the edit, the row compares the whole file before and after, shows line numbers and a few unchanged lines around each change, and folds each long unchanged stretch into one line with its line count. A long change shows its first 160 rows and the number of lines left out; you can still click "View diff" on a permission request to open the change in VS Code's diff view.
+
+### Todo List
+
+In OpenCode 2, the model can keep a todo list with `todowrite`, an experimental tool that is off unless `OPENCODE_FLAGS` includes `todo`; OpenCode 1 has no todo list tool. OpenCode Agent Plus adds `todo` to `OPENCODE_FLAGS` for the OpenCode it starts and keeps any other flags you set there. The `todowrite` row starts open and shows one item per line: the item in progress is bold with a filled blue circle, done items have a tick and strikethrough, and cancelled items are faded with strikethrough. To turn off the tool, turn off `opencodeAgentPlus.todoList`, which restarts OpenCode.
+
 ### Permission Prompts
 
 By default, OpenCode asks you before it edits files, runs commands, fetches web pages, or reads or writes files outside the project. OpenCode Agent Plus keeps a separate folder outside the project for each conversation. Under the default rules, OpenCode can write to [the conversation's own folder](#links-and-images-in-replies) without asking.
@@ -62,6 +72,14 @@ The list opens over the conversation and has a Filter your messages box. Each ro
 
 You can hide what subagents did, and their tool calls, with the Subagents button under the input box. This also hides the [Subagent box](#subagents-and-background-work) under the call that started each subagent. Requests from subagents stay visible while they wait for you. The button then reads "Subagents hidden (n)", where n counts the subagent items it hides or collapses.
 
+### Focus View
+
+Focus view shows only your messages and the last reply of each turn, plus permission requests and questions that need your answer. It hides tool calls, thinking, subagent boxes and earlier replies in the turn, but the status line above the input box names the tool running during a turn. To turn Focus view on or off, click the eye button under the input box, press Ctrl+Alt+F while a chat tab is in front, or run "OpenCode Agent Plus: Toggle Focus View". The `opencodeAgentPlus.focusView` setting keeps your choice for all chat tabs and is off by default.
+
+### Pinned Message
+
+When you scroll down through a reply, the message you sent to start it stays pinned at the top of the conversation until your next message reaches the top. Click the pinned message to scroll back to it. The `opencodeAgentPlus.pinPrompt` setting is on by default; turn it off to let your messages scroll away.
+
 ### Session Information
 
 Click the "i" button under the input box to see the session ID and folder. The box also shows the OpenCode version, the process ID of `opencode acp`, the location of OpenCode's session database and Agent Plus's [token mode](#token-mode). Click a row to copy it, or choose Copy all.
@@ -79,6 +97,8 @@ Hover over a conversation link to see which agent it belongs to, part of its ses
 Replies can display PNG, JPEG, GIF, WebP and SVG images up to 8 MB in any token mode. An image appears in the reply when the model gives its absolute path, a `file://` address or a `data:` address. Relative paths and web addresses stay as links, and OpenCode Agent Plus does not fetch images from the web.
 
 On OpenCode 2, OpenCode Agent Plus tells the model that replies can display images unless you choose Interface features for [Token Mode](#token-mode). When it sends that note, it also asks the model to save each image in the conversation's own folder and include its absolute path in the reply. The folder is `~/.opencode-agent-plus/scratch/<session id>/` on the machine where OpenCode runs. Deleting the conversation also removes this folder; see [The Conversations List](#the-conversations-list).
+
+A path in a reply becomes a link if the file exists and the path is absolute or relative to a workspace folder or the conversation's folder. The path can include a line number or a line and column, as in `src/app.js:12`, `src/app.js:12:5` or `src/app.js#L12`. Paths become links in reply text and in inline code that contains only a path; code blocks and existing links stay as they are. The file name in a read, edit or write tool row is also a link; click a file link to open the file in an editor beside the chat at the specified line, if given.
 
 ## Rewinding and Forking
 

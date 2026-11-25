@@ -156,6 +156,11 @@
         "category": "OpenCode Agent Plus"
       },
       {
+        "command": "opencodeAgentPlus.toggleFocusView",
+        "title": "Toggle Focus View",
+        "category": "OpenCode Agent Plus"
+      },
+      {
         "command": "opencodeAgentPlus.diffAllowOnce",
         "title": "Allow Once",
         "category": "OpenCode Agent Plus",
@@ -333,6 +338,10 @@
         {
           "command": "opencodeAgentPlus.showLogs",
           "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodeAgentPlus.toggleFocusView",
+          "when": "activeCustomEditorId == 'opencodeAgentPlus.chat' && isWorkspaceTrusted"
         }
       ],
       "webview/context": [
@@ -377,6 +386,11 @@
           "scope": "machine",
           "markdownDescription": "Environment variables for the OpenCode that the extension starts, such as `{ \"OPENAI_BASE_URL\": \"https://…\" }`. The Bedrock settings below take precedence over the same names. A change restarts OpenCode."
         },
+        "opencodeAgentPlus.todoList": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Turn on OpenCode 2's experimental todo list tool (todowrite) by adding `todo` to `OPENCODE_FLAGS`, so the model can keep a list of steps, shown in the conversation. A change restarts OpenCode."
+        },
         "opencodeAgentPlus.bedrock.profile": {
           "type": "string",
           "default": "",
@@ -404,6 +418,18 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Turn another conversation's title or session ID in a reply into a link that opens that conversation. With Agent Plus, conversations of its other agents are linked too."
+        },
+        "opencodeAgentPlus.focusView": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "markdownDescription": "Focus view: show only your messages and the last reply of each turn, hiding tool calls, thinking, subagents and the work in progress. Requests waiting for you still show. Toggle it with the Focus button under the message box or Ctrl+Alt+F in a chat tab."
+        },
+        "opencodeAgentPlus.pinPrompt": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "markdownDescription": "Keep your message pinned at the top of the conversation while you scroll through the reply to it. Click it to go back to the message."
         },
         "opencodeAgentPlus.conversationBrief": {
           "type": "boolean",
@@ -449,6 +475,11 @@
         "key": "cmd+shift+escape",
         "mac": "cmd+shift+escape",
         "when": "activeCustomEditorId == 'opencodeAgentPlus.chat'"
+      },
+      {
+        "command": "opencodeAgentPlus.toggleFocusView",
+        "key": "ctrl+alt+f",
+        "when": "activeCustomEditorId == 'opencodeAgentPlus.chat'"
       }
     ]
   },
@@ -457,6 +488,7 @@
     "url": "https://github.com/xnervwang/vscode-opencode-agent-plus"
   },
   "dependencies": {
+    "@highlightjs/cdn-assets": "11.12.0",
     "@vscode/codicons": "0.0.45",
     "markdown-it": "15.0.3"
   }

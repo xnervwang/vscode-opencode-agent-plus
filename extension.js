@@ -273,6 +273,16 @@ function start(context, log, gate, channel) {
     },
   };
 
+  /* Focus view and the pinned prompt (opencodeAgentPlus.focusView, .pinPrompt) go to every chat page as they change. */
+  const view = {
+    focus: () => vscode.workspace.getConfiguration(brand.prefix).get('focusView', false) === true,
+    pin: () => vscode.workspace.getConfiguration(brand.prefix).get('pinPrompt', true) !== false,
+    setFocus: (on) => vscode.workspace.getConfiguration(brand.prefix).update('focusView', on === true, vscode.ConfigurationTarget.Global),
+  };
+  subs.push(vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration(`${brand.prefix}.focusView`) || e.affectsConfiguration(`${brand.prefix}.pinPrompt`)) for (const c of chats) c.postView();
+  }));
+
   const links = createConversationLinks({
     on: () => vscode.workspace.getConfiguration(brand.prefix).get('conversationLinks', true) !== false,
     active: () => chats.size > 0,
@@ -319,6 +329,7 @@ function start(context, log, gate, channel) {
       rewind: backend.canRewind() ? (target) => rewindTo(entry.id, chat, target) : undefined,
       info: () => infoRows(entry.id),
       sound,
+      view,
       loadImage: (src) => loadImage(src),
       links,
       planBar: {
@@ -574,6 +585,7 @@ function start(context, log, gate, channel) {
     }),
     vscode.commands.registerCommand(`${brand.prefix}.showMcpServers`, () => showMcp()),
     vscode.commands.registerCommand(`${brand.prefix}.showLogs`, () => { channel.show(true); return true; }),
+    vscode.commands.registerCommand(`${brand.prefix}.toggleFocusView`, () => Promise.resolve(view.setFocus(!view.focus())).then(() => view.focus())),
     vscode.commands.registerCommand(`${brand.prefix}.findConversation`, () => findConversation({ vscode,
       list: () => backend.listSessions().finally(() => backend.listen()), open: (id) => openSession(id), openHere: (id) => manager.has(id) })),
     vscode.commands.registerCommand(`${brand.prefix}.clearRecentlyClosed`, () => { recent.clear(); return true; }),

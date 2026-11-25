@@ -17,6 +17,10 @@
   --ok: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
   --dock: 680px;
 }
+/* Light themes' descriptionForeground is nearly the text's own colour; grey text is lighter, as in Claude Code. */
+body.vscode-light {
+  --muted: color-mix(in srgb, var(--vscode-descriptionForeground) 70%, var(--page-bg));
+}
 
 html, body {
   height: 100%;
@@ -118,6 +122,12 @@ button:focus-visible, select:focus-visible, summary:focus-visible, input:focus-v
   flex: none;
   min-width: 0;
 }
+/* VS Code sets the standard scrollbar-color on the page, which would turn the thin, arrowless bar below off. The log
+   is a container for the narrow layout further down. */
+#log {
+  scrollbar-color: auto;
+  container-type: inline-size;
+}
 #log::-webkit-scrollbar {
   width: 10px;
 }
@@ -210,6 +220,7 @@ button:focus-visible, select:focus-visible, summary:focus-visible, input:focus-v
 .figures:empty::before {
   content: none;
 }
+
 
 /* The rows of a reply: a dot on a line down the left side, the time first. */
 .tl {
@@ -339,6 +350,10 @@ button:focus-visible, select:focus-visible, summary:focus-visible, input:focus-v
   position: relative;
   margin: 8px 0;
 }
+/* A reply that starts with a code block puts it under its time, not beside it. */
+.msg.reply .md > .code:first-child {
+  clear: left;
+}
 .code .copy {
   position: absolute;
   top: 4px;
@@ -392,6 +407,9 @@ details.reasoning[open] > summary .label::after {
 }
 details.reasoning .time, details.reasoning .elapsed {
   margin-right: 6px;
+}
+details.reasoning .time:has(+ .elapsed) {
+  margin-right: 0;
 }
 details.reasoning .md {
   margin-top: 4px;
@@ -490,7 +508,7 @@ details.reasoning .md {
   background: var(--vscode-textCodeBlock-background);
 }
 .tool.state-running .tool-state {
-  color: var(--vscode-progressBar-background);
+  color: var(--vscode-foreground);
 }
 .tool.state-error .tool-state {
   color: var(--vscode-errorForeground);
@@ -515,6 +533,10 @@ details.reasoning .md {
   border: 1px solid var(--vscode-focusBorder);
   border-radius: 8px;
   background: var(--vscode-input-background);
+}
+/* A frame of the focus colour mixed into the box's own, paler than the focus colour, as Claude Code draws it. */
+.permission:not(.settled), .question:not(.settled) {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 55%, var(--vscode-input-background));
 }
 .permission:not(.settled) > .meta, .question:not(.settled) > .meta {
   display: block;
@@ -587,9 +609,11 @@ details.reasoning .md {
   opacity: 0.7;
   font-weight: 400;
 }
+/* Not one of the numbered answers: no frame until hovered, so only the highlighted answer looks picked. */
 .perm-actions button.diff {
   justify-content: flex-start;
-  border-style: dashed;
+  border-color: transparent;
+  color: var(--vscode-textLink-foreground);
 }
 .prompt-hint {
   margin-top: 6px;
@@ -667,8 +691,8 @@ details.reasoning .md {
 }
 /* A choice is a row of its own; only the one picked, or the first until one is, is framed. */
 .q-option {
-  margin: 0 0 2px;
-  padding: 4px 8px;
+  margin: 0 0 1px;
+  padding: 2px 8px;
   cursor: pointer;
   flex-wrap: wrap;
   border-color: transparent;
@@ -678,10 +702,23 @@ details.reasoning .md {
 .question:not(.settled) .q-field:not(:has(input:checked)) .q-option:first-of-type {
   border-color: var(--vscode-focusBorder);
 }
+/* The round button sits beside both the label and its description, centred on the two. */
+.q-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 0;
+}
+.q-option input {
+  grid-row: span 2;
+  align-self: center;
+}
+.q-option > span {
+  grid-column: 2;
+}
 .q-option .q-hint {
-  flex-basis: 100%;
-  margin-left: 30px;
-  margin-top: -3px;
+  margin: 0;
+  line-height: 1.3;
 }
 .q-option .q-hint::before {
   content: none;
@@ -734,6 +771,10 @@ details.reasoning .md {
 }
 .question .perm-actions button.q-submit:hover {
   border-color: var(--vscode-focusBorder);
+}
+/* Nothing answered yet: still a button, drawn faded. */
+.question .perm-actions button.q-submit.idle {
+  opacity: 0.5;
 }
 /* The question is read under its tab, as Claude Code shows it; the title row carries only a subagent's tag until it is
    answered. */
@@ -1049,10 +1090,7 @@ button.rewind .codicon {
   z-index: 6;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  background: var(--vscode-editorWidget-background, var(--page-bg));
-  overflow: hidden;
+  gap: 2px;
 }
 .rail-btn {
   width: 22px;
@@ -1062,10 +1100,14 @@ button.rewind .codicon {
   align-items: center;
   justify-content: center;
   color: var(--vscode-textLink-foreground);
-  border-radius: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: var(--vscode-editorWidget-background, var(--page-bg));
 }
-.rail-btn + .rail-btn {
-  border-top: 1px solid var(--rule);
+/* The light themes' widget background is the page's own, so the buttons are white tiles with a grey edge there. */
+body.vscode-light .rail-btn {
+  background: var(--vscode-input-background, #fff);
+  border-color: color-mix(in srgb, var(--rule) 50%, var(--page-bg));
 }
 .rail-btn .codicon {
   font-size: 14px;
@@ -1078,7 +1120,6 @@ button.rewind .codicon {
 }
 #navBtn[aria-pressed="true"] {
   background: var(--vscode-inputOption-activeBackground, var(--pill));
-  border-color: var(--vscode-inputOption-activeBorder, var(--vscode-focusBorder));
 }
 #outline {
   position: absolute;
@@ -1409,8 +1450,9 @@ button.pill:hover, .pill:hover {
 .ring .track {
   stroke: var(--rule);
 }
+/* Grey like the ring itself: blue would read as a spinner. */
 .ring .fill {
-  stroke: var(--vscode-progressBar-background);
+  stroke: var(--muted);
   stroke-linecap: round;
 }
 .ring.high .fill {
@@ -1664,4 +1706,259 @@ button.pill:hover, .pill:hover {
 /* Agent Plus's plan bar goes right above the message box and is as wide as it. */
 #dock > [data-agent-plus-plan-bar] {
   margin-bottom: 6px;
+}
+
+/* ---------- code colours: highlight.js's classes in the theme's colours ---------- */
+
+.md pre code .hljs-keyword, .md pre code .hljs-selector-tag, .md pre code .hljs-name, .md pre code .hljs-doctag,
+.md pre code .hljs-literal, .md pre code .hljs-section {
+  color: var(--vscode-debugTokenExpression-boolean, #569cd6);
+}
+.md pre code .hljs-string, .md pre code .hljs-regexp, .md pre code .hljs-template-tag, .md pre code .hljs-selector-attr {
+  color: var(--vscode-debugTokenExpression-string, #ce9178);
+}
+.md pre code .hljs-number, .md pre code .hljs-symbol {
+  color: var(--vscode-debugTokenExpression-number, #b5cea8);
+}
+.md pre code .hljs-title, .md pre code .hljs-title.function_, .md pre code .hljs-selector-id {
+  color: var(--vscode-symbolIcon-functionForeground, #b180d7);
+}
+.md pre code .hljs-title.class_, .md pre code .hljs-type, .md pre code .hljs-built_in, .md pre code .hljs-selector-class {
+  color: color-mix(in srgb, var(--vscode-symbolIcon-classForeground, #ee9d28) 60%, var(--vscode-foreground));
+}
+.md pre code .hljs-variable, .md pre code .hljs-attr, .md pre code .hljs-attribute, .md pre code .hljs-property,
+.md pre code .hljs-params, .md pre code .hljs-template-variable, .md pre code .hljs-link, .md pre code .hljs-bullet {
+  color: var(--vscode-symbolIcon-variableForeground, #75beff);
+}
+.md pre code .hljs-meta, .md pre code .hljs-meta .hljs-keyword {
+  color: var(--vscode-debugTokenExpression-name, #c586c0);
+}
+.md pre code .hljs-comment, .md pre code .hljs-quote {
+  color: color-mix(in srgb, var(--vscode-charts-green, #89d185) 70%, var(--muted));
+  font-style: italic;
+}
+.md pre code .hljs-addition {
+  color: var(--vscode-charts-green, #89d185);
+}
+.md pre code .hljs-deletion {
+  color: var(--vscode-errorForeground);
+}
+.md pre code .hljs-strong {
+  font-weight: 700;
+}
+.md pre code .hljs-emphasis {
+  font-style: italic;
+}
+
+/* ---------- an edit's change in its row: red and green lines ---------- */
+
+.tool-diff {
+  padding: 4px 0;
+  font-family: var(--mono);
+  font-size: var(--small);
+  line-height: 1.5;
+}
+.diff-rows {
+  max-height: 360px;
+  overflow: auto;
+}
+.tool-diff:not([hidden]) ~ .tool-row:not([hidden]), .todo-list:not([hidden]) ~ .tool-row:not([hidden]) {
+  border-top: 0.5px solid var(--rule);
+}
+.diff-row {
+  display: flex;
+  min-width: 0;
+  padding: 0 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diff-n {
+  flex: none;
+  min-width: 3ch;
+  padding-right: 8px;
+  text-align: right;
+  color: var(--muted);
+  opacity: 0.7;
+  user-select: none;
+}
+.diff-sign {
+  flex: none;
+  width: 2ch;
+  user-select: none;
+}
+.diff-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.diff-row.d-add {
+  background: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+}
+.diff-row.d-del {
+  background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+}
+.d-add .diff-sign, .n-add {
+  color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green, #81b88b));
+}
+.d-del .diff-sign, .n-del {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-errorForeground));
+}
+.diff-row.d-gap, .diff-row.d-hunk, .diff-more {
+  color: var(--muted);
+  font-style: italic;
+}
+.diff-row.d-gap::before {
+  content: '\22ef  ';
+  font-style: normal;
+}
+.diff-row.d-hunk:empty {
+  height: 0.75em;
+}
+.diff-row.d-file {
+  color: var(--muted);
+  font-weight: 600;
+}
+.diff-more {
+  padding: 2px 8px 0;
+  border-top: 0.5px solid var(--rule);
+}
+
+/* ---------- a todowrite call's list ---------- */
+
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+}
+.todo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.todo .codicon {
+  flex: none;
+  position: relative;
+  top: 2px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.todo-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.todo-in_progress .todo-text {
+  font-weight: 600;
+}
+.todo-in_progress .codicon {
+  color: var(--vscode-progressBar-background);
+}
+.todo-completed .codicon {
+  color: var(--ok);
+}
+.todo-completed .todo-text {
+  color: color-mix(in srgb, var(--vscode-foreground) 70%, transparent);
+  text-decoration: line-through;
+}
+.todo-cancelled {
+  opacity: 0.4;
+}
+.todo-cancelled .todo-text {
+  font-style: italic;
+}
+.todo-cancelled .todo-text {
+  text-decoration: line-through;
+}
+
+/* ---------- files a reply names ---------- */
+
+.md a.file-link, .tool-summary.file-link {
+  color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+  cursor: pointer;
+}
+.md a.file-link:hover, .tool-summary.file-link:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
+}
+.md a.file-link code {
+  color: inherit;
+}
+
+/* ---------- Focus view and the pinned prompt ---------- */
+
+body.focus-view .focus-out {
+  display: none !important;
+}
+#focusBtn[aria-pressed="true"] {
+  background: var(--vscode-inputOption-activeBackground, var(--pill-hover));
+  color: var(--vscode-inputOption-activeForeground, inherit);
+}
+#focusBtn .codicon {
+  font-size: 15px;
+}
+/* Lined up with your messages in the log, whose left padding is 20px and right 35px beside the scrollbar. */
+#pinned {
+  position: absolute;
+  top: 8px;
+  left: 20px;
+  right: calc(35px + var(--sb, 0px));
+  z-index: 4;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 8px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--vscode-focusBorder);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+  cursor: pointer;
+}
+/* The page's background over the strip above it, so no half-cut row shows there. */
+#pinned::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  right: -5px;
+  top: -9px;
+  height: 8px;
+  background: var(--page-bg);
+}
+/* A short fade under it, over the row it cuts through. */
+#pinned::after {
+  content: '';
+  position: absolute;
+  left: -5px;
+  right: -5px;
+  top: calc(100% + 1px);
+  height: 10px;
+  background: linear-gradient(var(--page-bg), transparent);
+  pointer-events: none;
+}
+.pinned-text {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- a narrow log: the time on a line of its own ---------- */
+
+/* Beside the time and figures, a narrow log leaves the first lines of a message a sliver of room before they go back
+   to the left edge; the time takes a line of its own instead. */
+@container (max-width: 600px) {
+  .tl > .meta, .msg.user .meta {
+    float: none;
+    display: block;
+    margin-right: 0;
+  }
+  .msg.user .meta {
+    line-height: 16px;
+  }
 }

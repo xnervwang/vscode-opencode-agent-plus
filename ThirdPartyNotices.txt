@@ -35,3 +35,10 @@ by Microsoft Corporation (https://github.com/microsoft/vscode-codicons). The cha
 icons are licensed under the Creative Commons Attribution 4.0 International license
 (https://creativecommons.org/licenses/by/4.0/) and the style sheet under the MIT license; both texts are packed with
 them, as node_modules/@vscode/codicons/LICENSE and LICENSE-CODE.
+
+highlight.js
+
+node_modules/@highlightjs/cdn-assets/highlight.min.js is highlight.js 11.12.0 with its common languages, by Ivan
+Sagalaev, Josh Goebel and other contributors (https://github.com/highlightjs/highlight.js). The chat page uses it to
+colour the code blocks of replies. It is licensed under the BSD 3-Clause license, whose text is packed with it as
+node_modules/@highlightjs/cdn-assets/LICENSE.

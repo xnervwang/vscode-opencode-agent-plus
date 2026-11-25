@@ -9,6 +9,10 @@
  * storage. OpenCode gets these three as AWS_PROFILE, AWS_REGION and AWS_BEARER_TOKEN_BEDROCK in its environment, over the
  * same names in .environment. An empty setting adds nothing, so what the user set up in OpenCode or in the environment
  * stays in force. A change restarts OpenCode (backend.restart).
+ *
+ * opencodeAgentPlus.todoList adds `todo` to OPENCODE_FLAGS, which turns on OpenCode 2's experimental todowrite tool.
+ * OpenCode reads that variable as names separated by commas, `-name` turning one off; a list that already names todo
+ * either way is kept as it is. OpenCode 1 has no such variable and ignores it.
  */
 const brand = require('../brand');
 
@@ -21,8 +25,9 @@ const OUR_WAY = `Or set "${brand.displayName} › Bedrock: Profile" and "Region"
  *   vscode, secrets      VS Code's API and the extension's SecretStorage
  *   restart(options)     backend.restart
  *   log(line)            optional
+ *   baseEnv              the environment OpenCode inherits; process.env when left out
  */
-function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
+function createProviderConfig({ vscode, secrets, restart, log = () => {}, baseEnv = process.env }) {
   let key = '';
   let last = null;
   const subs = [];
@@ -35,6 +40,7 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
       profile: String(c.get('bedrock.profile') || '').trim(),
       region: String(c.get('bedrock.region') || '').trim(),
       environment: c.get('opencode.environment'),
+      todoList: c.get('todoList') !== false,
     };
   };
 
@@ -56,10 +62,18 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
     return out;
   };
 
+  /* OPENCODE_FLAGS with todo in it. */
+  const withTodo = (value) => {
+    const names = String(value || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (!names.some((x) => x === 'todo' || x === '-todo')) names.push('todo');
+    return names.join(',');
+  };
+
   /* What createOpenCode and restart() take. */
   function options() {
     const s = read();
     const env = extraEnv(s.environment);
+    if (s.todoList) env.OPENCODE_FLAGS = withTodo(env.OPENCODE_FLAGS !== undefined ? env.OPENCODE_FLAGS : baseEnv && baseEnv.OPENCODE_FLAGS);
     if (s.profile) env.AWS_PROFILE = s.profile;
     if (s.region) env.AWS_REGION = s.region;
     if (key) env.AWS_BEARER_TOKEN_BEDROCK = key;
@@ -84,7 +98,7 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {} }) {
   last = shape(options());
 
   subs.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration(`${SECTION}.bedrock`) || e.affectsConfiguration(`${SECTION}.opencode`)) changed('settings');
+    if (e.affectsConfiguration(`${SECTION}.bedrock`) || e.affectsConfiguration(`${SECTION}.opencode`) || e.affectsConfiguration(`${SECTION}.todoList`)) changed('settings');
   }));
   if (typeof secrets.onDidChange === 'function') {
     subs.push(secrets.onDidChange((e) => {

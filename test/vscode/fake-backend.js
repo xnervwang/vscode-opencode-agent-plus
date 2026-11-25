@@ -97,6 +97,44 @@ const DEMOS = {
     { wait: 300 },
     { type: 'compaction', status: 'completed', summary: 'The user asked for a CSV export; src/export.js is written and the CLI is next.' },
   ],
+  /* The chat page's coloured code, an edit's change, links to files, thinking, a todo list and a long reply
+     (test/vscode/lib/gap-page.js). */
+  'page-code': () => [
+    ...streamText('Here is the helper in JavaScript and in Python:\n\n```js\n// Adds two numbers.\nfunction sum(a, b) {\n  const total = a + b;\n  return total;\n}\n'
+      + "module.exports = { sum, name: 'sum', limit: 10 };\n```\n\n```python\ndef total(rows):\n    \"\"\"Sum the amounts.\"\"\"\n"
+      + "    return sum(r['amount'] for r in rows if r is not None)\n```\n\nAnd its output, a block with no language:\n\n```\nsum(2, 3) = 5\n```\n", 24),
+  ],
+  'page-edit': () => [
+    { type: 'toolCall', id: 'pe-1', name: 'edit', input: { filePath: 'src/sum.js', oldString: 'module.exports = (a, b) => a + b;',
+      newString: '/* Adds two numbers. */\nmodule.exports = (a, b) => {\n  return a + b;\n};' } },
+    { type: 'toolResult', id: 'pe-1', content: 'Edit applied successfully.', isError: false },
+    { type: 'toolCall', id: 'pe-2', name: 'write', input: { filePath: 'src/table.txt', content: Array.from({ length: 300 }, (_, i) => `row ${i + 1}`).join('\n') } },
+    { type: 'toolResult', id: 'pe-2', content: 'Wrote file successfully.', isError: false },
+    { type: 'toolCall', id: 'pe-3', name: 'apply_patch', input: { patchText: '*** Begin Patch\n*** Update File: README.md\n@@\n # Demo project\n+\n+Adds and exports numbers.\n*** End Patch' } },
+    { type: 'toolResult', id: 'pe-3', content: 'Success. Updated README.md', isError: false },
+    ...streamText('Changed src/sum.js and README.md, and wrote src/table.txt.', 16),
+  ],
+  'page-paths': () => [
+    { type: 'toolCall', id: 'pp-1', name: 'read', input: { filePath: 'src/sum.js' } },
+    { type: 'toolResult', id: 'pp-1', content: '1\tmodule.exports = (a, b) => a + b;', isError: false },
+    ...streamText('The sum is in `src/sum.js:1`, and README.md describes the project. notes.txt holds notes; src/missing.js does not exist. '
+      + 'The web page is https://example.com/README.md.', 20),
+  ],
+  'page-thinking': () => [
+    ...streamText('The user asks whether the retry delay can change without a restart. The scheduler copies the value once, when it starts, so a change needs a restart.', 20, 'reasoning'),
+    ...streamText('Not today: the scheduler reads the delay once, when it starts.', 16),
+  ],
+  'page-todo': () => [
+    ...streamText('Making a list of the steps first.', 16),
+    { type: 'toolCall', id: 'pt-1', name: 'todowrite', input: { todos: [
+      { content: 'Read the exporter', status: 'completed' }, { content: 'Write the CSV export', status: 'in_progress' },
+      { content: 'Run the tests', status: 'pending' }, { content: 'Ask about an Excel export', status: 'cancelled' }] } },
+    { type: 'toolResult', id: 'pt-1', content: 'Todos updated: 1/4 completed, 1 in progress, 1 pending.', isError: false },
+    ...streamText("I'm on the CSV export now.", 16),
+  ],
+  'page-long': () => [
+    ...streamText(Array.from({ length: 40 }, (_, i) => `Step ${i + 1} of the plan: read the next part of the exporter and note what it writes.`).join('\n\n'), 80),
+  ],
 };
 
 /* How long a command moved to the background runs before it ends and the agent goes on by itself. */

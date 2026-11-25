@@ -22,11 +22,12 @@ const manifest = require('./make-manifest');
 const OWN = ['package.json', 'extension.js', 'README.md', 'ThirdPartyNotices.txt', 'src', 'media', 'images', 'opencode-plugin'];
 const SKIP_DIRS = new Set(['dist-es', 'dist-types', '.github', 'test', 'tests', '__tests__']);
 const SKIP_FILE = /(\.d\.ts|\.map|\.tsbuildinfo)$|^(CHANGELOG|HISTORY)(\.md)?$/i;
-/* media/chat.js loads markdown-it's self-contained browser build, and the page's buttons use the codicon font
-   (src/ui/chat-panel.js); nothing requires either. */
+/* media/chat.js loads markdown-it's self-contained browser build and highlight.js's (its common languages), and the
+   page's buttons use the codicon font (src/ui/chat-panel.js); nothing requires any of them. */
 const PAGE_ONLY = {
   'markdown-it': ['package.json', 'LICENSE', 'dist/browser/markdown-it.umd.min.js'],
   '@vscode/codicons': ['package.json', 'LICENSE', 'LICENSE-CODE', 'dist/codicon.css', 'dist/codicon.ttf'],
+  '@highlightjs/cdn-assets': ['package.json', 'LICENSE', 'highlight.min.js'],
 };
 
 /* The folder of package `name` as require() would find it from `fromDir`, or ''. */

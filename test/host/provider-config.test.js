@@ -8,23 +8,25 @@ const assert = require('node:assert');
 const fake = require('./fake-vscode');
 const { createProviderConfig, SECRET_KEY, OUR_WAY } = require('../../src/host/provider-config');
 
-function setup(config = {}, secret) {
+function setup(config = {}, secret, baseEnv = {}) {
   const { vscode, control } = fake.create();
   Object.assign(control.state.config, config);
   if (secret) control.state.secrets.set(SECRET_KEY, secret);
   const restarts = [];
   const lines = [];
-  const cfg = createProviderConfig({ vscode, secrets: control.secrets, restart: async (o) => restarts.push(o), log: (l) => lines.push(l) });
+  const cfg = createProviderConfig({ vscode, secrets: control.secrets, restart: async (o) => restarts.push(o), log: (l) => lines.push(l), baseEnv });
   return { cfg, control, restarts, lines, vscode };
 }
 
-test('empty settings add nothing; set ones become the environment OpenCode starts with', async () => {
+const TODO = { OPENCODE_FLAGS: 'todo' };
+
+test('empty settings add only the todo flag; set ones become the environment OpenCode starts with', async () => {
   const empty = setup();
   await empty.cfg.ready;
-  assert.deepStrictEqual(empty.cfg.options(), { binaryPath: '', permissions: true, env: {} });
+  assert.deepStrictEqual(empty.cfg.options(), { binaryPath: '', permissions: true, env: TODO });
   const s = setup({ 'opencodeAgentPlus.bedrock.profile': 'self', 'opencodeAgentPlus.bedrock.region': 'us-east-1', 'opencodeAgentPlus.opencode.path': '/opt/oc', 'opencodeAgentPlus.opencode.askPermissions': false }, 'k-1');
   await s.cfg.ready;
-  assert.deepStrictEqual(s.cfg.options(), { binaryPath: '/opt/oc', permissions: false, env: { AWS_PROFILE: 'self', AWS_REGION: 'us-east-1', AWS_BEARER_TOKEN_BEDROCK: 'k-1' } });
+  assert.deepStrictEqual(s.cfg.options(), { binaryPath: '/opt/oc', permissions: false, env: { ...TODO, AWS_PROFILE: 'self', AWS_REGION: 'us-east-1', AWS_BEARER_TOKEN_BEDROCK: 'k-1' } });
   assert.deepStrictEqual(s.restarts, [], 'reading the key at activation is no change');
 });
 
@@ -32,12 +34,12 @@ test('opencode.environment adds variables under the Bedrock ones; a bad name or 
   const s = setup({ 'opencodeAgentPlus.opencode.environment': { OPENAI_BASE_URL: 'https://x', AWS_PROFILE: 'other', 'bad name': 'v', N: 3 },
     'opencodeAgentPlus.bedrock.profile': 'self' });
   await s.cfg.ready;
-  assert.deepStrictEqual(s.cfg.options().env, { OPENAI_BASE_URL: 'https://x', AWS_PROFILE: 'self' });
+  assert.deepStrictEqual(s.cfg.options().env, { OPENAI_BASE_URL: 'https://x', ...TODO, AWS_PROFILE: 'self' });
   s.cfg.options();
   assert.deepStrictEqual(s.lines.filter((l) => /left out/.test(l)), ['opencode.environment: left out bad name, N (a name of letters, digits and _ with a string value is needed)']);
   const off = setup({ 'opencodeAgentPlus.opencode.environment': ['A=1'] });
   await off.cfg.ready;
-  assert.deepStrictEqual(off.cfg.options().env, {}, 'a list is not an object of variables');
+  assert.deepStrictEqual(off.cfg.options().env, TODO, 'a list is not an object of variables');
 });
 
 test('a change of setting or key starts OpenCode again, once per real change, and the key is never logged', async () => {
@@ -47,7 +49,7 @@ test('a change of setting or key starts OpenCode again, once per real change, an
   s.control.setConfig('opencodeAgentPlus.model', 'x/y');
   s.control.setConfig('opencodeAgentPlus.bedrock.profile', 'self');
   await new Promise((r) => setImmediate(r));
-  assert.deepStrictEqual(s.restarts.map((o) => o.env), [{ AWS_PROFILE: 'self' }]);
+  assert.deepStrictEqual(s.restarts.map((o) => o.env), [{ ...TODO, AWS_PROFILE: 'self' }]);
   await s.control.secrets.store(SECRET_KEY, 'secret-value');
   await new Promise((r) => setImmediate(r));
   assert.strictEqual(s.restarts.at(-1).env.AWS_BEARER_TOKEN_BEDROCK, 'secret-value');
@@ -60,6 +62,28 @@ test('a change of setting or key starts OpenCode again, once per real change, an
   assert.strictEqual(s.restarts.length, 4);
   assert.ok(!s.lines.join('\n').includes('secret-value'));
   assert.ok(!s.lines.join('\n').includes('extra-value'), 'the log names variables, not their values');
+});
+
+test("todoList turns on OpenCode 2's todowrite tool through OPENCODE_FLAGS, merged with the user's own flags", async () => {
+  const off = setup({ 'opencodeAgentPlus.todoList': false }, undefined, { OPENCODE_FLAGS: 'machines' });
+  await off.cfg.ready;
+  assert.deepStrictEqual(off.cfg.options().env, {}, 'off: the inherited flags are left alone');
+  const inherited = setup({}, undefined, { OPENCODE_FLAGS: 'machines, sqlite_fts' });
+  await inherited.cfg.ready;
+  assert.strictEqual(inherited.cfg.options().env.OPENCODE_FLAGS, 'machines,sqlite_fts,todo', 'added to what OpenCode would inherit');
+  const own = setup({ 'opencodeAgentPlus.opencode.environment': { OPENCODE_FLAGS: 'artifacts' } }, undefined, { OPENCODE_FLAGS: 'machines' });
+  await own.cfg.ready;
+  assert.strictEqual(own.cfg.options().env.OPENCODE_FLAGS, 'artifacts,todo', 'the setting wins over the inherited value, as it does for any variable');
+  for (const flags of ['todo', '-todo', 'machines,-todo']) {
+    const named = setup({}, undefined, { OPENCODE_FLAGS: flags });
+    await named.cfg.ready;
+    assert.strictEqual(named.cfg.options().env.OPENCODE_FLAGS, flags, `${flags}: a list naming todo either way is kept`);
+  }
+  const s = setup();
+  await s.cfg.ready;
+  s.control.setConfig('opencodeAgentPlus.todoList', false);
+  await new Promise((r) => setImmediate(r));
+  assert.deepStrictEqual(s.restarts.map((o) => o.env), [{}], 'turning it off starts OpenCode again without the flag');
 });
 
 test('setting and clearing the API key', async () => {

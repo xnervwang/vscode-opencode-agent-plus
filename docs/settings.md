@@ -13,17 +13,20 @@ You can change these settings under OpenCode Agent Plus in the VS Code Settings 
 | `opencodeAgentPlus.opencode.path` | Empty | Sets the path to the [OpenCode executable](setup.md#how-opencode-agent-plus-finds-opencode). If you leave it empty, OpenCode Agent Plus searches for it. Set it in User or Remote settings, not Workspace settings. |
 | `opencodeAgentPlus.opencode.askPermissions` | On | Applies [OpenCode Agent Plus's permission rules](features.md#permission-prompts) for edits, commands, web requests and access outside the project. Set it in User or Remote settings, not Workspace settings. |
 | `opencodeAgentPlus.opencode.environment` | Empty | Adds environment variables for the OpenCode that OpenCode Agent Plus starts, such as `{ "OPENAI_BASE_URL": "https://…" }`. The two Bedrock settings and the stored Bedrock API key take precedence over the same names. Set it in User or Remote settings, not Workspace settings. |
+| `opencodeAgentPlus.todoList` | On | Turns on OpenCode 2's experimental [todo list tool](features.md#todo-list) by adding `todo` to `OPENCODE_FLAGS`. |
 | `opencodeAgentPlus.bedrock.profile` | Empty | Sets the [AWS profile for Amazon Bedrock](setup.md#through-opencode-agent-plus-settings). Set it in User or Remote settings, not Workspace settings. |
 | `opencodeAgentPlus.bedrock.region` | Empty | Sets the [AWS Region for Amazon Bedrock](setup.md#through-opencode-agent-plus-settings). Set it in User or Remote settings, not Workspace settings. |
 | `opencodeAgentPlus.workPlan` | On | In Custom [token mode](features.md#token-mode), lets the model keep a work plan. |
 | `opencodeAgentPlus.planBar` | On | Shows the [plan bar](features.md#work-plan-and-plan-bar) above the input box. |
 | `opencodeAgentPlus.conversationLinks` | On | Turns mentions of other conversations into [links in replies](features.md#links-and-images-in-replies). |
+| `opencodeAgentPlus.focusView` | Off | Shows only your messages and the last reply of each turn ([Focus view](features.md#focus-view)). |
+| `opencodeAgentPlus.pinPrompt` | On | Keeps your message [pinned at the top](features.md#pinned-message) while you scroll through its reply. |
 | `opencodeAgentPlus.conversationBrief` | On | In Custom token mode, lets the model keep a [conversation brief](features.md#conversation-brief). |
 | `opencodeAgentPlus.tellOpenCodeYourTimeZone` | On | In Custom token mode, tells the model [your time zone](setup.md#remote-ssh) when it differs from the OpenCode machine's time zone. |
 
 ### Settings That Restart OpenCode
 
-**Let a running turn finish before you change the OpenCode path, permission rules, environment variables, Bedrock profile, Region or stored Bedrock API key.** Changing any of them restarts OpenCode, which ends a running turn with an error. The other settings take effect without a restart.
+**Let a running turn finish before you change the OpenCode path, permission rules, environment variables, todo list setting, Bedrock profile, Region or stored Bedrock API key.** Changing any of them restarts OpenCode, which ends a running turn with an error. The other settings take effect without a restart.
 
 ## Turning Features Off
 
@@ -38,6 +41,7 @@ Agent Plus's [Token Mode](features.md#token-mode) controls what OpenCode Agent P
 | Note about images in replies | Choose Interface features. This note has no separate switch. |
 | Plan bar | Turn off `opencodeAgentPlus.planBar`. |
 | Links to other conversations | Turn off `opencodeAgentPlus.conversationLinks`. |
+| OpenCode's todo list tool | Turn off `opencodeAgentPlus.todoList`. |
 | OpenCode Agent Plus's permission rules | Turn off `opencodeAgentPlus.opencode.askPermissions` to use your own OpenCode rules. |
 | Chimes | Click the note button under the input box. |
 
@@ -60,6 +64,7 @@ In the Command Palette, search for `OpenCode Agent Plus:` to find these commands
 | `OpenCode Agent Plus: Look for Python Again for Work Plans` | Checks again for a Python installation the work plan can use. |
 | `OpenCode Agent Plus: Show MCP Servers` | Runs `opencode mcp list` and shows OpenCode's MCP (Model Context Protocol) servers in a VS Code output channel. |
 | `OpenCode Agent Plus: Show Logs` | Opens OpenCode Agent Plus's log in the Output panel. |
+| `OpenCode Agent Plus: Toggle Focus View` | Turns [Focus view](features.md#focus-view) on or off. Ctrl+Alt+F in a chat tab does the same. |
 
 To add an MCP server, run `opencode mcp add` or edit OpenCode's configuration file.
 

@@ -49,7 +49,7 @@ test('sets the webview up with scripts from the extension only; inline styles on
     const roots = options.localResourceRoots.map((u) => u.path);
     /* Uri.joinPath uses '/' on every system. */
     assert.deepEqual(roots, [path.posix.join(ROOT, 'media'), path.posix.join(ROOT, 'node_modules/markdown-it/dist/browser'),
-      path.posix.join(ROOT, 'node_modules/@vscode/codicons/dist')]);
+      path.posix.join(ROOT, 'node_modules/@vscode/codicons/dist'), path.posix.join(ROOT, 'node_modules/@highlightjs/cdn-assets')]);
     assert.match(html, /codicons\/dist\/codicon\.css">\n<link rel="stylesheet" href="[^"]*media\/chat\.css/, 'the icon font loads before the page style');
     /* Drawn before chat.css applies, an svg without its own size fills the page and a shape without its own fill is black. */
     const svgs = html.match(/<svg[^>]*>/g) || [];

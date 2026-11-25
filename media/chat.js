@@ -20,7 +20,9 @@
  * Messages out: ready { tz }, send { text, images?, files?, selections? }, abort, permission, question { requestId, action,
  *               values }, viewDiff, setModel, setOption, reloadModels, copy, openLink, findFiles { query, seq },
  *               addSelection, planBarOpen { part: 'plan' | 'answer' }, rewind { itemId }, info, setSound { on },
- *               image { id, src }, background, openConversation { sourceId, sessionId }.
+ *               image { id, src }, background, openConversation { sourceId, sessionId }, checkPaths { paths },
+ *               openFile { path, line, col }, setFocusView { on }.
+ *               In as well: view { focus, pin, toggle }, paths { results: [{ path, ok }] }.
  *
  * The layout is the Claude Code panel's: each row of a reply hangs on a line down the left side with a dot that shows
  * its state, a tool call is one row that opens to its input and result, and the message box carries its buttons in a
@@ -36,12 +38,121 @@
  * The rail on the right edge moves between the user's messages, and its middle button opens a list of them and of the
  * compaction points; a click scrolls to one. The Subagents button hides what subagents did and folds their progress,
  * leaving a request of theirs that still waits. Both choices live in the page's state.
+ *
+ * Code blocks that name a language are coloured by highlight.js with the theme's colours; one without a language stays
+ * plain, as guessing goes wrong on logs and output. The paths a reply names, and the file of a read, edit or write row,
+ * become links once the extension has checked that they are files. An edit's row opens to its change as red and green
+ * lines, and a todowrite row to its list. Focus view hides all but your messages and the last reply of each turn; the
+ * message whose reply is being read stays pinned at the top of the log. The two settings come from the extension.
  */
+
+/* The page's logic that needs no DOM, for the tests (require) and the page (window.ChatPage). */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.ChatPage = api;
+}(typeof self !== 'undefined' ? self : this, () => {
+  /* Longer code blocks are left plain. */
+  const HIGHLIGHT_MAX = 100000;
+
+  /* highlight.js's HTML for `code` in `lang` (the first word after the fence), or '' to leave it plain: no language, one
+     highlight.js does not know, or a block over HIGHLIGHT_MAX. */
+  function highlightCode(hl, code, lang) {
+    const name = String(lang || '').trim().split(/\s+/)[0].toLowerCase();
+    if (!hl || !name || typeof code !== 'string' || code.length > HIGHLIGHT_MAX || typeof hl.getLanguage !== 'function' || !hl.getLanguage(name)) return '';
+    try { return hl.highlight(code, { language: name, ignoreIllegals: true }).value; } catch (_) { return ''; }
+  }
+
+  /* A path: an optional drive, ./, ../ or root, folders, and a name; then :line, :line:column or #Lline. */
+  const SEG = '[A-Za-z0-9_@+\\-][A-Za-z0-9_@+.\\-]*';
+  const PATH = new RegExp(`(?<![\\w@+.\\-/\\\\:])((?:[A-Za-z]:[\\\\/]|\\.{1,2}[\\\\/]|[\\\\/])?(?:${SEG}[\\\\/])*${SEG})(?::(\\d{1,7})(?::(\\d{1,5}))?(?:-\\d{1,7})?|#L(\\d{1,7}))?(?![\\w/\\\\])`, 'g');
+  /* A name counts only with a folder in front or an extension that has a letter: README.md, src/x, not 1.5 or "and". */
+  function looksLikePath(p) {
+    if (!p || p.length > 1024) return false;
+    const name = p.split(/[\\/]/).pop();
+    if (!/[A-Za-z]/.test(name)) return false;
+    return /[\\/]/.test(p) || /\.[A-Za-z][A-Za-z0-9]{0,9}$/.test(name);
+  }
+  /* The paths in `text`, each { index, length, path, line?, col? } with index and length over the path and its line. */
+  function pathRefs(text) {
+    const out = [];
+    const t = String(text || '');
+    PATH.lastIndex = 0;
+    for (let m = PATH.exec(t); m && out.length < 200; m = PATH.exec(t)) {
+      let p = m[1];
+      let length = m[0].length;
+      /* A sentence's full stop is not part of the name. */
+      if (!m[2] && !m[4]) { while (p.endsWith('.')) { p = p.slice(0, -1); length--; } }
+      if (!looksLikePath(p)) continue;
+      const ref = { index: m.index, length, path: p };
+      const line = Number(m[2] || m[4]) || 0;
+      if (line) ref.line = line;
+      if (m[3]) ref.col = Number(m[3]);
+      out.push(ref);
+    }
+    return out;
+  }
+  /* The path that the whole of `text` is, as inline code holds one, or null. */
+  function codePathRef(text) {
+    const t = String(text || '').trim();
+    const r = pathRefs(t);
+    return r.length === 1 && r[0].index === 0 && r[0].length === t.length ? r[0] : null;
+  }
+
+  /* The ids Focus view hides: everything but your messages, the last text of each turn, the figures, compaction lines,
+     error notices, and the permission requests and questions still waiting. */
+  function focusHidden(items) {
+    const last = new Map();
+    for (const it of items || []) if (it && it.kind === 'text') last.set(it.turn != null ? it.turn : `@${it.id}`, it.id);
+    const kept = new Set(last.values());
+    const out = new Set();
+    for (const it of items || []) {
+      if (!it || ['user', 'figures', 'compaction'].includes(it.kind)) continue;
+      if (it.kind === 'text' && kept.has(it.id)) continue;
+      if ((it.kind === 'permission' || it.kind === 'question') && !it.decision) continue;
+      if (it.kind === 'notice' && it.level === 'error') continue;
+      out.add(it.id);
+    }
+    return out;
+  }
+
+  /* Which of your messages, given their boxes' { top, bottom } from the top of the log in order, to pin there: the last
+     one scrolled out of sight above, unless the next is within `height` of the top. -1 for none. */
+  function pinIndex(rects, height) {
+    let at = -1;
+    for (let i = 0; i < (rects || []).length; i++) {
+      if (rects[i].bottom <= 0) at = i;
+      else break;
+    }
+    if (at < 0) return -1;
+    const next = rects[at + 1];
+    return next && next.top < height ? -1 : at;
+  }
+
+  return { highlightCode, pathRefs, codePathRef, focusHidden, pinIndex, HIGHLIGHT_MAX };
+}));
+
 (function () {
+  if (typeof acquireVsCodeApi !== 'function') return;
   const api = acquireVsCodeApi();
   const C = window.ChatComposer;
+  const P = window.ChatPage;
+  const HL = window.hljs && typeof window.hljs.highlight === 'function' ? window.hljs : null;
+  /* The coloured HTML of the latest code blocks, as a reply that is still coming is drawn again on every change. */
+  const codeCache = new Map();
+  function codeHtml(str, lang) {
+    if (!HL || !lang) return '';
+    const key = `${lang}\n${str}`;
+    let html = codeCache.get(key);
+    if (html === undefined) {
+      html = P.highlightCode(HL, str, lang);
+      codeCache.set(key, html);
+      while (codeCache.size > 120) codeCache.delete(codeCache.keys().next().value);
+    }
+    return html;
+  }
   const md = typeof window.markdownit === 'function'
-    ? window.markdownit({ html: false, linkify: true, breaks: true })
+    ? window.markdownit({ html: false, linkify: true, breaks: true, highlight: codeHtml })
     : null;
   /* markdown-it drops file: addresses; an image link may name a local file by one. Scripts stay out. */
   if (md) md.validateLink = (url) => !/^\s*(javascript|vbscript):/i.test(url) && (!/^\s*data:/i.test(url) || /^\s*data:image\/(gif|png|jpeg|webp);/i.test(url));
@@ -122,6 +233,8 @@
   let outlineOpen = kept.outline === true;
   let hideSubs = kept.hideSubagents === true;
   let sideFrame = 0;
+  /* Focus view and the pinned prompt, as the extension's settings have them; `toggle` shows the Focus button. */
+  let view = { focus: false, pin: true, toggle: false };
 
   const DECISION_WORDS = {
     allowOnce: 'Allowed once',
@@ -170,6 +283,119 @@
   }
   const hostNow = () => Date.now() + skew;
 
+  /* ---------- files a reply names ---------- */
+
+  /* path -> { ok, at }, the extension's latest answer; a miss is asked about again after FILE_RETRY_MS. */
+  const fileState = new Map();
+  const fileAsk = new Set();
+  const fileAsked = new Set();
+  /* Paths to check past the extension's cache: the file of a call that has just ended may have just been written. */
+  const fileFresh = new Set();
+  let fileAskTimer = 0;
+  const FILE_RETRY_MS = 4000;
+  /* The paths a call to linkFiles met, so that an answer redraws only the entries naming them. */
+  let filesSeen = null;
+  function askFiles() {
+    fileAskTimer = 0;
+    const paths = [...fileAsk].slice(0, 200);
+    for (const p of paths) { fileAsk.delete(p); fileAsked.add(p); }
+    const fresh = paths.filter((p) => fileFresh.delete(p));
+    if (paths.length) api.postMessage({ type: 'checkPaths', paths, ...(fresh.length ? { fresh } : {}) });
+    if (fileAsk.size) fileAskTimer = setTimeout(askFiles, 120);
+  }
+  /* Whether `p` is known to be a file; asks the extension when it is not known yet. */
+  function fileOk(p) {
+    if (filesSeen) filesSeen.add(p);
+    const got = fileState.get(p);
+    if (got && (got.ok || Date.now() - got.at < FILE_RETRY_MS)) return got.ok;
+    if (!fileAsked.has(p) && !fileAsk.has(p)) {
+      fileAsk.add(p);
+      if (!fileAskTimer) fileAskTimer = setTimeout(askFiles, 120);
+    }
+    return false;
+  }
+  function fileLink(ref, text) {
+    const a = el('a', 'file-link', text);
+    a.setAttribute('href', '#');
+    a.dataset.path = ref.path;
+    if (ref.line) a.dataset.line = String(ref.line);
+    if (ref.col) a.dataset.col = String(ref.col);
+    a.title = `Open ${ref.path}${ref.line ? ` at line ${ref.line}` : ''}`;
+    return a;
+  }
+  /* Links the paths in `target` that are files: inline code that is just a path, a web link markdown-it guessed from a
+     file name (README.md), and paths in the text. Code blocks and other links stay as they are. */
+  function linkFiles(target) {
+    if (!P) return;
+    for (const code of [...target.querySelectorAll('code')]) {
+      if (code.closest('pre, a')) continue;
+      const ref = P.codePathRef(code.textContent);
+      if (!ref || !fileOk(ref.path)) continue;
+      const a = fileLink(ref);
+      code.replaceWith(a);
+      a.appendChild(code);
+    }
+    for (const a of [...target.querySelectorAll('a[href]')]) {
+      const text = a.textContent;
+      if (a.classList.contains('conv-link') || a.getAttribute('href') !== `http://${text}`) continue;
+      const ref = P.codePathRef(text);
+      if (ref && fileOk(ref.path)) a.replaceWith(fileLink(ref, text));
+    }
+    const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT,
+      { acceptNode: (n) => (n.parentElement && n.parentElement.closest('a, pre, code') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+    const texts = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) texts.push(n);
+    for (const node of texts) {
+      const value = node.nodeValue;
+      const refs = P.pathRefs(value).filter((r) => fileOk(r.path));
+      if (!refs.length) continue;
+      const frag = document.createDocumentFragment();
+      let at = 0;
+      for (const r of refs) {
+        if (r.index > at) frag.appendChild(document.createTextNode(value.slice(at, r.index)));
+        frag.appendChild(fileLink(r, value.slice(r.index, r.index + r.length)));
+        at = r.index + r.length;
+      }
+      if (at < value.length) frag.appendChild(document.createTextNode(value.slice(at)));
+      node.replaceWith(frag);
+    }
+  }
+  /* The file of a read, edit or write row, linked on its summary once it is known to be a file. */
+  function paintToolFile(entry, ended) {
+    const f = entry.item && entry.item.file;
+    if (f && ended && !(fileState.get(f.path) || {}).ok) { fileState.delete(f.path); fileAsked.delete(f.path); fileFresh.add(f.path); }
+    filesSeen = entry.paths = new Set();
+    const ok = !!f && fileOk(f.path);
+    filesSeen = null;
+    entry.summary.classList.toggle('file-link', ok);
+    if (ok) {
+      entry.summary.dataset.path = f.path;
+      if (f.line) entry.summary.dataset.line = String(f.line); else delete entry.summary.dataset.line;
+      entry.summary.title = `Open ${f.path}${f.line ? ` at line ${f.line}` : ''}`;
+    } else {
+      delete entry.summary.dataset.path;
+      delete entry.summary.dataset.line;
+    }
+  }
+  function filesAnswered(results) {
+    const changed = new Set();
+    for (const r of Array.isArray(results) ? results : []) {
+      if (!r || typeof r.path !== 'string') continue;
+      fileAsked.delete(r.path);
+      const was = fileState.get(r.path);
+      fileState.delete(r.path);
+      fileState.set(r.path, { ok: r.ok === true, at: Date.now() });
+      if (!was || was.ok !== (r.ok === true)) changed.add(r.path);
+    }
+    while (fileState.size > 3000) fileState.delete(fileState.keys().next().value);
+    if (!changed.size) return;
+    for (const e of nodes.values()) {
+      if (!e.paths || ![...e.paths].some((p) => changed.has(p))) continue;
+      if (e.item && e.item.kind === 'tool') paintToolFile(e);
+      else if (e.text) scheduleRender(e);
+    }
+  }
+
   /* ---------- markdown ---------- */
 
   function renderMarkdown(target, text) {
@@ -181,6 +407,7 @@
     target.innerHTML = md.render(C.driveSlashes(text));
     placeImages(target);
     linkConversations(target);
+    linkFiles(target);
     for (const pre of target.querySelectorAll('pre')) {
       const wrap = el('div', 'code');
       pre.replaceWith(wrap);
@@ -200,7 +427,9 @@
     frame = requestAnimationFrame(() => {
       frame = 0;
       for (const e of toRender) {
+        filesSeen = e.paths = new Set();
         renderMarkdown(e.body, e.text);
+        filesSeen = null;
         e.rendered = e.text;
       }
       toRender.clear();
@@ -335,6 +564,7 @@
         i.type = 'checkbox';
         i.name = name(f.key);
         i.checked = f.default === true;
+        i.dataset.bool = '1';
         label.append(i, el('span', null, 'Yes'));
         box.append(label);
         inputs.push(i);
@@ -354,6 +584,12 @@
       entry.form.appendChild(box);
     }
     entry.inputs = inputs;
+    /* Submit looks idle, as Claude Code draws it, until a choice is picked or a box has text; a yes-or-no counts as answered. */
+    const answered = () => !inputs.length || inputs.some((i) => (i.dataset.bool ? true : i.type === 'radio' || i.type === 'checkbox' ? i.checked : !!i.value.trim()));
+    const paint = () => entry.submit.classList.toggle('idle', !answered());
+    entry.form.addEventListener('input', paint);
+    entry.form.addEventListener('change', paint);
+    paint();
     entry.values = () => {
       const out = {};
       for (const f of item.fields || []) {
@@ -379,6 +615,48 @@
       if (v && typeof v.command === 'string') return v.command;
     } catch (_) { /* clipped or not JSON */ }
     return raw;
+  }
+
+  /* An edit's change: a row per line, red for removed and green for added, with line numbers when the whole file was
+     compared; folded unchanged runs and the rows past the view model's limit are counted. */
+  function drawChange(box, change) {
+    if (!change) { box.replaceChildren(); return; }
+    const rows = [];
+    const numbered = change.rows.some((r) => r.o || r.n);
+    for (const r of change.rows) {
+      if (r.k === '~') { rows.push(el('div', 'diff-row d-gap', `${r.count} unchanged line${r.count === 1 ? '' : 's'}`)); continue; }
+      if (r.k === 'f') { rows.push(el('div', 'diff-row d-file', r.t)); continue; }
+      if (r.k === '@') { rows.push(el('div', 'diff-row d-hunk', r.t || '')); continue; }
+      const row = el('div', `diff-row ${r.k === '+' ? 'd-add' : r.k === '-' ? 'd-del' : 'd-ctx'}`);
+      if (numbered) row.append(el('span', 'diff-n', String((r.k === '-' ? r.o : r.n) || '')));
+      row.append(el('span', 'diff-sign', r.k === ' ' ? '' : r.k), el('span', 'diff-text', r.t));
+      rows.push(row);
+    }
+    /* Only the rows scroll, so that the count of those left out shows under them. */
+    const list = el('div', 'diff-rows');
+    list.replaceChildren(...rows);
+    box.replaceChildren(list);
+    if (change.more) box.appendChild(el('div', 'diff-more', `${change.more} more line${change.more === 1 ? '' : 's'} not shown`));
+  }
+  /* The counts on an edit's row: +added and -removed, each only when not 0, or a write's number of lines. */
+  function changeLabel(target, change) {
+    if (change.kind === 'write') { target.textContent = `${change.added} line${change.added === 1 ? '' : 's'}`; return; }
+    const parts = [];
+    if (change.added || !change.removed) parts.push(el('span', 'n-add', `+${change.added}`));
+    if (change.removed) parts.push(el('span', 'n-del', `-${change.removed}`));
+    target.replaceChildren(...parts.flatMap((p, i) => (i ? [document.createTextNode(' '), p] : [p])));
+  }
+
+  /* A todowrite call's list, a row per item. */
+  const TODO_ICONS = { pending: 'circle-large-outline', in_progress: 'circle-large-filled', completed: 'pass-filled', cancelled: 'circle-slash' };
+  const TODO_WORDS = { pending: 'To do', in_progress: 'In progress', completed: 'Done', cancelled: 'Cancelled' };
+  function drawTodos(box, todos) {
+    box.replaceChildren(...(todos || []).map((t) => {
+      const row = el('div', `todo todo-${t.status}`);
+      row.title = TODO_WORDS[t.status] || '';
+      row.append(icon(TODO_ICONS[t.status] || TODO_ICONS.pending), el('span', 'todo-text', t.content));
+      return row;
+    }));
   }
 
   function toolRow(cls, label) {
@@ -445,7 +723,9 @@
         entry.inPre = inRow.pre;
         entry.outBox = outRow.row;
         entry.outPre = outRow.pre;
-        entry.bodyBox.append(entry.inBox, entry.outBox);
+        entry.todoBox = el('div', 'todo-list');
+        entry.diffBox = el('div', 'tool-diff');
+        entry.bodyBox.append(entry.todoBox, entry.diffBox, entry.inBox, entry.outBox);
         entry.el.append(meta, entry.head, entry.bodyBox);
         break;
       }
@@ -584,13 +864,23 @@
         entry.summary.textContent = item.summary || '';
         entry.summary.title = item.summary || '';
         fromSubagent(entry.from, item.subagent);
+        paintToolFile(entry, !!prev && prev.state === 'running' && item.state !== 'running');
         const result = item.result || '';
         const lines = result ? result.split('\n').length : 0;
         const label = item.display && typeof item.display.summary === 'string' ? item.display.summary : '';
-        entry.state.textContent = TOOL_STATE_WORDS[item.state] || (result ? label || `${lines} line${lines === 1 ? '' : 's'}` : '');
+        const change = item.change || null;
+        const todos = Array.isArray(item.todos) ? item.todos : null;
+        if (TOOL_STATE_WORDS[item.state] || !change) entry.state.textContent = TOOL_STATE_WORDS[item.state] || (result && !todos ? label || `${lines} line${lines === 1 ? '' : 's'}` : '');
+        else changeLabel(entry.state, change);
+        if (entry.change !== change) { entry.change = change; drawChange(entry.diffBox, change); }
+        entry.diffBox.hidden = !change;
+        if (entry.todos !== todos) { entry.todos = todos; drawTodos(entry.todoBox, todos); }
+        entry.todoBox.hidden = !todos;
+        /* A list is read at once, so its row starts open. */
+        if (todos && !entry.shownOnce) { entry.shownOnce = true; setOpen(entry, true); }
         entry.inPre.textContent = inputShown(item.input);
-        entry.inBox.hidden = !item.input || item.input === '{}';
-        entry.outBox.hidden = !result;
+        entry.inBox.hidden = !item.input || item.input === '{}' || !!change || !!todos;
+        entry.outBox.hidden = !result || (!!todos && item.state !== 'error');
         entry.outPre.textContent = result;
         entry.head.title = entry.open ? 'Hide the input and result' : 'Show the input and result';
         if (item.state === 'error' && (!prev || prev.state !== 'error')) setOpen(entry, true);
@@ -833,7 +1123,67 @@
     subBtn.setAttribute('aria-pressed', hideSubs ? 'true' : 'false');
     subBtn.title = hideSubs ? 'Show what the subagents did' : 'Hide what the subagents did';
     document.body.classList.toggle('hide-subagents', hideSubs);
+    const out = view.focus ? P.focusHidden(entries.map((e) => e.item)) : null;
+    for (const e of entries) if (e.item) e.el.classList.toggle('focus-out', !!out && out.has(e.item.id));
+    schedulePin();
   }
+
+  /* ---------- Focus view and the pinned prompt ---------- */
+
+  const focusBtn = el('button', 'tool-btn toggle');
+  focusBtn.id = 'focusBtn';
+  focusBtn.type = 'button';
+  focusBtn.hidden = true;
+  focusBtn.append(icon('eye'));
+  infoBtn.after(focusBtn);
+  function paintFocus() {
+    document.body.classList.toggle('focus-view', view.focus);
+    focusBtn.hidden = !view.toggle;
+    focusBtn.setAttribute('aria-pressed', view.focus ? 'true' : 'false');
+    focusBtn.title = view.focus ? 'Focus view is on: only your messages and the last reply of each turn show. Click to show everything (Ctrl+Alt+F).'
+      : 'Focus view: show only your messages and the last reply of each turn (Ctrl+Alt+F)';
+  }
+  focusBtn.addEventListener('click', () => {
+    view = { ...view, focus: !view.focus };
+    paintFocus();
+    renderSide();
+    renderStatus();
+    api.postMessage({ type: 'setFocusView', on: view.focus });
+  });
+
+  /* Your message whose reply is being read, pinned over the top of the log; a click goes back to it. */
+  const pinEl = el('div', 'pinned');
+  pinEl.id = 'pinned';
+  pinEl.hidden = true;
+  pinEl.tabIndex = 0;
+  pinEl.setAttribute('role', 'button');
+  pinEl.title = 'Go to this message';
+  const pinTime = el('span', 'time');
+  const pinText = el('span', 'pinned-text');
+  pinEl.append(pinTime, pinText);
+  log.after(pinEl);
+  let pinFrame = 0;
+  let pinnedId = '';
+  function schedulePin() {
+    if (pinFrame) return;
+    pinFrame = requestAnimationFrame(() => { pinFrame = 0; updatePin(); });
+  }
+  function updatePin() {
+    const users = view.pin ? [...nodes.values()].filter((e) => e.item && e.item.kind === 'user' && e.el.getClientRects().length) : [];
+    const top = log.getBoundingClientRect().top;
+    const rects = users.map((e) => { const r = (e.el.querySelector('.user-box') || e.el).getBoundingClientRect(); return { top: r.top - top, bottom: r.bottom - top }; });
+    const i = P.pinIndex(rects, (pinEl.offsetHeight || 30) + 8);
+    if (i < 0) { pinEl.hidden = true; pinnedId = ''; return; }
+    const e = users[i];
+    pinnedId = e.item.id;
+    pinTime.textContent = stamp(e.item.at);
+    if (pinText.textContent !== e.item.text) pinText.textContent = e.item.text;
+    pinEl.dataset.item = e.item.id;
+    pinEl.hidden = false;
+  }
+  log.addEventListener('scroll', schedulePin, { passive: true });
+  pinEl.addEventListener('click', () => jumpTo(nodes.get(pinnedId)));
+  pinEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jumpTo(nodes.get(pinnedId)); } });
   /* Scrolls the log, and only the log, so that `el` is at its top (8px below it) or, with `center`, in its middle:
      scrollIntoView would also scroll the page by the few pixels it is taller than its frame. */
   function scrollLogTo(el, center) {
@@ -1070,7 +1420,12 @@
       statusEl.textContent = head.waitingFor === 'question' ? 'Waiting for your answer' : 'Waiting for you to allow or deny a request';
     } else {
       statusEl.className = 'working';
-      statusEl.textContent = head.turnStartedAt ? `Working · ${seconds(hostNow() - head.turnStartedAt)}` : 'Working';
+      let doing = '';
+      if (view.focus) {
+        const run = [...nodes.values()].reverse().find((e) => e.item && e.item.kind === 'tool' && e.item.state === 'running');
+        if (run) doing = ` · ${run.item.name}${run.item.summary ? ` ${run.item.summary}` : ''}`;
+      }
+      statusEl.textContent = `${head.turnStartedAt ? `Working · ${seconds(hostNow() - head.turnStartedAt)}` : 'Working'}${doing}`;
     }
   }
 
@@ -1433,6 +1788,12 @@
       api.postMessage({ type: 'openConversation', sourceId: conv.dataset.source || '', sessionId: conv.dataset.session || '' });
       return;
     }
+    const file = target.closest('.file-link');
+    if (file && file.dataset.path) {
+      e.preventDefault();
+      api.postMessage({ type: 'openFile', path: file.dataset.path, line: Number(file.dataset.line) || 0, col: Number(file.dataset.col) || 0 });
+      return;
+    }
     const link = target.closest('a[href]');
     if (link) {
       e.preventDefault();
@@ -1499,7 +1860,7 @@
   const gutter = () => document.body.style.setProperty('--sb', `${Math.max(0, log.offsetWidth - log.clientWidth)}px`);
   gutter();
   /* When the bottom bar grows (a list, attachments, a status line), a log scrolled to its end stays there. */
-  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { gutter(); if (stick) scrollEnd(); }).observe(log);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { gutter(); if (stick) scrollEnd(); schedulePin(); }).observe(log);
 
   /* ---------- the plan bar ---------- */
 
@@ -1599,6 +1960,13 @@
       if (!at) { closeMenu(); return; }
       menu = { kind: 'at', items: Array.isArray(m.items) ? m.items : [], index: 0, token: at, loading: false };
       renderMenu();
+    } else if (m.type === 'view') {
+      view = { focus: m.focus === true, pin: m.pin !== false, toggle: m.toggle === true };
+      paintFocus();
+      renderSide();
+      renderStatus();
+    } else if (m.type === 'paths') {
+      filesAnswered(m.results);
     } else if (m.type === 'questionErrors') {
       for (const entry of nodes.values()) {
         if (!entry.item || entry.item.kind !== 'question' || entry.item.requestId !== m.requestId) continue;
