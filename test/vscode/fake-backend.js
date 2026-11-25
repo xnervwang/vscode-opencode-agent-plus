@@ -209,6 +209,12 @@ const readText = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch
  * undo (write(file, text)), a subagent session (child(title)) and a turn of the agent's own after `ms` (later(ms, steps)).
  */
 const PROMPTS = [
+  [/^Retry once, then reply with only the word (\w+)\.$/, (m) => [
+    { type: 'retry', attempt: 2, waitMs: 4000, error: { kind: 'throttled', message: 'Too many requests (fake backend)' } },
+    { wait: 2500 },
+    { type: 'retry', attempt: 0 },
+    ...streamText(m[1], 12),
+  ]],
   [/^列出工作目录下的文件$/, (m, t) => {
     const names = fs.readdirSync(t.cwd).filter((n) => !n.startsWith('.')).sort();
     const call = t.id('ls'), ask = t.id('ls');
