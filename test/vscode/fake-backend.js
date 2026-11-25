@@ -392,7 +392,7 @@ function createOpenCode() {
     const send = c.send;
     let said = 0;
     c.send = (text, extra) => {
-      const demo = /^Demo: (\w+)/.exec(String(text));
+      const demo = /^Demo: ([\w-]+)/.exec(String(text));
       if (demo && DEMOS[demo[1]]) c.script(DEMOS[demo[1]]());
       const m = /^Say: ([\s\S]+)$/.exec(String(text));
       if (!m) {
