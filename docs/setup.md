@@ -61,7 +61,7 @@ On Windows, OpenCode Agent Plus offers to download python.org's embeddable Pytho
 
 ### Your First Conversation
 
-Click the OpenCode Agent Plus icon in the activity bar to open the Conversations view. Select the New Conversation button (`+`), or use the New Conversation link when the list is empty. The conversation opens in an editor tab and starts in the window's first workspace folder. If no folder is open, it starts in your home folder.
+Click the OpenCode Agent Plus icon in the activity bar to open the Conversations view. Select the New Conversation button (`+`), or use the New Conversation link when the list is empty. You can also select the OpenCode mark in any editor's title bar. The conversation opens in an editor tab and starts in the window's first workspace folder. If no folder is open, it starts in your home folder.
 
 Send your first message. If you haven't set a model for new conversations, OpenCode Agent Plus asks you to pick one and saves your choice for later conversations. To change the default, run `OpenCode Agent Plus: Choose Model for New Conversations`.
 

@@ -525,6 +525,8 @@ function start(context, log, gate) {
 
   subs.push(
     vscode.commands.registerCommand(`${brand.prefix}.newConversation`, () => newConversation()),
+    /* The same command with the OpenCode mark, for the editor title bar, where the view's plus sign would read as "new file". */
+    vscode.commands.registerCommand(`${brand.prefix}.newConversationInEditor`, () => newConversation()),
     vscode.commands.registerCommand(`${brand.prefix}.openConversation`, (arg) => {
       const id = typeof arg === 'string' ? arg : arg && arg.id;
       return id ? openSession(id) : false;

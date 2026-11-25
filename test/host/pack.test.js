@@ -64,7 +64,9 @@ test('build/pack-vsix.js with --base-content-url leaves no relative link in the 
 test('ThirdPartyNotices.txt names every image with the OpenCode mark and carries its MIT notice', () => {
   const text = fs.readFileSync(path.join(ROOT, 'ThirdPartyNotices.txt'), 'utf8');
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  const icons = [pkg.icon, ...pkg.contributes.viewsContainers.activitybar.map((c) => c.icon), 'images/icon.svg'];
+  const commandIcons = pkg.contributes.commands.flatMap((c) => (c.icon && typeof c.icon === 'object' ? [c.icon.light, c.icon.dark] : []));
+  assert.deepStrictEqual(commandIcons, ['images/editor-title-light.svg', 'images/editor-title-dark.svg']);
+  const icons = [pkg.icon, ...pkg.contributes.viewsContainers.activitybar.map((c) => c.icon), 'images/icon.svg', ...commandIcons];
   for (const f of icons) assert.ok(text.includes(f), `names ${f}`);
   assert.match(text, /packages\/identity\/mark-light\.svg in OpenCode \(https:\/\/github\.com\/anomalyco\/opencode\)/);
   assert.match(text, /^MIT License\n\nCopyright \(c\) 2025 opencode\n/m);

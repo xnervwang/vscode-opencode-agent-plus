@@ -2,7 +2,8 @@ OpenCode Agent Plus includes the following third-party material.
 
 OpenCode mark
 
-images/icon.svg, images/icon.png and images/sidebar.svg contain the OpenCode mark, from
+images/icon.svg, images/icon.png, images/sidebar.svg, images/editor-title-light.svg and
+images/editor-title-dark.svg contain the OpenCode mark, from
 packages/identity/mark-light.svg in OpenCode (https://github.com/anomalyco/opencode), under this license:
 
 MIT License

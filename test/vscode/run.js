@@ -1479,6 +1479,29 @@ async function main() {
     await shot('07-after-reload', { features: ['reload', 'restored history'],
       expect: 'After the reload the chat tab is open again and shows the same conversation: the user message, the tool cards and the final reply.',
       part: '#workbench\\.parts\\.editor' });
+
+    // 7. Every editor's title bar has the OpenCode mark, which starts another conversation.
+    const markAt = '.editor-actions [aria-label^="OpenCode Agent Plus: New Conversation"]';
+    const mark = await page.waitForSelector(markAt, { timeout: 15000 }).catch(() => null);
+    check(!!mark, 'the editor title bar has the OpenCode mark that starts a new conversation');
+    await page.mouse.move(800, 600);
+    await shot('07b-editor-title-mark-dark', { features: ['new conversation from the editor title bar'],
+      expect: 'At the right end of the chat tab\'s title bar, beside the split editor and "..." buttons, is a small light grey OpenCode mark (an upright rectangular frame whose lower inner half is fainter), the same size and tone as the buttons next to it.',
+      part: '#workbench\\.parts\\.editor' });
+    check(await setTheme('Default Light Modern', 'vs'), 'the window switches to the light theme for the title bar mark');
+    await page.mouse.move(800, 600);
+    await shot('07c-editor-title-mark-light', { features: ['new conversation from the editor title bar'],
+      expect: 'The same title bar in the light theme: the OpenCode mark is dark grey like the buttons beside it and readable on the light bar.',
+      unchanged: 'The buttons and their order, apart from the colours of the theme.',
+      part: '#workbench\\.parts\\.editor' });
+    check(await setTheme('Default Dark Modern', 'vs-dark'), 'the window switches back to the dark theme after the title bar mark');
+    if (mark) {
+      await page.locator(markAt).first().click();
+      const other = await until(() => call(`const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+        return t && t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat" ? t.input.uri.toString() : null;`)
+        .then((u) => (u && u !== `opencodeagentplus-session:/${sessionId}` ? u : null)), 30000);
+      check(!!other, 'clicking the OpenCode mark in the title bar opens a new conversation in a tab of its own', other);
+    }
   } catch (e) {
     check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
     try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }

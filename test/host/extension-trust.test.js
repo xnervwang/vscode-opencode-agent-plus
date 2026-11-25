@@ -171,6 +171,9 @@ test('package.json: the view says what to do in Restricted Mode, and its buttons
   assert.strictEqual(restricted.contents, `${gate.TEXT}\n[Manage Workspace Trust](command:workbench.trust.manage)`);
   assert.ok(welcome.filter((w) => w !== restricted).every((w) => w.when === 'isWorkspaceTrusted'), 'the empty-list text shows only once trusted');
   for (const m of c.menus['view/title']) assert.match(m.when, /&& isWorkspaceTrusted$/, m.command);
+  const titleButton = c.menus['editor/title'].find((m) => m.command === 'opencodeAgentPlus.newConversationInEditor');
+  assert.deepStrictEqual(titleButton, { command: 'opencodeAgentPlus.newConversationInEditor', when: 'isWorkspaceTrusted', group: 'navigation@100' },
+    'every editor has the New Conversation button once the workspace is trusted');
   for (const id of COMMANDS) {
     const entry = c.menus.commandPalette.find((e) => e.command === id);
     assert.ok(entry, `${id} has a Command Palette entry`);

@@ -67,6 +67,14 @@
         "icon": "$(add)"
       },
       {
+        "command": "opencodeAgentPlus.newConversationInEditor",
+        "title": "OpenCode Agent Plus: New Conversation",
+        "icon": {
+          "light": "images/editor-title-light.svg",
+          "dark": "images/editor-title-dark.svg"
+        }
+      },
+      {
         "command": "opencodeAgentPlus.openConversation",
         "title": "Open Conversation",
         "category": "OpenCode Agent Plus"
@@ -227,9 +235,18 @@
           "command": "opencodeAgentPlus.forkConversation",
           "when": "activeCustomEditorId == opencodeAgentPlus.chat && opencodeAgentPlus.canFork",
           "group": "1_opencodeAgentPlus@2"
+        },
+        {
+          "command": "opencodeAgentPlus.newConversationInEditor",
+          "when": "isWorkspaceTrusted",
+          "group": "navigation@100"
         }
       ],
       "commandPalette": [
+        {
+          "command": "opencodeAgentPlus.newConversationInEditor",
+          "when": "false"
+        },
         {
           "command": "opencodeAgentPlus.openConversation",
           "when": "false"
