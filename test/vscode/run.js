@@ -1062,7 +1062,7 @@ async function main() {
           check(!!bar && (/list the files/.test(bar.text) || /All rows done/.test(bar.text)) && bar.gap >= 0 && bar.gap <= 12 && Math.abs(bar.width - bar.box) <= 2,
             'once the plan has a row, the plan bar shows it right above the input box, as wide as it', bar);
           await shot('04b2-plan-bar', { features: ['plan bar'],
-            expect: 'Right above the message box, as wide as it, a one-line bar: a list icon and "Plan", a short coloured track, "1 open", and the row "1 list the files" with its state icon (or a green check and "All rows done"), and an arrow at the right end.',
+            expect: 'Right above the message box, as wide as it, a one-line bar: a list icon and "Plan", a short track coloured by the states of the rows still open (all one colour when the one open row is in progress, empty once every row is done), "1 open", and the row "1 list the files" with its state icon (or a green check and "All rows done"), and an arrow at the right end.',
             part: '#workbench\\.parts\\.editor' });
           await call('await vscode.commands.executeCommand("workbench.view.explorer"); return true;').catch(() => {});
           await until(() => page.evaluate(() => !/Work plan/i.test(document.getElementById('workbench.parts.sidebar').textContent)), 5000);
