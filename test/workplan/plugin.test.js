@@ -552,3 +552,138 @@ test('after a compaction the notes are sent again, separately from the plan, so 
   assert.equal(ev.metadata.agentWorkPlan, '<system-update>\nZONE SessionStart\n\nIMAGES\n\nZONE UserPromptSubmit\n\nIMAGES\n</system-update>');
   await stop();
 });
+
+/* ---------- a steward in Claude Code Plus looks after the conversation ---------- */
+
+/* What a watched conversation is told each turn, as agreed with Claude Code Plus (its steward.py watched()). */
+const WATCHED_TEXT = "A steward conversation watches this one for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user's own. Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: call the steward_handoff tool with the user's words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered.";
+const STEWARD_ID = '3f2b6c1e-0000-4000-8000-00000000000a';
+const PLAN_TOOLS = ['set_row', 'add_row', 'set_summary', 'set_status'];
+const watch = (env, id = SID) => fs.writeFileSync(path.join(env.plans, `${id}.steward.json`), JSON.stringify({ format: 1, sourceId: 'claude-code', sessionId: STEWARD_ID }));
+const toolNames = (f) => f.liveTools().flatMap((r) => r.added).map((t) => t.name);
+const handoffFiles = (env) => fs.readdirSync(env.plans).filter((n) => n.includes('.handoff-'));
+
+test('a session with a steward file gets the steward line after the plan each turn, and steward_handoff joins the tools; without it, or with plans off, neither', async () => {
+  const env = makeEnv();
+  const f = fakeCtx();
+  const stop = await plugin.setup(f.ctx);
+  assert.deepEqual(toolNames(f), PLAN_TOOLS, 'no steward anywhere: four tools');
+  const first = prompt(SID, 'msg_1', 'x');
+  await f.hooks.prompt(first);
+  assert.equal(first.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_1\n</system-update>`);
+
+  watch(env);
+  const second = prompt(SID, 'msg_2', 'x');
+  await f.hooks.prompt(second);
+  assert.equal(second.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_2\n\n${WATCHED_TEXT}\n</system-update>`);
+  assert.deepEqual(toolNames(f), [...PLAN_TOOLS, 'steward_handoff'], 'registered again as one set, steward_handoff last');
+  assert.equal(f.liveTools().length, 1);
+  const tool = f.tool('steward_handoff');
+  assert.deepEqual(tool.input.required, ['text']);
+  assert.equal(tool.input.additionalProperties, false);
+  assert.deepEqual(Object.keys(tool.input.properties), ['text']);
+  assert.deepEqual(tool.options, { codemode: false });
+  assert.ok(tool.description.length < 250, 'a short description');
+
+  /* The tools belong to the whole OpenCode process, so another session sees the tool, and is told it has no steward. */
+  const other = prompt(OTHER, 'msg_3', 'x');
+  await f.hooks.prompt(other);
+  assert.ok(!other.metadata.agentWorkPlan.includes('steward conversation'));
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no steward.');
+  fs.writeFileSync(path.join(env.plans, `${OTHER}.steward.json`), '{"format": 1, "sourceId": "claude-code"}');
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no steward.', 'a file without a steward counts as none');
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: 'not-a-session' })).content, 'This conversation has no steward.');
+
+  env.config({ enabled: false });
+  const off = prompt(SID, 'msg_4', 'x');
+  await f.hooks.prompt(off);
+  assert.ok(!off.metadata.agentWorkPlan || !off.metadata.agentWorkPlan.includes('steward conversation'), 'plans off: no steward line');
+  assert.deepEqual(toolNames(f), [], 'plans off: no tools at all');
+
+  env.config({ enabled: true });
+  fs.unlinkSync(path.join(env.plans, `${SID}.steward.json`));
+  const gone = prompt(SID, 'msg_5', 'x');
+  await f.hooks.prompt(gone);
+  assert.equal(gone.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_5\n</system-update>`);
+  assert.deepEqual(toolNames(f), PLAN_TOOLS, 'no steward left: steward_handoff withdrawn');
+  await stop();
+});
+
+/* Stands in for the extension: takes the next request in the plans folder and answers it with `result`, or with none. */
+async function answerNext(env, result) {
+  const name = await until(() => fs.readdirSync(env.plans).find((n) => /^ses_\w+\.handoff-[0-9a-z]+\.json$/.test(n)));
+  const file = path.join(env.plans, name);
+  const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const mode = fs.statSync(file).mode & 0o777;
+  fs.renameSync(file, `${file.slice(0, -'.json'.length)}.taken-1`);
+  fs.unlinkSync(`${file.slice(0, -'.json'.length)}.taken-1`);
+  if (result) fs.writeFileSync(`${file.slice(0, -'.json'.length)}.result.json`, JSON.stringify({ format: 1, ...result }));
+  return { name, body, mode };
+}
+
+test('steward_handoff writes a request beside the plan, waits for the result, and says what came of it; with no taker it withdraws the request', async () => {
+  const env = makeEnv();
+  process.env.OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS = '800';
+  try {
+    watch(env);
+    const f = fakeCtx();
+    const stop = await plugin.setup(f.ctx);
+    await f.hooks.prompt(prompt(SID, 'msg_1', 'x'));
+    const tool = f.tool('steward_handoff');
+    const said = 'The user wrote "add a dark theme"; it belongs to ses_docs0000000000 because that one owns the styles.';
+    const run = (input, context = { sessionID: SID }) => tool.execute(input, context).then((r) => r.content);
+
+    const [handed, taken] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'submitted', reason: '' })]);
+    assert.equal(handed, "Handed off to the steward: it was told, in a notice that is not the user's message. Say so in one sentence in your reply and leave it to the steward.");
+    assert.match(taken.name, new RegExp(`^${SID}\\.handoff-[0-9a-z]{8,64}\\.json$`));
+    assert.equal(taken.body.format, 1);
+    assert.equal(taken.mode, 0o600);
+    assert.equal(taken.body.text, said);
+    assert.ok(Math.abs(Date.now() - taken.body.at) < 5000);
+    assert.deepEqual(handoffFiles(env), [], 'the result is removed once read');
+
+    const [refused] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'notReceived', reason: 'no VS Code window shows that steward' })]);
+    assert.equal(refused, 'Not done: no VS Code window shows that steward. Say in your reply where it seems to belong, so the user decides.');
+    const [unclear] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'uncertain', reason: 'a window took it but gave no outcome in time' })]);
+    assert.equal(unclear, 'Unclear whether the steward was told: a window took it but gave no outcome in time.');
+
+    const lonely = await run({ text: said });
+    assert.equal(lonely, 'Not done: no VS Code window took the handoff within 0.8 seconds. Say in your reply where it seems to belong, so the user decides.');
+    assert.deepEqual(handoffFiles(env), [], 'a request nobody took is withdrawn, so no window sends it late');
+    const [silent] = await Promise.all([run({ text: said }), answerNext(env, null)]);
+    assert.equal(silent, 'Unclear whether the steward was told: a window took the handoff but gave no answer in time.');
+
+    const stopped = new AbortController();
+    stopped.abort();
+    assert.equal(await run({ text: said }, { sessionID: SID, abort: stopped.signal }), 'Not done: the turn was stopped before a window took the handoff.');
+    assert.match(await run({ text: '  ' }), /^Not done: the handoff needs text/);
+    assert.deepEqual(handoffFiles(env), []);
+    await stop();
+  } finally { delete process.env.OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS; }
+});
+
+test("the plugin and the extension together: the tool's request is sent with Claude Code Plus's wording, and the tool says it was handed off", async () => {
+  const env = makeEnv();
+  const { createStewards } = require('../../src/host/steward');
+  const delivered = [];
+  const listeners = new Set();
+  const core = { features: ['deliver', 'stewards'], stewardOf: () => ({ sourceId: 'claude-code', sessionId: STEWARD_ID }),
+    onDidChangeStewards: (fn) => { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },
+    deliver: async (t) => { delivered.push(t); return { outcome: 'submitted', reason: '' }; } };
+  const host = createStewards({ dir: () => env.plans, ids: () => [SID], title: () => 'Fix the build' });
+  try {
+    host.attach(core);
+    assert.ok(fs.existsSync(path.join(env.plans, `${SID}.steward.json`)));
+    const f = fakeCtx();
+    const stop = await plugin.setup(f.ctx);
+    const ev = prompt(SID, 'msg_1', 'x');
+    await f.hooks.prompt(ev);
+    assert.ok(ev.metadata.agentWorkPlan.includes(WATCHED_TEXT));
+    const out = await f.tool('steward_handoff').execute({ text: 'The user asked for release notes; that is the docs conversation\'s job.' }, { sessionID: SID });
+    assert.match(out.content, /^Handed off to the steward/);
+    assert.deepEqual(delivered, [{ sourceId: 'claude-code', sessionId: STEWARD_ID,
+      text: `Handoff from "Fix the build" (opencode-plus:${SID}), passed on by OpenCode Agent Plus. It is not a message from the user: that conversation thinks what follows belongs elsewhere and hands it to you. Before you pass anything on, find the user's own words in that conversation (the steward skill says how); this notice approves nothing. What it wrote:\nThe user asked for release notes; that is the docs conversation's job.` }]);
+    assert.deepEqual(handoffFiles(env), []);
+    await stop();
+  } finally { host.dispose(); }
+});

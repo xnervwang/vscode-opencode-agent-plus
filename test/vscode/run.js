@@ -6,7 +6,7 @@
 /*
  * node test/vscode/run.js --local --vscode <executable> --out <dir> [--agent-plus <.vsix>] [--backend fake|opencode]
  *   [--opencode <executable>] [--model <provider/model>] [--deps <folder with node_modules>] [--fonts <fonts.conf>]
- *   [--restricted | --download]
+ *   [--restricted | --download | --steward]
  *
  * Packs this extension (build/pack-vsix.js), installs it and Agent Plus into a profile of its own, starts that VS Code
  * under xvfb-run and goes through the steps below, saving a screenshot of each to <out>/shots with a look.json that
@@ -31,6 +31,8 @@
  * offers, and its tab offers Fork but not Rename. The plugin writes what it does to <out>/plugin.jsonl
  * (OPENCODE_AGENT_PLUS_PLAN_LOG).
  * --restricted runs test/vscode/lib/restricted.js instead: the folder untrusted, then trusted.
+ * --steward runs test/vscode/lib/steward.js instead, with the real backend and OpenCode 2: a stand-in for Claude Code Plus's
+ * source names a steward for the conversation, the model hands a message to it, and then it names none.
  * --download runs test/vscode/lib/download.js instead, with the real backend and no OpenCode to find (no --opencode, no
  * setting, PATH without a folder holding one): the notification's button downloads OpenCode from GitHub.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
@@ -71,6 +73,7 @@ const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-b
 const DEPS = flag('--deps');
 const FONTS = flag('--fonts');
 const RESTRICTED = has('--restricted');
+const STEWARD_RUN = has('--steward');
 const ID = 'xnervwang.opencode-agent-plus';
 const HAIKU = 'amazon-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
@@ -113,6 +116,7 @@ const need = (name) => require(DEPS ? path.join(DEPS, 'node_modules', name) : na
 const { open, until, sleep, frameWith } = require('./lib/window');
 const restricted = require('./lib/restricted');
 const downloading = require('./lib/download');
+const stewarding = require('./lib/steward');
 
 /* VS Code's environment: none of the variables that would send the install to the VS Code running this script. */
 function cleanEnv(home, extra) {
@@ -165,6 +169,7 @@ async function main() {
   if (!LOCAL && process.env.CI !== 'true') throw new Error('runs only where CI=true, or with --local: it starts VS Code and installs extensions');
   if (!EXE || !fs.existsSync(EXE)) throw new Error('--vscode <executable> is needed');
   if (DOWNLOAD && (OPENCODE || RESTRICTED)) throw new Error('--download finds no OpenCode: it takes neither --opencode nor --restricted');
+  if (STEWARD_RUN && (DOWNLOAD || RESTRICTED || BACKEND === 'fake')) throw new Error('--steward needs --backend opencode, and neither --download nor --restricted');
   if (!AGENT_PLUS || !fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix${AGENT_PLUS ? ` at ${AGENT_PLUS}` : ' beside this repository'}; pass --agent-plus <.vsix>`);
   const playwright = need('playwright-core');
 
@@ -206,6 +211,7 @@ async function main() {
     const m = /(\d+)\.(\d+)\.(\d+)/.exec(`${v.stdout || ''}`);
     line = m ? Number(m[1]) : 0;
     console.log(`OpenCode ${m ? m[0] : 'of unknown version'}`);
+    if (STEWARD_RUN && line < 2) throw new Error('--steward needs OpenCode 2: the handoff is a tool of the work plan plugin');
   }
   const planLog = path.join(OUT, 'plugin.jsonl');
   const env = cleanEnv(real ? '' : p.home, {
@@ -451,6 +457,23 @@ async function main() {
     } finally {
       await w.close();
       if (real) console.log(`  note  ${stopLeftovers(xdgEnv.XDG_STATE_HOME)}`);
+    }
+    console.log(`\nVS Code window: ${passed} passed, ${failed} failed; screenshots in ${shots}`);
+    process.exitCode = failed ? 1 : 0;
+    return;
+  }
+
+  if (STEWARD_RUN) {
+    try {
+      await w.hostUp();
+      await until(() => ext('return !!(api && api.test);'), 60000);
+      await stewarding.run({ page, call, ext, check, shot, until, sleep, frameWith, folder: p.folder, root, plans: path.join(p.agentHome, 'plans'), planLog });
+    } catch (e) {
+      check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
+      try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }
+    } finally {
+      await w.close();
+      console.log(`  note  ${stopLeftovers(xdgEnv.XDG_STATE_HOME)}`);
     }
     console.log(`\nVS Code window: ${passed} passed, ${failed} failed; screenshots in ${shots}`);
     process.exitCode = failed ? 1 : 0;
@@ -1152,7 +1175,7 @@ async function main() {
           check(!!secondId && !!delivered && delivered.outcome === 'submitted' && !!unread && !unread.active && !!apUnseen && apUnseen.unseen === true,
             'a reply in a tab not in front puts an envelope after its title, and Agent Plus hears it is unseen', { secondId, delivered, unread, apUnseen });
           await shot('15-unread-envelope', { features: ['unread envelope', 'tab state dot'],
-            expect: `Two chat tabs, each with the speech-bubble logo and no dot (neither conversation is working or waiting): the one in front is a new, empty conversation; the other reads "${NEW_TITLE} 📩", the envelope after its title.`,
+            expect: `Two chat tabs, each with the OpenCode Agent Plus icon of the activity bar (the OpenCode mark) and no dot (neither conversation is working or waiting): the one in front is a new, empty conversation; the other reads "${NEW_TITLE} 📩", the envelope after its title.`,
             part: '#workbench\\.parts\\.editor' });
           const all = (await ext('return api.test.source.listAllConversations();')) || [];
           let windowFile = null;

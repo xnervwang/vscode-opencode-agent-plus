@@ -128,6 +128,8 @@ The plan bar above the input box (`opencodeAgentPlus.planBar`) shows the plan's 
 
 When the [Token Mode](#token-mode) enables work plans, each message includes the open rows, and the model gets tools to update the plan (`add_row`, `set_row`, `set_status`, `set_summary`). Reminders to update the plan arrive with the next message. During compaction, the work plan plugin asks the model to include the plan's location and open rows in the summary. If any rows remain open after compaction, the next message instructs the model to read the plan before continuing.
 
+If a Claude Code Plus steward looks after the conversation, each message also tells the model that the steward is watching. The model then gets a `steward_handoff` tool for passing the steward a request that belongs in another conversation. This needs Agent Plus 1.6.0 or later and Claude Code Plus.
+
 OpenCode Agent Plus stores plans in `~/.opencode-agent-plus/plans/` on the machine where OpenCode runs. Deleting a conversation also removes its plan (see [The Conversations List](#the-conversations-list)).
 
 On OpenCode 1, Agent Plus shows "Work plans need OpenCode 2" above the plan. Click the message to open the OpenCode path setting.

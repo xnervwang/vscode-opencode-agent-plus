@@ -20,6 +20,7 @@
  *   src/host/plan-bar.js          the plan bar above each chat page's input box, from Agent Plus's summary
  *   src/host/window-states.js     every window's open conversations, for Agent Plus's listAllConversations()
  *   src/host/reply-file.js        each conversation's latest reply beside its plan, for a steward to read
+ *   src/host/steward.js           the steward that looks after each conversation, beside its plan, and handoffs to it
  *   src/host/rewind.js            rewinding a conversation to before one of the user's messages (OpenCode 2)
  *   src/host/reply-images.js      reads the local image files a reply shows
  *   src/host/conversation-links.js   links to the conversations a reply names
@@ -55,6 +56,7 @@ const { createSelectionTracker } = require('./src/host/selection');
 const { createPlanBar } = require('./src/host/plan-bar');
 const { createWindowStates } = require('./src/host/window-states');
 const { createReplyFiles } = require('./src/host/reply-file');
+const { createStewards } = require('./src/host/steward');
 const workplan = require('./src/workplan');
 const rewinding = require('./src/host/rewind');
 const { loadImage } = require('./src/host/reply-images');
@@ -632,6 +634,14 @@ function start(context, log, gate) {
     log,
   });
   subs.push(link, manager.onDidChange(() => link.changed()), plan.onDidChangeNotice(() => link.noticeChanged()));
+  /* With an Agent Plus that has 'stewards': whether a steward looks after each conversation open here, for the plugin. */
+  const stewards = createStewards({
+    dir: () => workplan.planDir(),
+    ids: () => manager.ids(),
+    title: (id) => { const s = manager.snapshot(id); return s ? marks.withoutMarks(s.title) : ''; },
+    log,
+  });
+  subs.push(stewards, manager.onDidChange(() => stewards.opened()));
   /* What this window has open, for the other windows' listAllConversations(); rewritten a moment after it changes. */
   const windows = createWindowStates({ dir: path.join(paths.root(), 'windows'), list: () => link.conversations(), log });
   let stateSoon = null;
@@ -648,6 +658,7 @@ function start(context, log, gate) {
       link.refocus();
       planBar.attach(r.core);
       links.attach(r.core);
+      stewards.attach(r.core);
     }
     return vscode.commands.executeCommand('setContext', CONTEXT_AGENT_PLUS, r.accepted);
   }).catch((e) => log(`Agent Plus registration failed: ${(e && e.message) || e}`));
@@ -658,6 +669,7 @@ function start(context, log, gate) {
     return { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
       source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready, windowFile: windows.file,
       send: (id, text) => manager.send(id, text), snapshot: (id) => manager.snapshot(id), replyFile: (id) => replies.fileOf(id),
+      stewardFile: (id) => stewards.fileOf(id), stewardsWatching: () => stewards.watching(),
       told: () => told.slice(), sound: () => soundOn, recent: () => recent.get(), links: () => links.list(), infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
       zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }),
       backendInfo: () => backend.info(), downloadOffered: () => fetcher.offered };

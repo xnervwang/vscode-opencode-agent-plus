@@ -18,13 +18,19 @@
  *   context      the text kept with each user message is added back to every request, so the request prefix never
  *                changes
  *   compaction   the same, plus the plan file, in the summary request
- *   tools        set_row, add_row, set_summary, set_status, each one run of plan-row.py
+ *   tools        set_row, add_row, set_summary, set_status, each one run of plan-row.py; steward_handoff too while a session
+ *                this instance has seen has a steward
+ *   steward      while the extension has written <plans>/<session id>.steward.json (a steward in Claude Code Plus looks
+ *                after the conversation), each turn's text also says so; steward_handoff writes <session id>.handoff-<key>.json
+ *                there, which the extension sends to the steward with Agent Plus's deliver(), and reads the
+ *                .result.json it writes back (src/host/steward.js in the extension)
  *   events       session.compaction.ended runs resume-work-plan.py and the two notes again; session.usage.updated is recorded;
  *                session.execution.succeeded runs nudge-work-plan.py and keeps what it says as a synthetic message
  *
  * Environment: OPENCODE_AGENT_PLUS_HOOKS_DIR (the scripts), OPENCODE_AGENT_PLUS_HOME (plans are in its plans/, ~/.opencode-agent-plus by default),
  * OPENCODE_AGENT_PLUS_PLAN_NUDGE ("note", the default, keeps the reminder for the next turn; "resume" also runs a turn for it;
- * "off"), OPENCODE_AGENT_PLUS_PLAN_LOG (a file to append a JSON line to for each thing done, for tests).
+ * "off"), OPENCODE_AGENT_PLUS_PLAN_LOG (a file to append a JSON line to for each thing done, for tests),
+ * OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS (for tests: how long steward_handoff waits, at most the 45000 it waits otherwise).
  */
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -52,6 +58,7 @@ const NOTES = ['tell-time-zone.py', 'tell-reply-images.py'];
 const home = () => process.env.OPENCODE_AGENT_PLUS_HOME || path.join(os.homedir(), '.opencode-agent-plus');
 const plansDir = () => path.join(home(), 'plans');
 const planPath = (sessionID) => path.join(plansDir(), `${sessionID}.json`);
+const stewardPath = (sessionID) => path.join(plansDir(), `${sessionID}.steward.json`);
 const hooksDir = () => {
   const d = process.env.OPENCODE_AGENT_PLUS_HOOKS_DIR || '';
   return d && path.isAbsolute(d) ? d : '';
@@ -220,6 +227,90 @@ const TOOLS = [
 ];
 const TOOL_NAMES = TOOLS.map((t) => t.name);
 
+/* What a watched conversation is told each turn: Claude Code Plus's steward.py watched(), with this plugin's tool. */
+const WATCHED = 'A steward conversation watches this one for the user through Claude Code Plus: it reads your work plan and '
+  + 'latest reply, and speaks for the user by typing messages here, which come as the user\'s own. Do not send it status '
+  + 'messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly '
+  + 'belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not '
+  + 'start background work for it here: call the steward_handoff tool with the user\'s words, where it should go (a session '
+  + 'id, or a folder for a new conversation) and why, and say in one sentence what it answered.';
+const STEWARD_TOOL = {
+  name: 'steward_handoff',
+  description: 'Hand a message that belongs elsewhere to the steward conversation that watches this one for the user. '
+    + 'It returns whether the steward got it; do not call it again for the same message.',
+  input: { type: 'object', required: ['text'], additionalProperties: false, properties: {
+    text: { type: 'string', description: "The user's words, where it should go (a session id, or a folder for a new conversation) and why." } } },
+};
+/* deliver() settles within about 40 seconds once a window has the request. */
+const HANDOFF_WAIT_MS = 45000;
+const handoffWait = () => {
+  const n = Number(process.env.OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS);
+  return Number.isInteger(n) && n > 0 && n < HANDOFF_WAIT_MS ? n : HANDOFF_WAIT_MS;
+};
+const HANDOFF_POLL_MS = 250;
+const NO_STEWARD = 'This conversation has no steward.';
+const LEAVE_IT = ' Say in your reply where it seems to belong, so the user decides.';
+
+/* Whether the extension says a steward looks after this session. */
+function hasSteward(sessionID) {
+  try {
+    const s = JSON.parse(fs.readFileSync(stewardPath(sessionID), 'utf8'));
+    return !!s && s.format === 1 && typeof s.sourceId === 'string' && !!s.sourceId && typeof s.sessionId === 'string' && !!s.sessionId;
+  } catch (_) { return false; }
+}
+
+/* What steward_handoff returns for the extension's { outcome, reason }. */
+function handedSaid(r) {
+  const reason = r && typeof r.reason === 'string' && r.reason ? r.reason : '';
+  const outcome = r && typeof r.outcome === 'string' ? r.outcome : '';
+  if (outcome === 'submitted') {
+    return 'Handed off to the steward: it was told, in a notice that is not the user\'s message. Say so in one sentence in your '
+      + 'reply and leave it to the steward.';
+  }
+  if (outcome === 'uncertain') return `Unclear whether the steward was told: ${reason || 'no outcome came in time'}.`;
+  if (outcome === 'drafted') return `Not done: it was put into the steward's message input, and not sent.${LEAVE_IT}`;
+  return `Not done: ${reason || outcome || 'no reason was given'}.${LEAVE_IT}`;
+}
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Hands `input.text` to the steward through the extension, and says what came of it. Never retries. */
+async function handoff(sessionID, input, context) {
+  if (!SESSION.test(String(sessionID || '')) || !hasSteward(sessionID)) return NO_STEWARD;
+  const text = input && typeof input.text === 'string' ? input.text.trim() : '';
+  if (!text) return "Not done: the handoff needs text: the user's words, where it should go and why.";
+  const key = `${process.pid.toString(36)}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.replace(/[^0-9a-z]/g, '');
+  const base = path.join(plansDir(), `${sessionID}.handoff-${key}`);
+  const request = `${base}.json`, result = `${base}.result.json`;
+  try {
+    fs.writeFileSync(`${base}.tmp`, JSON.stringify({ format: 1, text, at: Date.now() }), { mode: 0o600 });
+    fs.renameSync(`${base}.tmp`, request);
+  } catch (e) {
+    try { fs.unlinkSync(`${base}.tmp`); } catch (_) { /* never written */ }
+    return `Not done: the handoff could not be written (${String(e && e.message || e)}).${LEAVE_IT}`;
+  }
+  const signal = context && context.abort && typeof context.abort.aborted === 'boolean' ? context.abort : null;
+  const wait = handoffWait();
+  const end = Date.now() + wait;
+  while (Date.now() < end && !(signal && signal.aborted)) {
+    let r = null;
+    try { r = JSON.parse(fs.readFileSync(result, 'utf8')); } catch (_) { /* not yet */ }
+    if (r) {
+      try { fs.unlinkSync(result); } catch (_) { /* gone */ }
+      log('handoff', { sessionID, outcome: r.outcome, reason: r.reason });
+      return handedSaid(r);
+    }
+    await sleepMs(HANDOFF_POLL_MS);
+  }
+  /* Still there: no window took it, and now none will. Gone: a window took it and said nothing in time. */
+  let untaken = false;
+  try { fs.unlinkSync(request); untaken = true; } catch (_) { /* taken */ }
+  log('handoff', { sessionID, outcome: untaken ? 'untaken' : 'unanswered', aborted: !!(signal && signal.aborted) });
+  if (signal && signal.aborted && untaken) return 'Not done: the turn was stopped before a window took the handoff.';
+  if (untaken) return `Not done: no VS Code window took the handoff within ${wait / 1000} seconds.${LEAVE_IT}`;
+  return 'Unclear whether the steward was told: a window took the handoff but gave no answer in time.';
+}
+
 function str(v) { return v == null ? '' : String(v); }
 /* --name=value, so that a value starting with a dash is never read as an option. */
 function opts(a, names) {
@@ -242,6 +333,7 @@ async function runTool(tool, sessionID, input) {
 function sessions() {
   const map = new Map();
   return {
+    ids: () => [...map.keys()],
     get(id) {
       let s = map.get(id);
       if (s) { map.delete(id); } else { s = { turnId: '', resume: '', resumeNotes: '', nudgedTurn: '', model: null, usage: null }; }
@@ -351,27 +443,39 @@ async function setup(ctx) {
   const windows = new Map();
   const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE) ? process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE : 'note');
 
-  /* The tools are registered while plans are on and withdrawn while they are off; a change applies to the requests
-     made after it. */
+  /* The tools are registered while plans are on and withdrawn while they are off, steward_handoff with them only while
+     a session seen here has a steward, so the others are not handed its description; a change applies to the requests
+     made after it, and registers the set again as a whole. */
   let tools = null;
+  let toolsSet = '';
   let toolsBusy = Promise.resolve();
   const syncTools = () => {
     toolsBusy = toolsBusy.then(async () => {
-      const want = enabled();
-      if (want && !tools && ctx.tool && typeof ctx.tool.transform === 'function') {
+      const on = enabled();
+      const watched = on && state.ids().some(hasSteward);
+      const want = on ? (watched ? 'plan+steward' : 'plan') : '';
+      const canAdd = !!ctx.tool && typeof ctx.tool.transform === 'function';
+      if (want === toolsSet || (want && !canAdd && !tools)) return;
+      if (tools) {
+        const t = tools;
+        tools = null;
+        toolsSet = '';
+        await t.dispose();
+      }
+      if (want && canAdd) {
         tools = await ctx.tool.transform((editor) => {
           for (const t of TOOLS) {
             editor.add({ name: t.name, description: t.description, input: t.input, options: { codemode: false },
               execute: async (input, context) => ({ content: await runTool(t, context && context.sessionID, input) }) });
           }
+          if (watched) {
+            editor.add({ name: STEWARD_TOOL.name, description: STEWARD_TOOL.description, input: STEWARD_TOOL.input, options: { codemode: false },
+              execute: async (input, context) => ({ content: await handoff(context && context.sessionID, input, context) }) });
+          }
         });
-        log('tools', { registered: true });
-      } else if (!want && tools) {
-        const t = tools;
-        tools = null;
-        await t.dispose();
-        log('tools', { registered: false });
+        toolsSet = want;
       }
+      log('tools', { registered: !!tools, steward: !!tools && watched });
     }).catch((e) => log('tools-error', { error: String(e && e.message || e) }));
     return toolsBusy;
   };
@@ -380,8 +484,8 @@ async function setup(ctx) {
   registrations.push(await ctx.session.hook('prompt', async (ev) => {
     const sessionID = ev && ev.sessionID;
     if (!SESSION.test(String(sessionID || ''))) return;
-    await syncTools();
     const s = state.get(sessionID);
+    await syncTools();
     const said = ev.prompt && typeof ev.prompt.text === 'string' ? ev.prompt.text : '';
     s.turnId = String(ev.messageID || `${sessionID}-${Date.now()}`);
     const pending = s.resume;
@@ -399,9 +503,10 @@ async function setup(ctx) {
     const texts = await withRecord(usageLines(s), (file) => hookTexts(scripts, {
       hook_event_name: 'UserPromptSubmit', session_id: sessionID, turn_id: s.turnId, prompt: said,
       cwd: (ctx.location && ctx.location.directory) || '', transcript_path: file, in_panel: true, ...usageFields(s) }));
-    const all = [on ? pending : '', notesAfter, ...scripts.map((n) => texts[n])].filter(Boolean).join('\n\n');
+    const watched = on && hasSteward(sessionID);
+    const all = [on ? pending : '', notesAfter, ...scripts.map((n) => texts[n]), watched ? WATCHED : ''].filter(Boolean).join('\n\n');
     if (all) ev.metadata = { ...(ev.metadata || {}), [META_KEY]: wrap(all) };
-    log('prompt', { sessionID, turnId: s.turnId, chars: all.length, resumed: !!pending, plan: on });
+    log('prompt', { sessionID, turnId: s.turnId, chars: all.length, resumed: !!pending, plan: on, steward: watched });
   }));
 
   registrations.push(await ctx.session.hook('context', (ev) => {
@@ -413,7 +518,9 @@ async function setup(ctx) {
     if (process.env.OPENCODE_AGENT_PLUS_PLAN_LOG) {
       const tools = (ev && ev.tools) || {};
       const shell = tools.shell && tools.shell.input && tools.shell.input.properties;
-      log('context', { sessionID: ev && ev.sessionID, messages: ((ev && ev.messages) || []).length, kept,
+      const watched = ((ev && ev.messages) || []).filter((m) => m && m.role === 'user' && Array.isArray(m.content)
+        && m.content.some((c) => c && typeof c.text === 'string' && c.text.includes(WATCHED))).length;
+      log('context', { sessionID: ev && ev.sessionID, messages: ((ev && ev.messages) || []).length, kept, watched,
         tools: Object.keys(tools), shellInput: shell ? Object.keys(shell) : null });
     }
   }));
