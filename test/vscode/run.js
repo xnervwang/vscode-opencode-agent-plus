@@ -1362,6 +1362,8 @@ async function main() {
           }
           check(!!after && after.box === REWIND_TEXT && !!stored && !stored.includes(REWIND_TEXT) && stored.length > 0,
             'after Rewind the files are as before the message, the page and OpenCode no longer have it, and its text is back in the box', { after, lastSeen, stored: stored && stored.slice(-3), files: { rewound: read(rewound), notes: read(notes) } });
+          const rewoundFigures = await chat.evaluate(() => [...document.querySelectorAll('#log .figures')].map((x) => x.textContent));
+          check(rewoundFigures.some((x) => /ctx \d+%/.test(x)) && rewoundFigures.some((x) => /\$\d/.test(x)), 'after Rewind the turns drawn again give their context and cost in their figures', rewoundFigures.slice(-4));
           await shot('17b-rewound', { features: ['rewound conversation'],
             expect: 'The conversation ends with the turn before the rewound message (the earlier replies are all there); the message box holds the rewound request ("Use the write tool to create a file named…").',
             part: '#workbench\\.parts\\.editor' });
@@ -1464,6 +1466,10 @@ async function main() {
           const forkPage = forked && await frameWith(page, '#input', 30000);
           const copied = forkPage && await until(() => forkPage.evaluate(() => /列出工作目录下的文件/.test(document.getElementById('log').textContent) && /red square/.test(document.getElementById('log').textContent)), 30000);
           check(!!forked && !!copied, "Fork Conversation in the chat tab's menu opens a copy of the whole conversation in a new tab", { items, forked, copied });
+          if (copied) {
+            const forkFigures = await forkPage.evaluate(() => [...document.querySelectorAll('#log .figures')].map((x) => x.textContent));
+            check(forkFigures.some((x) => /ctx \d+%/.test(x)) && forkFigures.some((x) => /\$\d/.test(x)), "the fork's replayed turns give their context and cost in their figures", forkFigures.slice(-4));
+          }
           await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
           const groups = await until(() => page.evaluate(() => { const t = document.getElementById('workbench.parts.sidebar').textContent; return /Open in this window/.test(t) && /Other conversations/.test(t); }), 20000);
           check(groups, 'the Conversations view puts the conversations open here under "Open in this window" and the rest under "Other conversations"');
@@ -1569,7 +1575,7 @@ async function main() {
     const inAp = await until(async () => page.evaluate((t) => { const e = document.getElementById('workbench.parts.panel'); return !!e && e.textContent.includes(t); }, await titleNow()), 30000);
     check(inAp, "the conversation shows in Agent Plus's Conversations view");
     await shot('05-agent-plus', { features: ['Agent Plus conversations'],
-      expect: 'The panel at the bottom shows Agent Plus\'s Conversations view, which lists this conversation by its title (possibly cut short) with no activity dot, since it has stopped.',
+      expect: 'The panel at the bottom shows Agent Plus\'s Conversations view, which lists this conversation by its title (possibly cut short) with no icon in front of it and no activity dot: Agent Plus draws a source\'s logo only once more than one source is registered, and the conversation has stopped.',
       part: '#workbench\\.parts\\.panel' });
 
     // 4b. With a second source registered, Agent Plus draws this source's logo on its rows, in each theme.
@@ -1622,6 +1628,18 @@ async function main() {
     const firstText = real ? '列出工作目录下的文件' : 'subtracted instead of adding';
     const reloadCtx = { page, call, ext, check, until };
     const reloadTabs = await gapCi.openTabs(reloadCtx, { id: sessionId, text: firstText });
+    /* The log's entries by kind, and the figures of its turns, to set the reloaded page against. */
+    const logShape = (f) => f.evaluate(() => {
+      const kinds = {};
+      for (const e of document.querySelectorAll('#log [data-id]')) {
+        if (/-row$/.test(e.dataset.id) || (e.parentElement && e.parentElement.closest('#log [data-id]'))) continue;
+        const c = e.classList;
+        const k = ['user', 'subagent', 'tool', 'permission', 'question', 'compaction', 'figures', 'notice', 'reasoning'].find((x) => c.contains(x)) || (c.contains('msg') ? 'reply' : c[0] || '?');
+        kinds[k] = (kinds[k] || 0) + 1;
+      }
+      return { kinds, figures: [...document.querySelectorAll('#log .figures')].map((x) => x.textContent) };
+    });
+    const beforeReload = await gapCi.pageOf(reloadCtx, { id: sessionId, text: firstText }).then((f) => (f ? logShape(f) : null)).catch(() => null);
     await w.reload();
     await until(() => ext('return !!(api && api.test);'), 60000);
     const back = await until(() => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map((t) => t.input.uri.toString());`), 30000);
@@ -1629,6 +1647,19 @@ async function main() {
     const again = await gapCi.pageOf(reloadCtx, { id: sessionId, text: firstText });
     const history = again && await until(() => again.evaluate((re) => new RegExp(re).test(document.getElementById('log').textContent), firstText), 30000);
     check(!!history, 'the restored tab shows the conversation so far');
+    /* OpenCode's record of a session holds no requests and no stop reasons, so answered permission requests, questions and
+       notices such as "Stopped." are not replayed; nor is a /compact typed by the user, which it records as the compaction
+       alone. Every other entry comes back. */
+    const afterReload = again ? await logShape(again).catch(() => null) : null;
+    const lost = beforeReload && afterReload ? Object.keys({ ...beforeReload.kinds, ...afterReload.kinds })
+      .filter((k) => (beforeReload.kinds[k] || 0) !== (afterReload.kinds[k] || 0)).map((k) => `${k} ${beforeReload.kinds[k] || 0}->${afterReload.kinds[k] || 0}`) : null;
+    if (lost && lost.length) console.log(`  note  entries before and after the reload differ in: ${lost.join(', ')}`);
+    const compacted = beforeReload ? beforeReload.kinds.compaction || 0 : 0;
+    const users = beforeReload ? beforeReload.kinds.user || 0 : 0;
+    check(!!lost && lost.every((d) => /^(permission|question|notice) /.test(d) || (real && compacted > 0 && d === `user ${users}->${users - compacted}`)),
+      'after the reload the page has the same messages, replies, tool rows, subagent boxes and compaction lines as before', { before: beforeReload, after: afterReload && afterReload.kinds });
+    check(!!afterReload && afterReload.figures.some((x) => /ctx \d+%/.test(x)) && afterReload.figures.some((x) => /\$\d/.test(x)),
+      "after the reload the replayed turns' figures give their context and cost", afterReload && afterReload.figures.slice(-4));
     const recentAfter = (await ext('return api.test.recent();')) || [];
     check(!recentAfter.some((e) => e.id === sessionId) && JSON.stringify(recentAfter.map((e) => e.id)) === JSON.stringify(recentBefore),
       'Recently closed outlasts the reload, and the reload did not count as closing the chat tab', { before: recentBefore, after: recentAfter });
@@ -1835,9 +1866,15 @@ async function main() {
       await front(chats10[chats10.length - 1]);
       const chat10 = await frameWith(page, '#input', 20000);
       if (chat10) {
-        await chat10.fill('#input', 'Say: Sent once the files were saved.');
+        await chat10.fill('#input', 'Reply with only the words: Sent once the files were saved. Use no tool.');
         await chat10.press('#input', 'Enter');
         await until(() => chat10.evaluate(() => document.querySelector('#log').textContent.includes('Sent once the files were saved.') || null), 20000);
+        /* The turn is let end, a request on the way denied, so that no conversation is left waiting for the later steps. */
+        await until(async () => {
+          const deny = await chat10.$('#log .permission:not(.settled) button[data-decision="deny"]');
+          if (deny && await deny.isVisible()) await deny.click().catch(() => {});
+          return (await chat10.evaluate(() => document.body.dataset.status)) === 'idle' ? true : null;
+        }, real ? 180000 : 30000, 500);
       }
       const after = await call('const d = vscode.workspace.textDocuments.find((x) => x.uri.fsPath === arg); return { dirty: !!d && d.isDirty };', unsaved);
       check(!after.dirty && fs.readFileSync(unsaved, 'utf8') === 'as in the editor\n', 'sending a message saves the edited file first, so OpenCode reads what the editor shows', after);

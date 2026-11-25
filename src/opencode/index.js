@@ -1092,8 +1092,9 @@ function createOpenCode(opts = {}) {
       const events = [...h.replay.events, ...tail];
       const metas = [...h.replay.metas, ...tail.map(() => ({}))];
       const look = await timesAfter(exporting, loading, exportWaitMs);
-      h.events = look ? times.fillTimes(events, metas, look) : events;
-      h.metas = metas;
+      const filled = look ? times.fillUsage(times.fillTimes(events, metas, look), metas, look) : { events, metas };
+      h.events = filled.events;
+      h.metas = filled.metas;
       h.events.push(...h.replay.background);
       if (h.title) h.events.push({ type: 'title', title: h.title });
     } finally {

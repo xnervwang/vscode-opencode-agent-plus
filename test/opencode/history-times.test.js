@@ -206,3 +206,49 @@ test('after reload() the next turn reports the session\'s whole cost, as a conve
   assert.deepEqual(costs, [0.24987127000000003]);
 });
 
+
+test('2.x: each replayed turn gets its usage from the export: the cost of its replies, the context of the last', async (t) => {
+  const exp = JSON.parse(fixture('v2-bg-export.json'));
+  const { oc } = setup(t, 'v2-bgshell.jsonl', { exported: { [BG]: fixture('v2-bg-export.json') } });
+  const s = await oc.openSession(BG, { cwd: CWD });
+  const events = await s.history();
+  const users = exp.messages.filter((m) => m.type === 'user').map((m) => m.time.created);
+  const replies = exp.messages.filter((m) => m.type === 'assistant');
+  const turnOf = (m) => users.filter((u) => u <= m.time.created).length - 1;
+  const used = (m) => m.tokens.input + m.tokens.output + m.tokens.reasoning + m.tokens.cache.read + m.tokens.cache.write;
+  const usage = events.filter((e) => e.type === 'usage');
+  assert.equal(usage.length, users.length);
+  usage.forEach((u, i) => {
+    const mine = replies.filter((m) => turnOf(m) === i);
+    assert.ok(Math.abs(u.costUsd - mine.reduce((n, m) => n + m.cost, 0)) < 1e-9, `turn ${i} cost`);
+    assert.equal(u.contextUsed, used(mine[mine.length - 1]), `turn ${i} context`);
+  });
+  /* Each sits right before its turn's end, at its time. */
+  for (const u of usage) {
+    const next = events[events.indexOf(u) + 1];
+    assert.equal(next.type, 'turnEnd');
+    assert.equal(u.at, next.at);
+  }
+});
+
+test('a replay without an export, or an export without usage, gets no usage events', () => {
+  const events = [{ type: 'turnStart', turnId: 't1' }, { type: 'userMessage', text: 'hi', messageId: 'msg_u' }, { type: 'text', delta: 'yo' }, { type: 'turnEnd', turnId: 't1' }];
+  const metas = [{}, { mid: 'msg_u' }, { mid: 'msg_a' }, {}];
+  assert.deepEqual(times.fillUsage(events, metas, null).events, events);
+  const bare = times.lookupOf({ messages: [{ id: 'msg_u', type: 'user', time: { created: 1 } }, { id: 'msg_a', type: 'assistant', time: { created: 2 } }] });
+  assert.deepEqual(times.fillUsage(events, metas, bare).events.map((e) => e.type), ['turnStart', 'userMessage', 'text', 'turnEnd']);
+});
+
+test('1.x: a replayed turn names its reply by a part id, and gets that message\'s usage', () => {
+  const exp = JSON.parse(fixture('v1-export.json'));
+  const look = times.lookupOf(exp);
+  const reply = exp.messages.find((m) => m.info.role === 'assistant');
+  const part = reply.parts.find((p) => p.type === 'text');
+  const user = exp.messages.find((m) => m.info.role === 'user');
+  const events = [{ type: 'turnStart', turnId: 't1' }, { type: 'userMessage', text: 'x', messageId: user.info.id }, { type: 'text', delta: 'KESTREL' }, { type: 'turnEnd', turnId: 't1' }];
+  const out = times.fillUsage(events, [{}, {}, { mid: part.id }, {}], look);
+  const u = out.events.find((e) => e.type === 'usage');
+  assert.equal(u.costUsd, reply.info.cost);
+  assert.equal(u.contextUsed, reply.info.tokens.total);
+  assert.equal(out.metas.length, out.events.length);
+});
