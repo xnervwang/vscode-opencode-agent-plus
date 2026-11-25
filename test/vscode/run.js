@@ -603,6 +603,8 @@ async function main() {
         /* Answered from its diff's title bar rather than the page. */
         let fromTitle = false;
         if (asked) {
+          /* A notification (Agent Plus asks for a token mode on its first start) can sit over the card's buttons in a small window, as on macOS runners. */
+          await call('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
           await chat.click('#log .permission:not(.settled) button.diff');
           const allow = await page.waitForSelector('.editor-actions [aria-label="Allow Once"]', { timeout: 15000 }).catch(() => null);
           if (allow) {
