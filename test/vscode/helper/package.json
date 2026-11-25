@@ -6,5 +6,15 @@
   "engines": { "vscode": "^1.96.0" },
   "capabilities": { "untrustedWorkspaces": { "supported": true } },
   "activationEvents": ["*"],
-  "main": "./extension.js"
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "opencodeAgentPlusTests.ordered", "title": "Stand-in: A Button With an Order", "icon": "$(git-compare)" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "opencodeAgentPlusTests.ordered", "group": "navigation@97", "when": "opencodeAgentPlusTests.titleOrder" }
+      ]
+    }
+  }
 }

@@ -6,7 +6,7 @@
 /*
  * node test/vscode/run.js --local --vscode <executable> --out <dir> [--agent-plus <.vsix>] [--backend fake|opencode]
  *   [--opencode <executable>] [--model <provider/model>] [--deps <folder with node_modules>] [--fonts <fonts.conf>]
- *   [--vsix <.vsix>] [--restricted | --download | --steward]
+ *   [--vsix <.vsix>] [--restricted | --download | --steward | --title-order [--claude-code <id or .vsix>] [--codex <id or .vsix>]]
  * CI=true node test/vscode/run.js --out <dir> --agent-plus <.vsix> [--vsix <.vsix>] [--cache <folder>] [--restricted]
  *
  * Packs this extension (build/pack-vsix.js), or uses the .vsix given with --vsix, installs it and Agent Plus into a
@@ -41,6 +41,8 @@
  * --steward runs test/vscode/lib/steward.js instead, with the real backend and OpenCode 2: a stand-in for Claude Code Plus's
  * source names two stewards for the conversation, the model hands messages to the one each turn calls for, and then the
  * stand-in names none.
+ * --title-order runs test/vscode/lib/title-order.js instead, with the fake backend and Claude Code and Codex installed
+ * from the Marketplace (or from the .vsix files given): their editor title buttons and this extension's sit together.
  * --download runs test/vscode/lib/download.js instead, with the real backend and no OpenCode to find (no --opencode, no
  * setting, PATH without a folder holding one): the notification's button downloads OpenCode from GitHub.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
@@ -89,6 +91,7 @@ const DEPS = flag('--deps');
 const FONTS = flag('--fonts');
 const RESTRICTED = has('--restricted');
 const STEWARD_RUN = has('--steward');
+const TITLE_ORDER = has('--title-order');
 const ID = 'xnervwang.opencode-agent-plus';
 const HAIKU = 'amazon-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
@@ -132,6 +135,7 @@ const { open, until, sleep, frameWith } = require('./lib/window');
 const restricted = require('./lib/restricted');
 const downloading = require('./lib/download');
 const stewarding = require('./lib/steward');
+const titleOrder = require('./lib/title-order');
 const gapCi = require('./lib/gap-ci');
 
 /* VS Code's environment: none of the variables that would send the install to the VS Code running this script. A home
@@ -203,6 +207,7 @@ async function main() {
   if (EXE && !fs.existsSync(EXE)) throw new Error(`no VS Code at ${EXE}`);
   if (VSIX && !fs.existsSync(VSIX)) throw new Error(`no .vsix at ${VSIX}`);
   if (DOWNLOAD && (OPENCODE || RESTRICTED)) throw new Error('--download finds no OpenCode: it takes neither --opencode nor --restricted');
+  if (TITLE_ORDER && (DOWNLOAD || RESTRICTED || STEWARD_RUN || BACKEND !== 'fake')) throw new Error('--title-order runs on the fake backend alone');
   if (STEWARD_RUN && (DOWNLOAD || RESTRICTED || BACKEND === 'fake')) throw new Error('--steward needs --backend opencode, and neither --download nor --restricted');
   if (!AGENT_PLUS || !fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix${AGENT_PLUS ? ` at ${AGENT_PLUS}` : ' beside this repository'}; pass --agent-plus <.vsix>`);
   const playwright = need('playwright-core');
@@ -270,7 +275,8 @@ async function main() {
     if (dropped.length) console.log(`  note  left out of PATH, since they hold an opencode: ${dropped.join(', ')}`);
   }
   const code = cliOf(exe);
-  for (const ext of [AGENT_PLUS, vsix]) {
+  const neighbours = TITLE_ORDER ? [flag('--claude-code', 'anthropic.claude-code'), flag('--codex', 'openai.chatgpt')] : [];
+  for (const ext of [AGENT_PLUS, vsix, ...neighbours]) {
     const r = code(['--install-extension', ext, `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`, '--force'], env);
     if (r.status !== 0) throw new Error(`installing ${ext} failed: ${r.out}`);
   }
@@ -528,6 +534,22 @@ async function main() {
     } finally {
       await w.close();
       if (real) console.log(`  note  ${stopLeftovers(xdgEnv.XDG_STATE_HOME)}`);
+    }
+    console.log(`\nVS Code window: ${passed} passed, ${failed} failed; screenshots in ${shots}`);
+    process.exitCode = failed ? 1 : 0;
+    return;
+  }
+
+  if (TITLE_ORDER) {
+    try {
+      await w.hostUp();
+      await until(() => ext('return !!(api && api.test);'), 60000);
+      await titleOrder.run({ page, call, check, shot, until, sleep, folder: p.folder });
+    } catch (e) {
+      check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
+      try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }
+    } finally {
+      await w.close();
     }
     console.log(`\nVS Code window: ${passed} passed, ${failed} failed; screenshots in ${shots}`);
     process.exitCode = failed ? 1 : 0;
