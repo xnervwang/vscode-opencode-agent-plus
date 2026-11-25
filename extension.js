@@ -26,6 +26,7 @@
  *   src/host/recent-closed.js     the chat tabs closed in this workspace, for the Recently closed group
  *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
  *   src/host/trust-gate.js        what the commands, the chat tabs and the view do before the workspace is trusted
+ *   src/host/opencode-download.js    downloading OpenCode when none is found, on the user's click
  *
  * OPENCODE_AGENT_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_AGENT_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -63,6 +64,7 @@ const { findConversation } = require('./src/host/find-conversation');
 const hookSettings = require('./src/shared/hook-settings');
 const tokenMode = require('./src/shared/token-mode');
 const { createTrustGate } = require('./src/host/trust-gate');
+const { createOpenCodeDownload } = require('./src/host/opencode-download');
 const COMMANDS = require('./package.json').contributes.commands.map((c) => c.command);
 const VIEW_ID = `${brand.prefix}.sessions`;
 
@@ -139,7 +141,10 @@ function start(context, log, gate) {
   let backend = null;
   const settings = createProviderConfig({ vscode, secrets: context.secrets, restart: (o) => backend.restart(plan.launch(o)), log });
   subs.push(settings);
-  backend = createBackend({ options: () => ({ ...plan.launch(settings.options()), root: paths.root(), log }) });
+  /* The first notFound from the backend offers the download once. After it, the backend finds OpenCode on its next
+     start (it looks again whenever none runs); what this window learned while there was none is learned again. */
+  const fetcher = createOpenCodeDownload({ vscode, ask, tell, log, done: (r) => refound(r) });
+  backend = createBackend({ options: () => ({ ...plan.launch(settings.options()), root: paths.root(), log }), onError: (e) => { fetcher.offer(e); } });
   /* backend.canRename() is known once the conversation list or a conversation has started OpenCode; the Rename
      context key is set then. */
   let renameKnown = false;
@@ -166,6 +171,19 @@ function start(context, log, gate) {
     versionKnown = true;
     Promise.resolve().then(() => backend.detect()).then((found) => plan.checkVersion(found.version), () => { versionKnown = false; });
   };
+  async function refound(r) {
+    renameKnown = false;
+    versionKnown = false;
+    let found = null;
+    try { found = await backend.detect(); } catch (e) { log(`looking for OpenCode after the download: ${(e && e.message) || e}`); }
+    noteRename();
+    nudge();
+    if (found && path.resolve(found.path) !== path.resolve(r.path)) {
+      tell(`The OpenCode at ${found.path} is still used: one you installed comes before the download in ${r.path}.`);
+    } else {
+      tell(`OpenCode${found && found.version ? ` ${found.version.text}` : ''} is ready. New conversations use it.`);
+    }
+  }
   const models = createModels({ vscode, listModels: () => backend.listModels(), defaultModel: () => backend.defaultModel() });
   const locks = createLocks({ dir: path.join(paths.root(), 'locks'), window: windowToken(context.workspaceState, WINDOW_KEY), log });
   subs.push(locks);
@@ -548,6 +566,7 @@ function start(context, log, gate) {
     vscode.commands.registerCommand(`${brand.prefix}.diffAllowInProject`, (arg) => answerDiff(arg, 'allowSession')),
     vscode.commands.registerCommand(`${brand.prefix}.diffDeny`, (arg) => answerDiff(arg, 'deny')),
     vscode.commands.registerCommand(`${brand.prefix}.chooseModel`, () => models.pick().catch((e) => fail('The models could not be listed', e))),
+    vscode.commands.registerCommand(fetcher.COMMAND, () => fetcher.run()),
     vscode.commands.registerCommand(`${brand.prefix}.setBedrockApiKey`, () => settings.setApiKey()),
     vscode.commands.registerCommand(`${brand.prefix}.clearBedrockApiKey`, () => settings.clearApiKey()),
     vscode.commands.registerCommand(`${brand.prefix}.testConnection`, async () => {
@@ -641,7 +660,7 @@ function start(context, log, gate) {
       send: (id, text) => manager.send(id, text), snapshot: (id) => manager.snapshot(id), replyFile: (id) => replies.fileOf(id),
       told: () => told.slice(), sound: () => soundOn, recent: () => recent.get(), links: () => links.list(), infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
       zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }),
-      backendInfo: () => backend.info() };
+      backendInfo: () => backend.info(), downloadOffered: () => fetcher.offered };
   }
   return undefined;
 }

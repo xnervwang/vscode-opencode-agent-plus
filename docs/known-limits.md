@@ -6,6 +6,10 @@ Back to the [README](../README.md).
 
 You can chat with OpenCode 1; see [What Needs OpenCode 2](setup.md#what-needs-opencode-2).
 
+## The Downloaded OpenCode
+
+The [download](setup.md#installing-opencode) is OpenCode 2.4.1 and isn't updated. It isn't offered on platforms other than macOS, Linux and Windows on x64 and arm64. A chat tab that showed "OpenCode was not found" stays that way after the download; close it and open the conversation again.
+
 ## What a Reopened Conversation Does Not Show
 
 When you reopen a conversation from OpenCode's history, you see your messages, replies, tool cards and message times again.

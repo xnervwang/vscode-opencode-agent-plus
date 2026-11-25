@@ -22,10 +22,15 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const childProcess = require('child_process');
+const brand = require('../brand');
+const download = require('./download');
 
 const INSTALL_HINT = 'Install OpenCode 2 with `npm install -g @opencode/cli`, then reload the window. OpenCode 1 also works for '
   + 'chatting: `curl -fsSL https://opencode.ai/install | bash` or `npm install -g opencode-ai` installs it. If OpenCode is '
   + 'installed somewhere else, set its path in your user settings, or in the remote machine\'s settings over Remote-SSH.';
+
+/* Added to the notFound message where an archive is published for the machine (download.js). */
+const DOWNLOAD_HINT = `Or run "${brand.displayName}: Download OpenCode ${download.VERSION}" from the Command Palette to download it.`;
 
 class OpenCodeError extends Error {
   constructor(code, message) {
@@ -91,13 +96,16 @@ function readVersion(bin) {
 }
 
 /*
- * The configured path when one is set, else the first match in PATH and then in the places the installers use.
+ * The configured path when one is set, else the first match in PATH and then in the places the installers use, and
+ * only then the copy the extension downloaded (`downloaded`, download.js executable()), so that the user's own
+ * installation always wins. A configured path that is not there is an error, not a reason to use the download.
  * Returns { path, version } (version may be null when `--version` printed nothing usable) or throws an OpenCodeError
  * whose message tells the user what to do.
  */
 function findOpenCode(opts = {}) {
   const env = opts.env || process.env;
   const platform = opts.platform || process.platform;
+  const arch = opts.arch || process.arch;
   const home = opts.home || os.homedir();
   const executable = opts.isExecutable || ((p) => isExecutable(p, platform));
   const version = opts.readVersion || readVersion;
@@ -110,7 +118,10 @@ function findOpenCode(opts = {}) {
   for (const p of candidates({ env, platform, home })) {
     if (executable(p)) return { path: p, version: version(p) };
   }
-  throw new OpenCodeError('notFound', `OpenCode was not found. ${INSTALL_HINT}`);
+  const downloaded = opts.downloaded !== undefined ? opts.downloaded : download.executable(undefined, platform);
+  if (downloaded && executable(downloaded)) return { path: downloaded, version: version(downloaded) };
+  const more = download.available(platform, arch) ? ` ${DOWNLOAD_HINT}` : '';
+  throw new OpenCodeError('notFound', `OpenCode was not found. ${INSTALL_HINT}${more}`);
 }
 
 /* The first OpenCode its question tool's forms were seen to work with: 2.4.1 asks them as elicitation/create once the
@@ -232,6 +243,7 @@ function stopAcp(child, graceMs = 3000) {
 module.exports = {
   OpenCodeError,
   INSTALL_HINT,
+  DOWNLOAD_HINT,
   findOpenCode,
   parseVersion,
   permissionConfig,

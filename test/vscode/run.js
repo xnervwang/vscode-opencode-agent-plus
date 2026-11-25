@@ -6,7 +6,7 @@
 /*
  * node test/vscode/run.js --local --vscode <executable> --out <dir> [--agent-plus <.vsix>] [--backend fake|opencode]
  *   [--opencode <executable>] [--model <provider/model>] [--deps <folder with node_modules>] [--fonts <fonts.conf>]
- *   [--restricted]
+ *   [--restricted | --download]
  *
  * Packs this extension (build/pack-vsix.js), installs it and Agent Plus into a profile of its own, starts that VS Code
  * under xvfb-run and goes through the steps below, saving a screenshot of each to <out>/shots with a look.json that
@@ -31,6 +31,8 @@
  * offers, and its tab offers Fork but not Rename. The plugin writes what it does to <out>/plugin.jsonl
  * (OPENCODE_AGENT_PLUS_PLAN_LOG).
  * --restricted runs test/vscode/lib/restricted.js instead: the folder untrusted, then trusted.
+ * --download runs test/vscode/lib/download.js instead, with the real backend and no OpenCode to find (no --opencode, no
+ * setting, PATH without a folder holding one): the notification's button downloads OpenCode from GitHub.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
  *
@@ -62,7 +64,8 @@ function siblingAgentPlus() {
   return found.length ? path.join(dir, found[found.length - 1]) : '';
 }
 const AGENT_PLUS = flag('--agent-plus') || siblingAgentPlus();
-const BACKEND = flag('--backend', 'fake');
+const DOWNLOAD = has('--download');
+const BACKEND = DOWNLOAD ? 'opencode' : flag('--backend', 'fake');
 const OPENCODE = flag('--opencode');
 const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-bedrock/us.xai.grok-4.7');
 const DEPS = flag('--deps');
@@ -109,6 +112,7 @@ function pageTime(text, near) {
 const need = (name) => require(DEPS ? path.join(DEPS, 'node_modules', name) : name);
 const { open, until, sleep, frameWith } = require('./lib/window');
 const restricted = require('./lib/restricted');
+const downloading = require('./lib/download');
 
 /* VS Code's environment: none of the variables that would send the install to the VS Code running this script. */
 function cleanEnv(home, extra) {
@@ -160,6 +164,7 @@ function stopLeftovers(stateDir) {
 async function main() {
   if (!LOCAL && process.env.CI !== 'true') throw new Error('runs only where CI=true, or with --local: it starts VS Code and installs extensions');
   if (!EXE || !fs.existsSync(EXE)) throw new Error('--vscode <executable> is needed');
+  if (DOWNLOAD && (OPENCODE || RESTRICTED)) throw new Error('--download finds no OpenCode: it takes neither --opencode nor --restricted');
   if (!AGENT_PLUS || !fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix${AGENT_PLUS ? ` at ${AGENT_PLUS}` : ' beside this repository'}; pass --agent-plus <.vsix>`);
   const playwright = need('playwright-core');
 
@@ -195,7 +200,8 @@ async function main() {
   for (const d of Object.values(xdgEnv)) fs.mkdirSync(d, { recursive: true });
   /* OpenCode's version line, read with this run's own folders. */
   let line = 0;
-  if (real) {
+  if (DOWNLOAD) line = 2;
+  else if (real) {
     const v = cp.spawnSync(OPENCODE || 'opencode', ['--version'], { env: { ...process.env, ...xdgEnv }, encoding: 'utf8' });
     const m = /(\d+)\.(\d+)\.(\d+)/.exec(`${v.stdout || ''}`);
     line = m ? Number(m[1]) : 0;
@@ -208,6 +214,11 @@ async function main() {
     ...(real ? {} : { OPENCODE_AGENT_PLUS_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
   });
   if (real) for (const k of Object.keys(env)) if (/^AWS_/.test(k)) delete env[k];
+  if (DOWNLOAD) {
+    const { env: bare, dropped } = downloading.withoutOpenCode(env);
+    Object.assign(env, bare);
+    if (dropped.length) console.log(`  note  left out of PATH, since they hold an opencode: ${dropped.join(', ')}`);
+  }
   const code = cliOf(EXE);
   for (const ext of [AGENT_PLUS, vsix]) {
     const r = code(['--install-extension', ext, `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`, '--force'], env);
@@ -229,9 +240,10 @@ async function main() {
   const w = await open({ exe: EXE, profile: p, env, playwright, log: path.join(OUT, 'vscode.log'), trust: RESTRICTED });
   const { page, call } = w;
   let previous = null;
-  /* A screenshot of the window and of one part of it, recorded in look.json. */
-  const shot = async (name, { features, expect, unchanged = null, part = null, frame = null, note } = {}) => {
-    await sleep(600);
+  /* A screenshot of the window and of one part of it, recorded in look.json. `settle` is the wait before it, for a state
+     that lasts only a moment. */
+  const shot = async (name, { features, expect, unchanged = null, part = null, frame = null, note, settle = 600 } = {}) => {
+    await sleep(settle);
     const full = path.join(shots, `${name}-full.png`);
     await page.screenshot({ path: full });
     let image = full;
@@ -410,6 +422,23 @@ async function main() {
       listed: await page.evaluate(() => [...document.querySelectorAll('.quick-input-list .monaco-list-row')].map((x) => x.textContent)) });
     return opened;
   };
+
+  if (DOWNLOAD) {
+    try {
+      await w.hostUp();
+      await until(() => ext('return !!(api && api.test);'), 60000);
+      await downloading.run({ page, call, ext, check, shot, until, sleep, frameWith, control: p.control, home: p.agentHome, env, xdgEnv });
+    } catch (e) {
+      check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
+      try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }
+    } finally {
+      await w.close();
+      console.log(`  note  ${stopLeftovers(xdgEnv.XDG_STATE_HOME)}`);
+    }
+    console.log(`\nVS Code window: ${passed} passed, ${failed} failed; screenshots in ${shots}`);
+    process.exitCode = failed ? 1 : 0;
+    return;
+  }
 
   if (RESTRICTED) {
     try {

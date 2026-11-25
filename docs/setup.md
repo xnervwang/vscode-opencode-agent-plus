@@ -14,6 +14,8 @@ At the time of writing, `@opencode/cli` provides OpenCode 2.4.1. The installer `
 
 OpenCode Agent Plus was tested only with OpenCode 1.19.6 and 2.4.1.
 
+If OpenCode Agent Plus can't find OpenCode, it offers to download OpenCode 2.4.1 from OpenCode's GitHub releases into `~/.opencode-agent-plus/opencode/2.4.1/` (110 to 126 MB, depending on the platform). Select Download OpenCode in the notification, or run `OpenCode Agent Plus: Download OpenCode 2.4.1`. The download is available for macOS, Linux and Windows on x64 and arm64, and an OpenCode you install yourself is used first.
+
 ### What Needs OpenCode 2
 
 You can chat with OpenCode 1, but these features require OpenCode 2:
@@ -40,14 +42,17 @@ With the setting empty, OpenCode Agent Plus searches for `opencode` in the follo
 3. Additional folders for your platform:
    - macOS and Linux: `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`.
    - Windows: `%APPDATA%\npm`, `%LOCALAPPDATA%\opencode\bin`.
+4. The OpenCode it downloaded, in `~/.opencode-agent-plus/opencode/2.4.1/`.
 
-When OpenCode Agent Plus shows installation instructions because it can't find OpenCode, follow them and reload the VS Code window as prompted.
+If the setting points to a file that isn't executable, OpenCode Agent Plus reports an error and doesn't use the downloaded OpenCode.
+
+When OpenCode Agent Plus shows installation instructions because it can't find OpenCode, follow them and reload the VS Code window as prompted. After a download from the notification or the command, you don't need to reload.
 
 ## When OpenCode Starts, Stops and Updates
 
 When a conversation or the Conversations view first needs OpenCode, the VS Code window starts one process and shares it across its conversations. The window runs `opencode acp`, OpenCode's editor mode, which uses the Agent Client Protocol to communicate with the extension. The process stops after the window has had no conversations open for 10 minutes.
 
-OpenCode Agent Plus turns off automatic updates for the OpenCode process it starts. Otherwise, OpenCode 1 could update itself in the background to OpenCode 2, which uses a different configuration format. To update OpenCode 2, run `npm install -g @opencode/cli@latest`; for OpenCode 1, run `npm install -g opencode-ai@latest`. Then reload the VS Code window.
+OpenCode Agent Plus turns off automatic updates for the OpenCode process it starts. Otherwise, OpenCode 1 could update itself in the background to OpenCode 2, which uses a different configuration format. To update OpenCode 2, run `npm install -g @opencode/cli@latest`; for OpenCode 1, run `npm install -g opencode-ai@latest`. Then reload the VS Code window. The downloaded OpenCode stays at 2.4.1; for a later version, install OpenCode yourself.
 
 ## Installing OpenCode Agent Plus
 

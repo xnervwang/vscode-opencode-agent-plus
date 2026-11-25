@@ -10,7 +10,7 @@ The model keeps a work plan for what's still open in each conversation, and the 
 
 You need VS Code 1.96 or later and OpenCode on the machine where the extension runs; the work plan also needs Python 3.7 or later.
 
-1. Install OpenCode 2 with `npm install -g @opencode/cli` (npm comes with Node.js). Of the two release lines, OpenCode 1 is enough for chatting, but the work plan and several other features need OpenCode 2. See [Installing OpenCode](docs/setup.md#installing-opencode).
+1. Install OpenCode 2 with `npm install -g @opencode/cli` (npm comes with Node.js). Of the two release lines, OpenCode 1 is enough for chatting, but the work plan and several other features need OpenCode 2. If you skip this step, OpenCode Agent Plus offers to download OpenCode 2.4.1 when it can't find OpenCode. See [Installing OpenCode](docs/setup.md#installing-opencode).
 2. Search for OpenCode Agent Plus in the Extensions view and install it, or run `code --install-extension xnervwang.opencode-agent-plus`. VS Code installs Agent Plus along with it. See [Installing OpenCode Agent Plus](docs/setup.md#installing-opencode-agent-plus).
 3. Give OpenCode your provider credentials as described in [Connecting a Model Provider](#connecting-a-model-provider).
 4. Click the OpenCode Agent Plus icon in the activity bar, choose New Conversation, and send your first message.

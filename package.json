@@ -108,6 +108,11 @@
         "category": "OpenCode Agent Plus"
       },
       {
+        "command": "opencodeAgentPlus.downloadOpenCode",
+        "title": "Download OpenCode 2.4.1",
+        "category": "OpenCode Agent Plus"
+      },
+      {
         "command": "opencodeAgentPlus.setBedrockApiKey",
         "title": "Set Amazon Bedrock API Key",
         "category": "OpenCode Agent Plus"
@@ -285,6 +290,10 @@
         },
         {
           "command": "opencodeAgentPlus.testConnection",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodeAgentPlus.downloadOpenCode",
           "when": "isWorkspaceTrusted"
         },
         {

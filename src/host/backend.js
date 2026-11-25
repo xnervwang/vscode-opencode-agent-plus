@@ -63,8 +63,9 @@ function normInfo(s) {
 }
 
 /* `options` (an object, or a function returning one when the module is loaded) go to the module's factory
-   (createOpenCode) as they are; `load` replaces require for the tests. */
-function createBackend({ options = {}, load } = {}) {
+   (createOpenCode) as they are; `load` replaces require for the tests. `onError(e)` hears every error a call below
+   rejects with, before its caller does (the offer to download OpenCode listens for notFound). */
+function createBackend({ options = {}, load, onError } = {}) {
   let made = null;
   const get = () => {
     if (made) return made;
@@ -78,6 +79,9 @@ function createBackend({ options = {}, load } = {}) {
     const b = get();
     if (typeof b[name] !== 'function') throw new Error(`the agent backend has no ${name}()`);
     return b[name](...args);
+  }).catch((e) => {
+    if (onError) { try { onError(e); } catch (_) { /* the caller still hears it */ } }
+    throw e;
   });
   const listeners = new Set();
   let hooked = null;
