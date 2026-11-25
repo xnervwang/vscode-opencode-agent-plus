@@ -101,6 +101,11 @@ async function run(ctx) {
   await ext('return api.test.loginProgram(arg);', program);
   const offered = await f.evaluate(() => [...document.querySelectorAll('#model option')].map((o) => [o.value, o.textContent]));
   check(offered.some(([v, t]) => v === '__connect' && t === 'Connect a provider…'), 'the model list offers "Connect a provider…"', offered.slice(-3));
+  /* OpenCode starts again only once no turn of this window runs, so the turns of earlier steps are let end first. */
+  const busy = async () => ((await ext('return api.test.conversations();')) || []).filter((c) => c.activity === 'working' || c.activity === 'waiting')
+    .map((c) => ({ title: c.title, activity: c.activity, waitingFor: c.waitingFor }));
+  const quiet = await until(async () => ((await busy()).length ? null : true), real ? 300000 : 30000);
+  if (!quiet) note(`turns still running before the sign-in: ${JSON.stringify(await busy())}`);
   const refreshedBefore = (await ext('return api.test.logins();')).refreshed;
   await f.selectOption('#model', '__connect');
   const term = await until(() => call('const t = vscode.window.terminals.find((x) => x.name === "OpenCode: Connect a Provider"); return t ? { name: t.name, path: t.creationOptions.shellPath, args: t.creationOptions.shellArgs } : null;'), 20000);
@@ -126,7 +131,7 @@ async function run(ctx) {
   }
   const refreshed = await until(async () => { const l = await ext('return api.test.logins();'); return l.refreshed > refreshedBefore ? l : null; }, 120000);
   const words = (await told()).slice(-3);
-  check(!!refreshed && words.some((w) => /OpenCode (now )?offers|Open a conversation to see/.test(w)), 'once the terminal closes, OpenCode starts again and the models are listed anew', { refreshed, words });
+  check(!!refreshed && words.some((w) => /OpenCode (now )?offers|Open a conversation to see/.test(w)), 'once the terminal closes, OpenCode starts again and the models are listed anew', { refreshed, words, busy: refreshed ? undefined : await busy() });
   f = await chatPage();
   const listed = f ? await until(() => f.evaluate(() => { const o = [...document.querySelectorAll('#model option')].map((x) => x.value); return o.includes('__connect') && o.length > 2 ? o.length : null; }), 30000) : null;
   check(!!listed, 'the chat page lists the models again, still with "Connect a provider…"', listed);
