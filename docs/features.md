@@ -38,17 +38,27 @@ Type `/` at the start of the input box to list OpenCode's commands, such as `/co
 
 You can search for a workspace file by typing `@` at the start of your message or after a space. The list shows up to 50 matches and skips `node_modules`, `.git` and files hidden by `files.exclude` or `search.exclude`. Choosing a file inserts `@<relative path>`, its path within the workspace, into your message. Leave it in the text to send the file reference. Use `@` for files in the VS Code Explorer; dragging them from the Explorer does not attach them.
 
-Select text in the editor, then click its button in the row under the input box to add the selection to your message. The button shows a selection icon followed by the file and line range, such as `extension.js:12-20`.
+By default, your message includes the lines you select in the editor (`opencodeAgentPlus.attachSelection`) or, if you select nothing, the open file (`opencodeAgentPlus.attachOpenFile`). A pill in the row below the input box shows the file name or the file and line range, such as `extension.js:12-20`, and is highlighted while that file or selection goes with your message; click its × to leave it out of this message only. To keep the current selection with the message even after you select other lines, click the pill.
 
-You can paste images into the input box, drop image files onto it, or pick them with its + button. You can include up to 8 images per message, with a 5 MB limit per image. Before you send, you see a thumbnail for each image. In the sent message, each image appears as an "Image" label.
+In an editor, press Alt+K to insert a file reference, or a reference to selected lines such as `@<path>#L12-20`, into the input box of the chat tab in front. Add to Conversation inserts the same kind of reference from the editor's context menu or from the Explorer's context menu for one or more files. Press Cmd+Esc on macOS or Ctrl+Esc on Windows and Linux to move from the editor to the input box of the chat tab in front, opening a new conversation if no chat tab is open; press the same keys again in the chat tab to return to the editor.
+
+Where the editor reports an error or a warning, its quick fixes include Fix with OpenCode Agent Plus (`opencodeAgentPlus.showFixActions`), which puts the file, line and problem as a draft after what the input box holds, for you to read before sending.
+
+You can paste images into the input box, drop image files onto it, or pick them with its + button. You can include up to 8 images per message, with a 5 MB limit per image, and send them without any text. Before you send, you see a thumbnail for each image. In the sent message, each image appears as an "Image" label.
+
+With `opencodeAgentPlus.useCtrlEnterToSend` on, Enter starts a new line and Ctrl+Enter (Cmd+Enter on macOS) sends.
 
 If you send a message while a turn is running, it waits in a "Queued" row until the turn ends, then sends. Click Stop to end the turn. You can also press Esc while the chat page has focus. If a list or box is open, Esc closes it first.
 
 ## Models, Modes and Reply Figures
 
-In the row of buttons under the input box, one pill shows the model followed by the effort in grey. Click the model to choose from every model OpenCode offers, grouped by provider. Click Effort to choose how much the model reasons, or click Mode near the right end of the row to choose build or plan. Each opens a drop-down list. Mode and Effort appear only when OpenCode offers them for the model you choose.
+In the row of buttons under the input box, one pill shows the model followed by the effort in grey. Click the model to choose from every model OpenCode offers, grouped by provider. Click Effort to choose how much the model reasons. Each opens a drop-down list. Effort appears only when OpenCode offers it for the model you choose.
 
-OpenCode remembers your mode and effort for each conversation. Changes to the model, mode or effort take effect with your next message, even if you make them during a turn.
+Before you connect a provider, OpenCode offers only its own free models, listed as "OpenCode's free models", and shows Connect a provider… at the top of the model list. Once you connect a provider, Connect a provider… appears among the last entries in the model list; whenever you select it, it runs OpenCode's sign-in command, `opencode auth login`, in a VS Code terminal. Over Remote-SSH, the terminal runs on the remote machine and saves your credentials there; when you close the terminal, OpenCode restarts and the chat tabs refresh their model lists.
+
+Use the mode pill near the right end of the row below the input box to choose Ask before edits, Edit automatically or Plan. With Edit automatically, OpenCode can edit files inside the conversation's folder without asking, but it still asks before running commands, making web requests or accessing paths outside the folder. The conversation keeps your choice when you close and reopen its tab.
+
+OpenCode remembers your mode and effort for each conversation. A model that does not offer the effort you chose runs at its default, and switching back to one that offers it chooses it again. Changes to the model, mode or effort take effect with your next message, even if you make them during a turn.
 
 The last row of text in each reply starts with the time followed by figures such as `2m10s · ctx 33% · $0.42 · grok-4.7 low`. If the turn ends with something other than text, the figures appear on their own line. The duration, model and effort are for that reply. The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the figures to see the same values with labels.
 
@@ -112,13 +122,13 @@ On OpenCode 2, you can rewind an idle conversation to just before one of your me
 
 ### Forking
 
-Forking in OpenCode 1 and 2 creates a copy of the whole conversation and opens it in a new tab; you cannot fork from a specific message.
+Forking in OpenCode 1 and 2 creates a copy of the whole conversation and opens it in a new tab. On OpenCode 2, hover over one of your messages and choose Fork from here to copy only the conversation before that message into a new tab, with the message's text in its input box.
 
 Choose Fork Conversation from the context menu in the Conversations view, on the chat tab or on the chat page. You can also use the editor title's `...` menu or run `OpenCode Agent Plus: Fork Conversation` from the Command Palette with the chat tab active.
 
 ## Subagents and Background Work
 
-A pill with a green dot in the row of buttons under the input box counts running subagents and any shell commands still running in the background. For example, you might see "1 subagent, 1 command running". Click the pill to open a list above the input box. Each item shows its kind, command or title, process ID and start time. Click an item to scroll to its row in the conversation. OpenCode Agent Plus checks whether a background command is still running only when a turn starts or ends or when you open the list.
+A pill with a green dot in the row of buttons under the input box counts running subagents and any shell commands still running in the background. For example, you might see "1 subagent, 1 command running". Click the pill to open a list above the input box. Each item shows its kind, command or title, process ID and start time. Click an item to scroll to its row in the conversation. OpenCode Agent Plus checks whether a background command is still running only when a turn starts or ends or when you open the list. On Linux, the background pill also counts detached commands, which the conversation started and which keep running after they leave OpenCode, such as a command started with `nohup … &`. The pill can read "1 command running · 1 detached", and its list shows each detached command's command line, process ID and start time.
 
 In OpenCode 2, look below the tool row that started a subagent. The Subagent box there shows its title, status and latest output. Expand "Its steps (n)", where n counts all of the subagent's steps, to see the last 60 entries, including tool calls and text. Subagent conversations stay out of the Conversations view, `OpenCode Agent Plus: Find Conversation…` and Agent Plus. On OpenCode 1, OpenCode Agent Plus does not distinguish subagent conversations from other conversations.
 

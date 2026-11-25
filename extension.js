@@ -29,6 +29,11 @@
  *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
  *   src/host/trust-gate.js        what the commands, the chat tabs and the view do before the workspace is trusted
  *   src/host/opencode-download.js    downloading OpenCode when none is found
+ *   src/host/provider-login.js    OpenCode's sign-in wizard in a terminal, then OpenCode started again for its models
+ *   src/host/mentions.js          the @ references Alt+K, Add to Conversation and Fix with OpenCode put in a message box
+ *   src/host/fix-actions.js       Fix with OpenCode Agent Plus among the editor's quick fixes
+ *   src/host/auto-edit.js         the Edit automatically permission mode of each conversation
+ *   src/host/detached.js          the commands of a conversation that left OpenCode and still run (Linux)
  *
  * OPENCODE_AGENT_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_AGENT_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -69,6 +74,14 @@ const hookSettings = require('./src/shared/hook-settings');
 const tokenMode = require('./src/shared/token-mode');
 const { createTrustGate } = require('./src/host/trust-gate');
 const { createOpenCodeDownload } = require('./src/host/opencode-download');
+const { createProviderLogin, addedProviders } = require('./src/host/provider-login');
+/* src/opencode/ is loaded only once OpenCode is needed (Restricted Mode loads none of it). */
+const loginLaunch = (o) => require('./src/opencode/login').loginLaunch(o);
+const mentions = require('./src/host/mentions');
+const { registerFixActions, COMMAND: FIX_COMMAND } = require('./src/host/fix-actions');
+const autoEditing = require('./src/host/auto-edit');
+const detaching = require('./src/host/detached');
+const fs = require('fs');
 const COMMANDS = require('./package.json').contributes.commands.map((c) => c.command);
 const VIEW_ID = `${brand.prefix}.sessions`;
 
@@ -77,6 +90,10 @@ const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
 const CONTEXT_RENAME = `${brand.prefix}.canRename`;
 const ZONE_KEY = `${brand.prefix}.timeZone`;
 const CONTEXT_FORK = `${brand.prefix}.canFork`;
+/* True while the Claude Code panel was in front after this extension's chat tab, so that Ctrl+Esc and Alt+K in an
+   editor go to that panel and not here (package.json keybindings). */
+const CONTEXT_OTHER_CHAT = `${brand.prefix}.otherChatLast`;
+const OTHER_CHAT = /claudeVSCodePanel/;
 /* Whether the chat pages chime. The footer's button sets it, and it stays on until muted, as in Claude Code Plus. */
 const SOUND_KEY = `${brand.prefix}.sound`;
 /* The name of this window in the locks it takes (src/host/locks.js windowToken). */
@@ -214,6 +231,7 @@ function start(context, log, gate, channel) {
   };
 
   const replies = createReplyFiles({ dir: () => workplan.planDir(), log });
+  const autoEdit = autoEditing.createAutoEdit({ memo: context.workspaceState });
   let manager = null;
   manager = createSessionManager({
     locks,
@@ -230,6 +248,8 @@ function start(context, log, gate, channel) {
         choose: () => models.pick(),
         tell,
       });
+      autoEditing.guard(conv, { enabled: () => autoEdit.get(id), folder: () => conv.cwd || (folders.get(id) || ''),
+        answer: (requestId) => saveEdited().then(() => conv.respond(requestId, 'allowOnce')), log });
       conv.saved = historyFor(events);
       conv.on(onAuth);
       replies.track(id, conv, events);
@@ -331,6 +351,19 @@ function start(context, log, gate, channel) {
       sound,
       view,
       loadImage: (src) => loadImage(src),
+      connectProvider: () => connectProvider(),
+      composer: composerSettings,
+      permissionMode: {
+        get: () => autoEdit.get(entry.id),
+        set: (on) => autoEdit.set(entry.id, on),
+        onDidChange: (fn) => autoEdit.onDidChange((id) => { if (id === entry.id) fn(); }),
+      },
+      forkFrom: backend.canForkBefore() ? (target) => forkFromMessage(entry.id, target) : undefined,
+      detached: detaching.supported() ? () => detaching.scan({ sessionId: entry.id, rootPid: (backend.info() || {}).pid || 0 }) : undefined,
+      readRange: (file, from, to) => {
+        const doc = (vscode.workspace.textDocuments || []).find((d) => d.uri.scheme === 'file' && d.uri.fsPath === file);
+        return mentions.rangeText(file, from, to, { open: doc ? doc.getText() : null });
+      },
       links,
       planBar: {
         summary: () => planBar.summaryOf(entry.id),
@@ -341,6 +374,12 @@ function start(context, log, gate, channel) {
     });
     chats.add(chat);
     links.settingChanged();
+    /* The chat tab in front is the one the editor's commands add to. */
+    const noteFront = () => { if (panel.active) { frontId = entry.id; otherChatLast(false); } };
+    noteFront();
+    const offFront = panel.onDidChangeViewState(noteFront);
+    const draft = forkDrafts.get(entry.id);
+    if (draft) { forkDrafts.delete(entry.id); chat.compose({ draft }); }
     for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);
     /* Shows the model a turn runs on (turnStart.modelId) and, after the model's first call, the context window
        OpenCode has learned for it. */
@@ -353,8 +392,68 @@ function start(context, log, gate, channel) {
       if (ev && ev.type === 'turnStart' && typeof ev.modelId === 'string' && ev.modelId) follow(ev.modelId);
       if (ev && ev.type === 'turnEnd') models.list().then(() => follow(conv.modelName), () => {});
     });
-    panel.onDidDispose(() => { off(); chats.delete(chat); links.settingChanged(); });
+    panel.onDidDispose(() => { off(); offFront.dispose(); chats.delete(chat); links.settingChanged(); });
     return chat;
+  }
+
+  /* The settings of the message box, which each chat page follows. */
+  const cfg = () => vscode.workspace.getConfiguration(brand.prefix);
+  const composerSettings = () => ({ ctrlEnter: cfg().get('useCtrlEnterToSend') === true, attachFile: cfg().get('attachOpenFile') !== false,
+    attachSelection: cfg().get('attachSelection') !== false });
+  subs.push(vscode.workspace.onDidChangeConfiguration((e) => {
+    if (['useCtrlEnterToSend', 'attachOpenFile', 'attachSelection'].some((k) => e.affectsConfiguration(`${brand.prefix}.${k}`))) for (const c of chats) c.settingsChanged();
+  }));
+
+  /* The chat tab last in front, and whether the Claude Code panel came to the front after it. */
+  let frontId = '';
+  let otherLast = null;
+  function otherChatLast(on) {
+    if (otherLast === on) return;
+    otherLast = on;
+    Promise.resolve(vscode.commands.executeCommand('setContext', CONTEXT_OTHER_CHAT, on)).catch(() => { otherLast = null; });
+  }
+  subs.push(vscode.window.tabGroups.onDidChangeTabs(() => {
+    const t = activeTab();
+    if (t && t.input instanceof vscode.TabInputWebview && OTHER_CHAT.test(String(t.input.viewType || ''))) otherChatLast(true);
+  }));
+  const frontChat = () => {
+    const list = [...chats];
+    return list.find((c) => c.conversation && c.conversation.id === frontId) || list[list.length - 1] || null;
+  };
+  /* Runs `fn` on the chat tab in front, brought forward and focused; with none open, on a new conversation's. */
+  async function toFrontChat(fn) {
+    let chat = frontChat();
+    if (!chat) {
+      const id = await newConversationId();
+      if (!id) return false;
+      for (let i = 0; i < 150 && !chat; i++) {
+        chat = [...chats].find((c) => c.conversation && c.conversation.id === id) || null;
+        if (!chat) await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!chat) return false;
+    }
+    chat.panel.reveal(chat.panel.viewColumn, false);
+    fn(chat);
+    return true;
+  }
+  const folderPaths = () => (vscode.workspace.workspaceFolders || []).filter((f) => f.uri.scheme === 'file').map((f) => f.uri.fsPath);
+  /* The @ reference for a file, with the lines selected in `editor` when it shows that file. */
+  const refOf = (file, editor) => {
+    const sel = editor && editor.document && editor.document.uri.fsPath === file && editor.selection && !editor.selection.isEmpty ? mentions.linesOf(editor.selection) : {};
+    return mentions.refFor(file, { folders: folderPaths(), ...sel });
+  };
+
+  /* Fork from here: OpenCode copies the history before the user message `target` into a new conversation, which opens
+     in a tab of its own with that message in its box. */
+  const forkDrafts = new Map();
+  async function forkFromMessage(id, target) {
+    const mid = rewinding.messageOf(target, target.messageId ? [] : await backend.userMessages(id));
+    if (!mid) throw new Error('OpenCode\'s copy of the conversation does not have this message, so nothing was forked.');
+    const f = await backend.forkBefore(id, mid);
+    if (f.cwd) folders.set(f.id, f.cwd);
+    if (target.text) forkDrafts.set(f.id, target.text);
+    log(`forked ${id} before ${mid} as ${f.id}`);
+    return openSession(f.id);
   }
 
   /*
@@ -404,6 +503,44 @@ function start(context, log, gate, channel) {
     ];
   }
 
+  /* Connect a Model Provider. OpenCode starts again only when no turn of this window runs, since a restart ends it. */
+  const idleHere = () => manager.list().every((s) => s.activity !== 'working' && s.activity !== 'waiting');
+  const whenIdle = () => new Promise((resolve) => {
+    if (idleHere()) { resolve(); return; }
+    const d = manager.onDidChange(() => { if (idleHere()) { d.dispose(); resolve(); } });
+  });
+  let loginProgram = '';
+  const logins = { opened: 0, refreshed: 0 };
+  const login = createProviderLogin({
+    vscode,
+    launch: async () => {
+      const found = await backend.detect();
+      const info = backend.info();
+      return loginLaunch({ found: loginProgram ? { ...found, path: loginProgram } : found, env: plan.launch(settings.options()).env, authMethods: info && info.authMethods });
+    },
+    done: async () => {
+      const before = await models.list().catch(() => []);
+      if (!idleHere()) {
+        tell('OpenCode starts again for the new provider once the turns running in this window end.');
+        await whenIdle();
+      }
+      await backend.restart(plan.launch(settings.options()));
+      let list = [];
+      try { list = await backend.refreshModels(); } catch (e) { log(`listing the models after the sign-in failed: ${(e && e.message) || e}`); }
+      await models.list().catch(() => null);
+      for (const c of chats) c.reloadModels();
+      logins.refreshed++;
+      const added = addedProviders(before, list);
+      if (added.length) tell(`OpenCode now offers models from ${added.join(', ')}.`);
+      else if (!manager.ids().length) tell('Open a conversation to see the models OpenCode offers now.');
+      else tell(`OpenCode offers ${list.length} model${list.length === 1 ? '' : 's'}; no provider was added.`);
+    },
+    fail,
+    log,
+  });
+  subs.push(login);
+  const connectProvider = () => { logins.opened++; return login.run(); };
+
   async function takeOver(id) {
     if (locks.ownWindow(id)) return takeBack(id);
     const choice = await ask(BUSY_TEXT, TAKE_OVER);
@@ -451,15 +588,17 @@ function start(context, log, gate, channel) {
     return true;
   }
 
-  async function newConversation() {
+  /* Starts a conversation and opens its tab; resolves with its id, or '' when that failed. */
+  async function newConversationId() {
     let s;
     const model = named();
-    try { s = await backend.createSession(folder(), model ? { model } : {}); } catch (e) { fail('A new conversation could not be started', e); return false; }
-    if (!s || !s.id) { fail('A new conversation could not be started', 'OpenCode returned no session'); return false; }
+    try { s = await backend.createSession(folder(), model ? { model } : {}); } catch (e) { fail('A new conversation could not be started', e); return ''; }
+    if (!s || !s.id) { fail('A new conversation could not be started', 'OpenCode returned no session'); return ''; }
     noteVersion();
     made.set(s.id, s);
-    return openSession(s.id);
+    return (await openSession(s.id)) ? s.id : '';
   }
+  const newConversation = () => newConversationId().then((id) => !!id);
 
   const activeTab = () => { const g = vscode.window.tabGroups.activeTabGroup; return g ? g.activeTab : undefined; };
   /* The conversation a command was run on: a row of the list, an id, a chat tab's URI, the chat page's own context
@@ -586,6 +725,46 @@ function start(context, log, gate, channel) {
     vscode.commands.registerCommand(`${brand.prefix}.showMcpServers`, () => showMcp()),
     vscode.commands.registerCommand(`${brand.prefix}.showLogs`, () => { channel.show(true); return true; }),
     vscode.commands.registerCommand(`${brand.prefix}.toggleFocusView`, () => Promise.resolve(view.setFocus(!view.focus())).then(() => view.focus())),
+    vscode.commands.registerCommand(`${brand.prefix}.connectProvider`, () => connectProvider()),
+    vscode.commands.registerCommand(`${brand.prefix}.focusInput`, () => toFrontChat((c) => c.focusInput())),
+    /* Back from the chat tab to the file editor last in front. */
+    vscode.commands.registerCommand(`${brand.prefix}.blurInput`, async () => {
+      const ed = selection.lastEditor() || (vscode.window.visibleTextEditors || []).find((x) => x.document && x.document.uri.scheme === 'file');
+      if (!ed) return false;
+      await vscode.window.showTextDocument(ed.document, { viewColumn: ed.viewColumn, preserveFocus: false });
+      return true;
+    }),
+    vscode.commands.registerCommand(`${brand.prefix}.insertAtMention`, () => {
+      const ed = vscode.window.activeTextEditor;
+      if (!ed || !ed.document || ed.document.uri.scheme !== 'file') { tell('Open a file in the editor first.'); return false; }
+      const ref = refOf(ed.document.uri.fsPath, ed);
+      return ref ? toFrontChat((c) => c.compose({ refs: [ref] })) : false;
+    }),
+    /* From an editor's context menu (its file, with the selection) or the Explorer's (the files picked there). */
+    vscode.commands.registerCommand(`${brand.prefix}.addToConversation`, (uri, uris) => {
+      const ed = vscode.window.activeTextEditor;
+      const list = Array.isArray(uris) && uris.length ? uris : uri instanceof vscode.Uri ? [uri] : ed ? [ed.document.uri] : [];
+      const refs = [];
+      let folders = 0;
+      for (const u of list) {
+        if (!u || u.scheme !== 'file') continue;
+        try { if (fs.statSync(u.fsPath).isDirectory()) { folders++; continue; } } catch (_) { continue; }
+        const r = refOf(u.fsPath, ed);
+        if (r) refs.push(r);
+      }
+      if (!refs.length) { tell(folders ? 'A folder cannot be added to a conversation; add the files in it.' : 'There is no file to add.'); return false; }
+      return toFrontChat((c) => c.compose({ refs }));
+    }),
+    vscode.commands.registerCommand(FIX_COMMAND, (uri, diagnostics) => {
+      if (!(uri instanceof vscode.Uri) || uri.scheme !== 'file') return false;
+      const list = Array.isArray(diagnostics) ? diagnostics : [];
+      const lines = list.map((d) => d.line).filter((n) => n > 0);
+      const from = lines.length ? Math.min(...lines) : 0;
+      const to = Math.max(from, ...list.map((d) => d.endLine || d.line || 0));
+      const ref = mentions.refFor(uri.fsPath, { folders: folderPaths(), startLine: from, endLine: Math.min(to, from + 199) });
+      if (!ref) return false;
+      return toFrontChat((c) => c.compose({ refs: [ref], draft: mentions.fixDraft(ref, list) }));
+    }),
     vscode.commands.registerCommand(`${brand.prefix}.findConversation`, () => findConversation({ vscode,
       list: () => backend.listSessions().finally(() => backend.listen()), open: (id) => openSession(id), openHere: (id) => manager.has(id) })),
     vscode.commands.registerCommand(`${brand.prefix}.clearRecentlyClosed`, () => { recent.clear(); return true; }),
@@ -606,6 +785,9 @@ function start(context, log, gate, channel) {
       } catch (e) { return fail('The connection test failed', e); }
     }),
   );
+
+  const fixes = registerFixActions({ vscode, enabled: () => cfg().get('showFixActions') !== false && vscode.workspace.isTrusted !== false });
+  if (fixes) subs.push(fixes);
 
   /* `opencode mcp list` in an output channel of its own; servers are added and removed in OpenCode's configuration. */
   let mcpChannel = null;
@@ -696,7 +878,12 @@ function start(context, log, gate, channel) {
       stewardFile: (id) => stewards.fileOf(id), stewardsWatching: () => stewards.watching(),
       told: () => told.slice(), sound: () => soundOn, recent: () => recent.get(), links: () => links.list(), infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
       zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }),
-      backendInfo: () => backend.info(), downloadOffered: () => fetcher.offered };
+      backendInfo: () => backend.info(), downloadOffered: () => fetcher.offered,
+      /* The program the sign-in terminal runs instead of the OpenCode found ('' for that one), and how often it ran. */
+      loginProgram: (p) => { loginProgram = String(p || ''); return true; }, logins: () => ({ ...logins }),
+      autoEdit: (id) => autoEdit.get(id), rescanDetached: () => { for (const c of chats) c.lookForDetached(0); return chats.size; },
+      canForkBefore: () => backend.canForkBefore(), restartOpenCode: () => backend.restart(plan.launch(settings.options())).then(() => true),
+      loginLaunch: async () => loginLaunch({ found: await backend.detect(), env: plan.launch(settings.options()).env, authMethods: (backend.info() || {}).authMethods }) };
   }
   return undefined;
 }

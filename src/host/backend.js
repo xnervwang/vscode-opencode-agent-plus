@@ -16,6 +16,10 @@
  *   deleteSession(id)            Promise
  *   forkSession(id), canFork()   a copy of the whole conversation: Promise of { id, cwd }; whether OpenCode offers it
  *                                (known once it has started)
+ *   forkBefore(id, messageId), canForkBefore()
+ *                                a copy of the history before one user message (OpenCode 2): Promise of { id, cwd, title }
+ *   refreshModels()              Promise<ModelInfo[]> once OpenCode has started again, as after a provider sign-in; the
+ *                                list as it stands where the module cannot load it afresh
  *   rewindStage(id, messageId), rewindCommit(id), rewindClear(id), canRewind()
  *                                rewinding to before a user message (OpenCode 2): stage restores the files and lists
  *                                them ({ messageId, tracked, files }), commit removes the messages, clear undoes stage
@@ -114,6 +118,9 @@ function createBackend({ options = {}, load, onError } = {}) {
     forkSession: (id) => call('forkSession', id),
     canFork: () => { try { const b = made; return !!b && typeof b.canFork === 'function' && b.canFork() === true; } catch (_) { return false; } },
     canRewind: () => { try { const b = get(); return typeof b.canRewind === 'function' && b.canRewind() === true; } catch (_) { return false; } },
+    forkBefore: (id, messageId) => call('forkBefore', id, messageId),
+    canForkBefore: () => { try { const b = get(); return typeof b.canForkBefore === 'function' && b.canForkBefore() === true; } catch (_) { return false; } },
+    refreshModels: () => call(typeof get().refreshModels === 'function' ? 'refreshModels' : 'listModels').then((l) => (Array.isArray(l) ? l : [])),
     rewindStage: (id, messageId) => call('rewindStage', id, messageId),
     rewindCommit: (id) => call('rewindCommit', id),
     rewindClear: (id) => call('rewindClear', id),

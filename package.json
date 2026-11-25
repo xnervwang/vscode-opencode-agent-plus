@@ -161,6 +161,35 @@
         "category": "OpenCode Agent Plus"
       },
       {
+        "command": "opencodeAgentPlus.connectProvider",
+        "title": "Connect a Model Provider",
+        "category": "OpenCode Agent Plus"
+      },
+      {
+        "command": "opencodeAgentPlus.focusInput",
+        "title": "Focus the Message Box",
+        "category": "OpenCode Agent Plus"
+      },
+      {
+        "command": "opencodeAgentPlus.blurInput",
+        "title": "Back to the Editor",
+        "category": "OpenCode Agent Plus"
+      },
+      {
+        "command": "opencodeAgentPlus.insertAtMention",
+        "title": "Insert @-Mention Reference",
+        "category": "OpenCode Agent Plus"
+      },
+      {
+        "command": "opencodeAgentPlus.addToConversation",
+        "title": "Add to Conversation",
+        "category": "OpenCode Agent Plus"
+      },
+      {
+        "command": "opencodeAgentPlus.fixWithOpenCode",
+        "title": "Fix with OpenCode Agent Plus"
+      },
+      {
         "command": "opencodeAgentPlus.diffAllowOnce",
         "title": "Allow Once",
         "category": "OpenCode Agent Plus",
@@ -342,6 +371,30 @@
         {
           "command": "opencodeAgentPlus.toggleFocusView",
           "when": "activeCustomEditorId == 'opencodeAgentPlus.chat' && isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodeAgentPlus.connectProvider",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodeAgentPlus.focusInput",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodeAgentPlus.blurInput",
+          "when": "false"
+        },
+        {
+          "command": "opencodeAgentPlus.insertAtMention",
+          "when": "editorIsOpen && isWorkspaceTrusted"
+        },
+        {
+          "command": "opencodeAgentPlus.addToConversation",
+          "when": "false"
+        },
+        {
+          "command": "opencodeAgentPlus.fixWithOpenCode",
+          "when": "false"
         }
       ],
       "webview/context": [
@@ -349,6 +402,20 @@
           "command": "opencodeAgentPlus.forkConversation",
           "when": "webviewId == 'opencodeAgentPlus.chat' && opencodeAgentPlus.canFork",
           "group": "1_opencodeAgentPlus@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "opencodeAgentPlus.addToConversation",
+          "when": "isWorkspaceTrusted && (resourceScheme == file || resourceScheme == vscode-remote)",
+          "group": "5_chat@3"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "opencodeAgentPlus.addToConversation",
+          "when": "isWorkspaceTrusted && !explorerResourceIsFolder && !explorerResourceIsRoot && (resourceScheme == file || resourceScheme == vscode-remote)",
+          "group": "5_chat@3"
         }
       ]
     },
@@ -364,6 +431,26 @@
           "type": "boolean",
           "default": true,
           "description": "Save edited files before a message is sent or a request is allowed, so OpenCode reads and changes what the editor shows."
+        },
+        "opencodeAgentPlus.attachOpenFile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Send the file open in the editor with your messages, as a reference OpenCode reads, and show it in the message box. When off, a file goes along only with the lines you select."
+        },
+        "opencodeAgentPlus.attachSelection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Send the lines you select in the editor with your messages, and show them in the message box. When off, add them with the selection button or Alt+K."
+        },
+        "opencodeAgentPlus.useCtrlEnterToSend": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send with Ctrl+Enter (Cmd+Enter on macOS), so that Enter starts a new line."
+        },
+        "opencodeAgentPlus.showFixActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show \"Fix with OpenCode Agent Plus\" among the quick fixes where the editor reports an error or a warning."
         },
         "opencodeAgentPlus.opencode.path": {
           "type": "string",
@@ -480,6 +567,24 @@
         "command": "opencodeAgentPlus.toggleFocusView",
         "key": "ctrl+alt+f",
         "when": "activeCustomEditorId == 'opencodeAgentPlus.chat'"
+      },
+      {
+        "command": "opencodeAgentPlus.focusInput",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape",
+        "when": "isWorkspaceTrusted && editorTextFocus && !opencodeAgentPlus.otherChatLast"
+      },
+      {
+        "command": "opencodeAgentPlus.blurInput",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape",
+        "when": "isWorkspaceTrusted && activeCustomEditorId == 'opencodeAgentPlus.chat' && !editorTextFocus && !sideBarFocus && !panelFocus && !auxiliaryBarFocus"
+      },
+      {
+        "command": "opencodeAgentPlus.insertAtMention",
+        "key": "alt+k",
+        "mac": "alt+k",
+        "when": "isWorkspaceTrusted && editorTextFocus && !opencodeAgentPlus.otherChatLast"
       }
     ]
   },

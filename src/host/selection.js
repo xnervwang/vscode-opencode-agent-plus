@@ -4,10 +4,11 @@
 
 'use strict';
 /*
- * The chat page has a button that sends the lines selected in a file along with the message; this finds that
- * selection. The chat tab is an editor itself, so no text editor is active while the user is in it; the selection used
- * is the last non-empty one in a file editor that is still visible. VS Code's listeners are added only while a chat
- * panel listens.
+ * What the editor offers the chat page: the lines selected in a file, and the file open in the editor, which a message
+ * takes along (opencodeAgentPlus.attachSelection, attachOpenFile) or the page's selection button adds. The chat tab is
+ * an editor itself, so no text editor is active while the user is in it; the selection used is the last non-empty one
+ * in a file editor that is still visible, and the file the one of the file editor last in front that is still visible.
+ * VS Code's listeners are added only while a chat panel listens.
  */
 const path = require('path');
 
@@ -17,10 +18,12 @@ const SETTLE_MS = 150;
 function createSelectionTracker({ vscode, maxChars = MAX_CHARS, settleMs = SETTLE_MS }) {
   const listeners = new Set();
   let last = null;
+  let lastFile = null;
   let hooks = [];
   let timer = null;
 
-  const usable = (ed) => !!ed && ed.document && ed.document.uri && ed.document.uri.scheme === 'file' && ed.selection && !ed.selection.isEmpty;
+  const isFile = (ed) => !!ed && !!ed.document && !!ed.document.uri && ed.document.uri.scheme === 'file';
+  const usable = (ed) => isFile(ed) && ed.selection && !ed.selection.isEmpty;
   const visible = (ed) => (vscode.window.visibleTextEditors || []).includes(ed);
   function fire() {
     if (timer) return;
@@ -33,21 +36,39 @@ function createSelectionTracker({ vscode, maxChars = MAX_CHARS, settleMs = SETTL
   function note(ed) {
     if (usable(ed)) last = ed;
     else if (ed === last) last = null;
+    if (isFile(ed) && ed === vscode.window.activeTextEditor) lastFile = ed;
     fire();
   }
   function hook() {
     const w = vscode.window;
     if (hooks.length || typeof w.onDidChangeTextEditorSelection !== 'function') return;
     last = (w.visibleTextEditors || []).find(usable) || null;
+    lastFile = isFile(w.activeTextEditor) ? w.activeTextEditor : (w.visibleTextEditors || []).find(isFile) || null;
     hooks = [w.onDidChangeTextEditorSelection((e) => note(e.textEditor))];
     if (typeof w.onDidChangeVisibleTextEditors === 'function') {
-      hooks.push(w.onDidChangeVisibleTextEditors(() => { if (last && !visible(last)) { last = null; fire(); } }));
+      /* A file editor that has just come on screen, as one opened beside the chat tab, is the one in front too. */
+      let shown = new Set(w.visibleTextEditors || []);
+      hooks.push(w.onDidChangeVisibleTextEditors(() => {
+        const now = w.visibleTextEditors || [];
+        let moved = false;
+        const fresh = now.filter((ed) => isFile(ed) && !shown.has(ed));
+        shown = new Set(now);
+        if (last && !visible(last)) { last = null; moved = true; }
+        if (fresh.length) { lastFile = fresh[fresh.length - 1]; moved = true; }
+        else if (lastFile && !visible(lastFile)) { lastFile = now.find(isFile) || null; moved = true; }
+        if (moved) fire();
+      }));
+    }
+    /* Moving into the chat tab leaves no text editor active; the file last in front stays. */
+    if (typeof w.onDidChangeActiveTextEditor === 'function') {
+      hooks.push(w.onDidChangeActiveTextEditor((ed) => { if (isFile(ed) && ed !== lastFile) { lastFile = ed; fire(); } }));
     }
   }
   function unhook() {
     for (const d of hooks) { try { d.dispose(); } catch (_) { /* gone */ } }
     hooks = [];
     last = null;
+    lastFile = null;
     if (timer) clearTimeout(timer);
     timer = null;
   }
@@ -76,6 +97,25 @@ function createSelectionTracker({ vscode, maxChars = MAX_CHARS, settleMs = SETTL
       const name = path.basename(ed.document.uri.fsPath);
       return { path: ed.document.uri.fsPath, name, startLine, endLine, text, label: `${name}:${startLine}${endLine > startLine ? `-${endLine}` : ''}` };
     },
+    /*
+     * What a message may take along without the user asking: { selection, file }, each null or { path, name, key,
+     * label } (the selection also { startLine, endLine }). `key` tells one apart from the next.
+     */
+    context() {
+      const ed = last && visible(last) && usable(last) ? last : null;
+      let selection = null;
+      if (ed) {
+        const { startLine, endLine } = lines(ed.selection);
+        const name = path.basename(ed.document.uri.fsPath);
+        selection = { path: ed.document.uri.fsPath, name, startLine, endLine, label: `${name}:${startLine}${endLine > startLine ? `-${endLine}` : ''}`,
+          key: `${ed.document.uri.fsPath}:${startLine}-${endLine}` };
+      }
+      const fe = lastFile && visible(lastFile) && isFile(lastFile) ? lastFile : null;
+      const file = fe ? { path: fe.document.uri.fsPath, name: path.basename(fe.document.uri.fsPath), label: path.basename(fe.document.uri.fsPath), key: fe.document.uri.fsPath } : null;
+      return { selection, file };
+    },
+    /* The file editor last in front that is still visible, or null. */
+    lastEditor() { return lastFile && visible(lastFile) ? lastFile : null; },
     onDidChange(fn) {
       listeners.add(fn);
       hook();

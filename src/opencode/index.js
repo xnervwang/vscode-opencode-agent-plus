@@ -412,6 +412,7 @@ function createOpenCode(opts = {}) {
         version: found.version,
         agent: r.agentInfo || null,
         capabilities: r.agentCapabilities || {},
+        authMethods: Array.isArray(r.authMethods) ? r.authMethods : [],
       };
       knownSessionCaps = (p.info.capabilities && p.info.capabilities.sessionCapabilities) || {};
       const pc = p.info.capabilities.promptCapabilities;
@@ -509,6 +510,10 @@ function createOpenCode(opts = {}) {
       /* The shown config options as OpenCode last reported them, and values chosen here not yet sent. */
       config: [],
       pendingOptions: new Map(),
+      /* The effort the user last chose here (or OpenCode had recorded when the conversation opened). OpenCode 2.4.1
+         puts a session back on 'default' each time its model is set, so it is chosen again after that where the new
+         model offers it. */
+      effortChoice: '',
       disposed: false,
     };
     let optionsKey = '[]';
@@ -729,21 +734,34 @@ function createOpenCode(opts = {}) {
         await p.conn.request('session/set_model', { sessionId: id, modelId: h.model });
       }
       h.modelGen = p.gen;
+      await keepEffort(p);
+    }
+    /* Chooses the user's effort again once a model change has put it back on 'default', where the model offers it. */
+    async function keepEffort(p) {
+      const want = h.effortChoice;
+      const o = h.config.find((x) => x.id === 'effort');
+      if (!want || want === 'default' || !o || o.currentValue === want || h.pendingOptions.has('effort') || !o.options.some((x) => x && x.value === want)) return;
+      try {
+        const r = await p.conn.request('session/set_config_option', { sessionId: id, configId: 'effort', value: want });
+        noteConfig(r && r.configOptions, [['effort', want]]);
+      } catch (e) { log(`choosing the effort ${want} again for ${id} failed: ${e.message}`); }
     }
 
     /* A process started after this conversation was opened has not seen it: load it there without replaying. */
     async function ensureLoaded(p) {
       if (h.loadedGen === p.gen) return;
+      let current = '';
       h.replay = { mapper: null, events: null };
       try {
         const r = await p.conn.request('session/load', { sessionId: id, cwd: h.cwd, mcpServers: [] }, { timeoutMs: 120000 });
-        noteModels(r && r.configOptions, false);
+        current = noteModels(r && r.configOptions, false);
         noteConfig(r && r.configOptions);
       } finally {
         h.replay = null;
       }
       h.loadedGen = p.gen;
-      h.modelGen = 0;
+      /* Setting the model OpenCode already has would put its effort back on 'default'. */
+      h.modelGen = current && current === h.model ? p.gen : 0;
     }
 
     async function refreshTitle(p) {
@@ -808,7 +826,8 @@ function createOpenCode(opts = {}) {
          or an array taken as the images. */
       send(text, extra) {
         const x = Array.isArray(extra) ? { images: extra } : (extra && typeof extra === 'object' ? extra : {});
-        const prompt = [{ type: 'text', text: String(text || '') }];
+        /* An empty text block is left out: a message of images alone carries none. */
+        const prompt = String(text || '').trim() ? [{ type: 'text', text: String(text) }] : [];
         const attachments = [];
         for (const img of Array.isArray(x.images) ? x.images : []) {
           if (!img || typeof img.data !== 'string' || !img.data) continue;
@@ -850,6 +869,7 @@ function createOpenCode(opts = {}) {
         if (!o) throw new server.OpenCodeError('unsupported', `OpenCode offers no ${optionId} setting for this conversation.`);
         const v = String(value);
         if (!o.options.some((x) => x && x.value === v)) throw new server.OpenCodeError('badRequest', `${v} is not one of the ${optionId} values OpenCode offers.`);
+        if (optionId === 'effort') h.effortChoice = v;
         h.pendingOptions.delete(optionId);
         h.pendingOptions.set(optionId, v);
         noteConfig(h.config);
@@ -960,6 +980,11 @@ function createOpenCode(opts = {}) {
         }
       },
       takeConfig(configOptions) { noteConfig(configOptions); },
+      /* Loads the conversation into the running OpenCode if it is not yet, which notes the models OpenCode offers. */
+      async refreshConfig() {
+        if (h.running || h.own || h.disposed) return;
+        await ensureLoaded(await ensure());
+      },
       /* The title a rename set, which this conversation's stream does not report. */
       retitle(t) { if (t && t !== h.title) emit([{ type: 'title', title: t }]); },
       childTool(u) {
@@ -1095,6 +1120,8 @@ function createOpenCode(opts = {}) {
       const r = await replayInto(p, h);
       const current = noteModels(r && r.configOptions, false);
       h.takeConfig(r && r.configOptions);
+      const effort = h.config.find((x) => x.id === 'effort');
+      if (effort && typeof effort.currentValue === 'string' && effort.currentValue !== 'default') h.effortChoice = effort.currentValue;
       h.model = current;
       h.modelGen = p.gen;
       h.loadedGen = p.gen;
@@ -1251,6 +1278,42 @@ function createOpenCode(opts = {}) {
       return { id: r.sessionId, cwd };
     },
 
+    /*
+     * Copies the history of `id` before its message `messageId` into a new conversation (2.x /api session.fork); resolves
+     * { id, cwd, title }. OpenCode 2.4.1 makes it a root session titled "<title> (fork #n)", so the list shows it.
+     */
+    async forkBefore(id, messageId) {
+      if (!SESSION_ID.test(String(id || ''))) throw new server.OpenCodeError('badRequest', `Not a conversation id: ${String(id).slice(0, 80)}`);
+      const found = foundNow();
+      if (!found.version || found.version.major < 2) throw new server.OpenCodeError('unsupported', 'Forking from a message needs OpenCode 2.');
+      if (!/^msg_[0-9A-Za-z_]{8,64}$/.test(String(messageId || ''))) throw new server.OpenCodeError('badRequest', 'That message cannot be forked from: it has no OpenCode message id.');
+      const r = await runSub(found, ['api', 'session.fork', '--param', `sessionID=${id}`, '-d', JSON.stringify({ before: messageId })], 'forkFailed', { timeout: 60000 });
+      let v;
+      try { v = JSON.parse(r.stdout); } catch (_) { throw new server.OpenCodeError('forkFailed', 'OpenCode\'s reply to the fork could not be read.'); }
+      const d = (v && v.data) || {};
+      if (typeof d.id !== 'string' || !SESSION_ID.test(d.id)) throw new server.OpenCodeError('forkFailed', 'OpenCode did not return the forked conversation.');
+      const h = handles.get(id);
+      const cwd = (d.location && typeof d.location.directory === 'string' && d.location.directory) || (h ? h.cwd : '');
+      noteKinds([[d.id, '']]);
+      fireChanged(d.id);
+      return { id: d.id, cwd, title: mapper.normalizeTitle(d.title) };
+    },
+    canForkBefore() {
+      try { const found = foundNow(); return !!(found.version && found.version.major >= 2); } catch (_) { return false; }
+    },
+
+    /*
+     * The models OpenCode offers once it has started again: a conversation open here is loaded into it, which notes
+     * them. With none open, the list stays as last noted until a conversation opens.
+     */
+    async refreshModels() {
+      const open = [...handles.values()].find((x) => !x.disposed && !x.running && !x.own);
+      if (open) {
+        try { await open.refreshConfig(); } catch (e) { log(`loading ${open.id} for the model list failed: ${e.message}`); }
+      }
+      return api.listModels();
+    },
+
     /* Whether this OpenCode can rewind a conversation (2.x, through /api); false when none is found. */
     canRewind() {
       try { const found = foundNow(); return !!(found.version && found.version.major >= 2); } catch (_) { return false; }
@@ -1368,7 +1431,8 @@ function createOpenCode(opts = {}) {
 
     info() {
       const p = proc;
-      return p && p.info ? { path: p.found.path, version: p.found.version, line: (p.found.version && p.found.version.major) || 1, agent: p.info.agent, pid: p.child.pid, capabilities: p.info.capabilities } : null;
+      return p && p.info ? { path: p.found.path, version: p.found.version, line: (p.found.version && p.found.version.major) || 1, agent: p.info.agent, pid: p.child.pid, capabilities: p.info.capabilities,
+        authMethods: p.info.authMethods || [] } : null;
     },
 
     async dispose() {

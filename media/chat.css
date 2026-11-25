@@ -1962,3 +1962,112 @@ body.focus-view .focus-out {
     line-height: 16px;
   }
 }
+
+/* ---------- the message box and the editor (Fork from here, what goes along, detached commands) ---------- */
+
+/* Fork from here and Rewind sit side by side at the top right of a user message, shown on hover. */
+.user-actions {
+  position: absolute;
+  top: -10px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+.user-actions button.rewind {
+  position: static;
+}
+button.fork {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: var(--small);
+  border: 0.5px solid var(--muted);
+  border-radius: 14px;
+  background: var(--vscode-editor-background);
+  visibility: hidden;
+}
+button.fork .codicon {
+  font-size: 12px;
+}
+.msg.user:hover button.fork, button.fork:focus-visible {
+  visibility: visible;
+}
+
+/* What the editor offers on the pill under the box: lit while it goes with the message, struck through once left out. */
+.ctx-pill {
+  gap: 2px;
+  padding: 0 4px 0 8px;
+}
+.ctx-pill button {
+  height: 18px;
+  padding: 0;
+  line-height: 18px;
+  border-radius: 0;
+  background: transparent;
+}
+.ctx-pill #addSelection {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ctx-pill #addSelection::before {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+.ctx-pill.ctx-file #addSelection::before {
+  content: '\ea7b';
+}
+.ctx-pill.on {
+  background: var(--vscode-inputOption-activeBackground, var(--pill-hover));
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+}
+.ctx-pill.dropped #addSelection {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.ctx-drop {
+  flex: none;
+  width: 14px;
+  color: var(--muted);
+}
+.ctx-drop:hover {
+  color: var(--vscode-foreground);
+}
+
+/* Edit automatically: the mode pill is outlined so it is not mistaken for the asking mode. */
+.mode-pick.auto-edit {
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
+/* A detached command: its dot is hollow, as nothing in OpenCode waits for it. */
+.bg-detached::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--ok);
+}
+.bg-detached {
+  cursor: default;
+}
+
+/* In a narrow box the pill of what goes along and the mode pill give way, cut short, before the row of buttons wraps:
+   with no width of their own they do not break the line, and they share the room that is left (the spacer takes
+   next to none of it) up to their own width. */
+#tools .ctx-pill {
+  flex: 100 1 0;
+  min-width: 64px;
+  max-width: max-content;
+}
+#tools .mode-pick {
+  flex: 100 1 0;
+  min-width: 64px;
+  max-width: max-content;
+  overflow: hidden;
+}
+#tools .mode-pick select {
+  flex: 0 1 auto;
+  min-width: 0;
+}

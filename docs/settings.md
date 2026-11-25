@@ -10,6 +10,10 @@ You can change these settings under OpenCode Agent Plus in the VS Code Settings 
 |---|---|---|
 | `opencodeAgentPlus.model` | Empty | Sets the [model for new conversations](setup.md#installing-opencode-agent-plus). Use `provider/model`, such as `amazon-bedrock/us.xai.grok-4.7`. If you leave it empty, OpenCode Agent Plus asks you to choose a model when you send your first message. |
 | `opencodeAgentPlus.autosave` | On | Saves edited files before a message is sent or a permission request is allowed, so OpenCode reads and changes what the editor shows. |
+| `opencodeAgentPlus.attachOpenFile` | On | Sends the file open in the editor with your messages, as a reference OpenCode reads. When off, a file goes along only with the lines you select. |
+| `opencodeAgentPlus.attachSelection` | On | Sends the lines you select in the editor with your messages. When off, add them with the selection button or Alt+K. |
+| `opencodeAgentPlus.useCtrlEnterToSend` | Off | Sends with Ctrl+Enter (Cmd+Enter on macOS), so that Enter starts a new line. |
+| `opencodeAgentPlus.showFixActions` | On | Shows Fix with OpenCode Agent Plus among the quick fixes where the editor reports an error or a warning. |
 | `opencodeAgentPlus.opencode.path` | Empty | Sets the path to the [OpenCode executable](setup.md#how-opencode-agent-plus-finds-opencode). If you leave it empty, OpenCode Agent Plus searches for it. Set it in User or Remote settings, not Workspace settings. |
 | `opencodeAgentPlus.opencode.askPermissions` | On | Applies [OpenCode Agent Plus's permission rules](features.md#permission-prompts) for edits, commands, web requests and access outside the project. Set it in User or Remote settings, not Workspace settings. |
 | `opencodeAgentPlus.opencode.environment` | Empty | Adds environment variables for the OpenCode that OpenCode Agent Plus starts, such as `{ "OPENAI_BASE_URL": "https://…" }`. The two Bedrock settings and the stored Bedrock API key take precedence over the same names. Set it in User or Remote settings, not Workspace settings. |
@@ -65,9 +69,14 @@ In the Command Palette, search for `OpenCode Agent Plus:` to find these commands
 | `OpenCode Agent Plus: Show MCP Servers` | Runs `opencode mcp list` and shows OpenCode's MCP (Model Context Protocol) servers in a VS Code output channel. |
 | `OpenCode Agent Plus: Show Logs` | Opens OpenCode Agent Plus's log in the Output panel. |
 | `OpenCode Agent Plus: Toggle Focus View` | Turns [Focus view](features.md#focus-view) on or off. Ctrl+Alt+F in a chat tab does the same. |
+| `OpenCode Agent Plus: Connect a Model Provider` | Runs OpenCode's own sign-in (`opencode auth login`) in a terminal, then lists the models again when you close it. |
+| `OpenCode Agent Plus: Focus the Message Box` | Moves to the input box of the chat tab in front, or opens a new conversation. Cmd+Esc on macOS, Ctrl+Esc on Windows and Linux. |
+| `OpenCode Agent Plus: Insert @-Mention Reference` | Inserts the file in the editor, or its selected lines, into the chat tab in front. Alt+K. |
 
 To add an MCP server, run `opencode mcp add` or edit OpenCode's configuration file.
 
 With a chat tab in front, press Cmd+Shift+Esc on macOS, or Meta+Shift+Esc on Windows and Linux, to start a new conversation. To reopen a chat tab you closed, use VS Code's Reopen Closed Editor (Cmd+Shift+T on macOS, Ctrl+Shift+T on Windows and Linux) or the Recently closed group in the Conversations view.
+
+Add to Conversation is in the editor's and the Explorer's context menus, and Fix with OpenCode Agent Plus among the editor's quick fixes. In a chat tab, Cmd+Esc or Ctrl+Esc goes back to the editor.
 
 Rename Conversation and Delete Conversation are menu actions outside the Command Palette. Both are available in the [Conversations view](features.md#the-conversations-list). You can also [rename a conversation from its tab or editor title menu](features.md#chat-tabs-and-windows).

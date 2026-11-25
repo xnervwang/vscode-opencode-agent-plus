@@ -12,17 +12,24 @@
  * Messages in:  reset { items, head }, update { items, head }, models { models, current, error },
  *               options { options: [{ id, name, value, values: [{ value, name, description? }] }] },
  *               commands { commands: [{ name, description }] },
- *               caps { images, files, selection, rewind, info, replyImages },
- *               selection { label }, selectionAdded { item }, files { seq, query, items }, questionErrors
- *               { requestId, errors }, planBar { summary }, sound { shown, on }, info { rows, error? }, image { id, ok,
- *               dataUrl | reason }, draft { text }, conversations { rev, list, self }; each carries the extension
- *               host's `now`.
- * Messages out: ready { tz }, send { text, images?, files?, selections? }, abort, permission, question { requestId, action,
- *               values }, viewDiff, setModel, setOption, reloadModels, copy, openLink, findFiles { query, seq },
- *               addSelection, planBarOpen { part: 'plan' | 'answer' }, rewind { itemId }, info, setSound { on },
- *               image { id, src }, background, openConversation { sourceId, sessionId }, checkPaths { paths },
+ *               caps { images, files, selection, rewind, info, replyImages, connect, forkFrom, detached },
+ *               selection { label, context: { selection, file } }, selectionAdded { item }, files { seq, query, items },
+ *               questionErrors { requestId, errors }, planBar { summary }, sound { shown, on }, info { rows, error? },
+ *               image { id, ok, dataUrl | reason }, draft { text }, conversations { rev, list, self }, composer
+ *               { ctrlEnter, attachFile, attachSelection }, permissionMode { shown, auto }, compose { refs, draft },
+ *               focus, detached { list }, view { focus, pin, toggle }, paths { results: [{ path, ok }] }; each
+ *               carries the extension host's `now`.
+ * Messages out: ready { tz }, send { text, images?, files?, ranges?, selections?, context? }, abort, permission, question
+ *               { requestId, action, values }, viewDiff, setModel, setOption, reloadModels, connectProvider, copy,
+ *               openLink, findFiles { query, seq }, addSelection, planBarOpen { part: 'plan' | 'answer' }, rewind
+ *               { itemId }, forkFrom { itemId }, info, setSound { on }, image { id, src }, background,
+ *               openConversation { sourceId, sessionId }, setPermissionMode { mode }, checkPaths { paths },
  *               openFile { path, line, col }, setFocusView { on }.
- *               In as well: view { focus, pin, toggle }, paths { results: [{ path, ok }] }.
+ *
+ * The message box takes along the editor's selection, or else the file open in the editor (the composer settings say
+ * which), shown lit on the pill under the box; its × leaves it out of this message, and a click on a selection adds it
+ * to the message as it is now. The editor's Alt+K, Add to Conversation and Fix with
+ * OpenCode put @ references or a draft after what the box holds.
  *
  * The layout is the Claude Code panel's: each row of a reply hangs on a line down the left side with a dot that shows
  * its state, a tool call is one row that opens to its input and result, and the message box carries its buttons in a
@@ -172,6 +179,8 @@
   const attachEl = $('attachments');
   const noteEl = $('note');
   const selBtn = $('addSelection');
+  const ctxPill = $('ctxPill');
+  const ctxDrop = $('ctxDrop');
   const attachBtn = $('attach');
   const attachFile = $('attachFile');
   const slashBtn = $('slashBtn');
@@ -210,7 +219,16 @@
   let stick = true;
 
   /* Page features the extension turned on (caps). */
-  let caps = { images: false, files: false, selection: false, rewind: false, info: false, replyImages: false };
+  let caps = { images: false, files: false, selection: false, rewind: false, info: false, replyImages: false, connect: false, forkFrom: false, detached: false };
+  let lastModels = null;
+  let composerSet = { ctrlEnter: false, attachFile: true, attachSelection: true };
+  /* What the editor offers ({ selection, file }), and the keys of what the user removed from this message. */
+  let editorCtx = { selection: null, file: null };
+  const dropped = new Set();
+  let perm = { shown: false, auto: false };
+  let lastOptions = [];
+  /* Commands of this conversation that run detached from OpenCode: [{ pid, command, startedAt }]. */
+  let detached = [];
   let sound = { shown: false, on: false };
   /* The last head's status and pending count, which the chimes compare against; null until the first reset. */
   let heard = null;
@@ -679,11 +697,18 @@
         entry.rewindBtn.title = 'Experimental: in Git repositories, clicking immediately restores files changed after this '
           + 'message; Cancel undoes the restore.';
         entry.rewindBtn.hidden = true;
+        entry.forkBtn = el('button', 'fork');
+        entry.forkBtn.type = 'button';
+        entry.forkBtn.append(icon('repo-forked'), el('span', null, 'Fork from here'));
+        entry.forkBtn.title = 'Copy the conversation before this message into a new one, in a new tab';
+        entry.forkBtn.hidden = true;
+        const actions = el('div', 'user-actions');
+        actions.append(entry.forkBtn, entry.rewindBtn);
         const box = el('div', 'user-box');
         entry.body = el('div', 'bubble');
         entry.att = el('div', 'user-att');
         box.append(meta, entry.body, entry.att);
-        entry.el.append(box, entry.rewindBtn);
+        entry.el.append(box, actions);
         break;
       }
       case 'text': {
@@ -982,9 +1007,11 @@
     scheduleSide();
   }
 
-  /* Shows Rewind on a user message only while the conversation is idle. */
+  /* Shows Rewind and Fork from here on a user message only while the conversation is idle. */
   function showRewind(entry) {
-    if (entry.rewindBtn) entry.rewindBtn.hidden = !(caps.rewind && head && head.status === 'idle');
+    const idle = !!head && head.status === 'idle';
+    if (entry.rewindBtn) entry.rewindBtn.hidden = !(caps.rewind && idle);
+    if (entry.forkBtn) entry.forkBtn.hidden = !(caps.forkFrom && idle);
   }
 
   /* ---------- images in replies ---------- */
@@ -1220,9 +1247,11 @@
 
   /* ---------- head ---------- */
 
+  /* What the user attached to the message: images, and selections added with their button. */
+  const attached = () => images.length > 0 || selections.length > 0;
   function paintSend() {
     const busy = !!head && head.status !== 'idle';
-    const typed = !!input.value.trim();
+    const typed = !!input.value.trim() || attached();
     stopBtn.hidden = !busy;
     sendBtn.hidden = busy && !typed;
     sendBtn.classList.toggle('empty', !typed);
@@ -1304,13 +1333,22 @@
   /* ---------- background work ---------- */
 
   const KIND_WORDS = { subagent: 'Subagent', shell: 'Command' };
+  let bgItems = [];
   function renderBackground(list) {
     const items = Array.isArray(list) ? list : [];
-    bgEl.hidden = !items.length;
-    if (!items.length) { bgList.replaceChildren(); bgEl.open = false; return; }
-    bgSum.textContent = C.backgroundSummary(items);
+    bgItems = items;
+    bgEl.hidden = !items.length && !detached.length;
+    if (!items.length && !detached.length) { bgList.replaceChildren(); bgEl.open = false; return; }
+    bgSum.textContent = C.backgroundSummary(items, detached.length);
     bgSum.title = 'Show what runs in the background';
-    bgList.replaceChildren(...items.map((b) => {
+    const away = detached.map((d) => {
+      const row = el('div', 'bg-row bg-detached');
+      row.title = 'Left OpenCode and still runs; the extension does not stop it';
+      row.append(el('span', 'bg-kind', 'Detached'), el('span', 'bg-title', d.command),
+        el('span', 'bg-detail', [`pid ${d.pid}`, d.startedAt ? `since ${stamp(d.startedAt)}` : ''].filter(Boolean).join(' · ')));
+      return row;
+    });
+    bgList.replaceChildren(...away, ...items.map((b) => {
       const row = el('div', `bg-row bg-${b.kind}`);
       row.dataset.item = b.itemId || '';
       row.title = b.itemId ? 'Show it in the conversation' : '';
@@ -1390,7 +1428,7 @@
   /* Esc closes the open box or list, and otherwise stops the turn; 1, 2 and 3 answer a permission request. */
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || e.isComposing) return;
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey) {
       const act = C.escapeAction({ box: !infoBox.hidden || bgEl.open, menu: !!menu, status: head ? head.status : 'idle' });
       if (act === 'closeBox') { e.preventDefault(); closeInfo(); bgEl.open = false; }
       else if (act === 'closeMenu') { e.preventDefault(); closeMenu(); }
@@ -1442,9 +1480,12 @@
     const list = Array.isArray(m.models) ? m.models : [];
     modelSel.replaceChildren();
     if (m.error) modelSel.appendChild(option('', `Couldn't list models: ${m.error}`));
+    /* Before a provider is connected OpenCode offers only its free models; connecting one comes first then. */
+    const free = C.onlyFreeModels(list);
+    if (free && caps.connect) modelSel.appendChild(option('__connect', 'Connect a provider…'));
     const byVendor = new Map();
     for (const model of list) {
-      const vendor = model.vendor || 'Other';
+      const vendor = free ? "OpenCode's free models" : model.vendor || 'Other';
       if (!byVendor.has(vendor)) byVendor.set(vendor, []);
       byVendor.get(vendor).push(model);
     }
@@ -1456,10 +1497,12 @@
     }
     if (current && !list.some((x) => x.id === current)) modelSel.insertBefore(option(current, current), modelSel.firstChild);
     if (!current && !m.error) modelSel.insertBefore(option('', 'Choose a model'), modelSel.firstChild);
+    if (caps.connect && !free) modelSel.appendChild(option('__connect', 'Connect a provider…'));
     modelSel.appendChild(option('__reload', 'Reload the model list'));
     modelSel.value = current;
     modelSel.dataset.current = current;
-    modelSel.title = current ? `Model: ${current}` : 'Model';
+    modelSel.dataset.free = free ? 'true' : 'false';
+    modelSel.title = `${current ? `Model: ${current}` : 'Model'}${free ? "\nOnly OpenCode's free models are listed. Connect a provider for more." : ''}`;
   }
 
   modelSel.addEventListener('change', () => {
@@ -1469,6 +1512,9 @@
       modelSel.replaceChildren(option(current, 'Loading models…'));
       modelSel.value = current;
       api.postMessage({ type: 'reloadModels' });
+    } else if (value === '__connect') {
+      modelSel.value = current;
+      api.postMessage({ type: 'connectProvider' });
     } else if (value && value !== current) {
       api.postMessage({ type: 'setModel', id: value });
     }
@@ -1476,9 +1522,31 @@
 
   /* ---------- mode and effort ---------- */
 
+  /* The mode pill as permission modes (composer.js permissionModes): Ask before edits, Edit automatically, Plan. */
+  function applyMode() {
+    if (!perm.shown) return false;
+    const sel = optionSels.mode;
+    const o = (lastOptions || []).find((x) => x && x.id === 'mode');
+    const { entries, value } = C.permissionModes(o, perm.auto);
+    sel.hidden = false;
+    sel.replaceChildren(...entries.map((v) => {
+      const opt = option(v.value, v.name);
+      if (v.description) opt.title = v.description;
+      return opt;
+    }));
+    sel.value = value;
+    sel.dataset.current = value;
+    const shown = entries.find((v) => v.value === value);
+    sel.title = `Permission mode: ${shown ? shown.name : value}${shown && shown.description ? `. ${shown.description}` : ''}`;
+    if (sel.parentElement) sel.parentElement.classList.toggle('auto-edit', value === C.AUTO);
+    return true;
+  }
+
   function applyOptions(list) {
+    lastOptions = Array.isArray(list) ? list : [];
     const byId = new Map((Array.isArray(list) ? list : []).map((o) => [o.id, o]));
     for (const [id, sel] of Object.entries(optionSels)) {
+      if (id === 'mode' && applyMode()) continue;
       const o = byId.get(id);
       const values = o && Array.isArray(o.values) ? o.values : [];
       sel.hidden = !values.length;
@@ -1497,7 +1565,9 @@
 
   for (const [id, sel] of Object.entries(optionSels)) {
     sel.addEventListener('change', () => {
-      if (sel.value && sel.value !== sel.dataset.current) api.postMessage({ type: 'setOption', id, value: sel.value });
+      if (!sel.value || sel.value === sel.dataset.current) return;
+      if (id === 'mode' && perm.shown) api.postMessage({ type: 'setPermissionMode', mode: sel.value });
+      else api.postMessage({ type: 'setOption', id, value: sel.value });
     });
   }
 
@@ -1514,7 +1584,10 @@
     if (commands.length) more.push('/ for commands');
     if (caps.files) more.push('@ for workspace files');
     if (caps.images) more.push('paste or drop images');
-    input.title = ['Enter to send, Shift+Enter for a new line', ...more].join('; ');
+    const mac = /Mac/.test(navigator.platform || '');
+    const sendKey = composerSet.ctrlEnter ? `${mac ? 'Cmd' : 'Ctrl'}+Enter to send, Enter for a new line` : 'Enter to send, Shift+Enter for a new line';
+    input.title = [sendKey, ...more].join('; ');
+    sendBtn.title = `Send (${composerSet.ctrlEnter ? `${mac ? 'Cmd' : 'Ctrl'}+Enter` : 'Enter'})`;
     attachBtn.hidden = !caps.images;
     slashBtn.hidden = !commands.length;
   }
@@ -1524,6 +1597,34 @@
     noteEl.hidden = !text;
     clearTimeout(noteTimer);
     if (text) noteTimer = setTimeout(() => { noteEl.hidden = true; }, 8000);
+  }
+
+  /* The pill under the message box for what the editor offers (composer.js contextPill), or null. */
+  function ctxNow() {
+    if (!caps.selection && !caps.files) return null;
+    const pinned = new Set(selections.map((x) => `${x.path}:${x.startLine}-${x.endLine}`));
+    return C.contextPill(editorCtx, { selection: composerSet.attachSelection, file: composerSet.attachFile }, dropped, pinned);
+  }
+  /* The selection or file the message takes along from the editor, or null. */
+  function autoItem() {
+    const p = ctxNow();
+    return p && p.goes ? p.item : null;
+  }
+  /* Lit while it goes with the message; its × leaves it out of this one. */
+  function renderCtx() {
+    const p = ctxNow();
+    ctxPill.hidden = !p;
+    selBtn.hidden = !p;
+    if (!p) { ctxPill.className = 'pill ctx-pill'; selBtn.textContent = ''; return; }
+    const { item, goes, pinned } = p;
+    ctxPill.className = `pill ctx-pill ctx-${item.kind}${goes ? ' on' : ''}${dropped.has(item.key) ? ' dropped' : ''}`;
+    ctxPill.title = item.path;
+    selBtn.textContent = item.label;
+    ctxDrop.hidden = !goes;
+    const what = item.kind === 'file' ? 'the file open in the editor' : 'the lines selected in the editor';
+    if (pinned) selBtn.title = `${item.label} is added to the message`;
+    else if (item.kind === 'selection') selBtn.title = goes ? `${item.label} goes with your message, as ${what}. Click to keep it even after you select something else.` : `Add ${item.label} to the message`;
+    else selBtn.title = goes ? `${item.label} goes with your message, as ${what}. Click to leave it out.` : `Send ${item.label} with the message`;
   }
 
   function renderAttachments() {
@@ -1551,6 +1652,8 @@
       chips.push(chip);
     }
     attachEl.replaceChildren(...chips);
+    renderCtx();
+    paintSend();
   }
 
   function addImageFile(file) {
@@ -1601,13 +1704,25 @@
     files.forEach(addImageFile);
   });
 
-  function applySelection(label) {
+  function applySelection(label, context) {
+    if (context && typeof context === 'object') editorCtx = { selection: context.selection || null, file: context.file || null };
     selectionLabel = label || '';
-    selBtn.hidden = !(caps.selection && selectionLabel);
-    selBtn.textContent = selectionLabel;
-    selBtn.title = `Attach ${selectionLabel} to the message`;
+    renderAttachments();
   }
-  selBtn.addEventListener('click', () => api.postMessage({ type: 'addSelection' }));
+  /* A selection is added to the message as it is now; the open file goes along or not. */
+  selBtn.addEventListener('click', () => {
+    const p = ctxNow();
+    if (!p) return;
+    if (p.item.kind === 'selection') { dropped.delete(p.item.key); api.postMessage({ type: 'addSelection' }); return; }
+    if (dropped.has(p.item.key)) dropped.delete(p.item.key); else dropped.add(p.item.key);
+    renderCtx();
+  });
+  ctxDrop.addEventListener('click', () => {
+    const p = ctxNow();
+    if (p) dropped.add(p.item.key);
+    renderCtx();
+    input.focus();
+  });
 
   /* ---------- the / and @ lists ---------- */
 
@@ -1716,17 +1831,23 @@
 
   function submit() {
     const text = input.value;
-    if (!text.trim()) return;
+    if (!text.trim() && !attached()) return;
     const msg = { type: 'send', text };
-    const files = C.filesInText(text, picked).map((f) => ({ path: f.path, name: f.name }));
+    const named = C.filesInText(text, picked);
+    const files = named.filter((f) => !f.startLine).map((f) => ({ path: f.path, name: f.name }));
+    const ranges = named.filter((f) => f.startLine).map((f) => ({ path: f.path, name: f.name, startLine: f.startLine, endLine: f.endLine }));
+    const auto = autoItem();
     if (images.length) msg.images = images.map((i) => ({ mediaType: i.mediaType, data: i.data, name: i.name }));
     if (files.length) msg.files = files;
+    if (ranges.length) msg.ranges = ranges;
+    if (auto) msg.context = { kind: auto.kind, key: auto.key };
     if (selections.length) msg.selections = selections.map((s) => ({ path: s.path, name: s.name, text: s.text, startLine: s.startLine, endLine: s.endLine }));
     api.postMessage(msg);
     input.value = '';
     images.length = 0;
     selections.length = 0;
     picked = [];
+    dropped.clear();
     renderAttachments();
     closeMenu();
     saveDraft();
@@ -1745,18 +1866,19 @@
         renderMenu();
         return;
       }
-      if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
-        e.preventDefault();
-        accept(menu.index);
-        return;
-      }
     }
-    if (menu && e.key === 'Escape') {
+    const act = C.enterAction({ key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, composing, menu: !!(menu && menu.items.length), ctrlEnter: composerSet.ctrlEnter });
+    if (act === 'accept') {
+      e.preventDefault();
+      accept(menu.index);
+      return;
+    }
+    if (menu && e.key === 'Escape' && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       closeMenu();
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey && !composing) {
+    if (act === 'send') {
       e.preventDefault();
       submit();
     }
@@ -1830,6 +1952,12 @@
     }
     const diff = target.closest('button.diff');
     if (diff) { api.postMessage({ type: 'viewDiff', requestId: diff.dataset.request }); return; }
+    const fork = target.closest('button.fork');
+    if (fork) {
+      const holder = fork.closest('[data-id]');
+      if (holder) api.postMessage({ type: 'forkFrom', itemId: holder.dataset.id });
+      return;
+    }
     const rewind = target.closest('button.rewind');
     if (rewind) {
       const holder = rewind.closest('[data-id]');
@@ -1904,6 +2032,7 @@
       if (m.head) applyHead(m.head);
       if (wasAtBottom) scrollEnd();
     } else if (m.type === 'models') {
+      lastModels = m;
       applyModels(m);
     } else if (m.type === 'conversations') {
       applyConversations(m);
@@ -1913,12 +2042,44 @@
       if (wasAtBottom) scrollEnd();
     } else if (m.type === 'options') {
       applyOptions(m.options);
+    } else if (m.type === 'permissionMode') {
+      perm = { shown: m.shown === true, auto: m.auto === true };
+      applyOptions(lastOptions);
+    } else if (m.type === 'composer') {
+      composerSet = { ctrlEnter: m.ctrlEnter === true, attachFile: m.attachFile !== false, attachSelection: m.attachSelection !== false };
+      placeholder();
+      renderAttachments();
+    } else if (m.type === 'compose') {
+      const refs = (Array.isArray(m.refs) ? m.refs : []).filter((r) => r && r.token && r.path);
+      for (const r of refs) if (!picked.some((x) => x.token === r.token && x.path === r.path)) picked.push(r);
+      let text = input.value;
+      /* A draft names its references itself; they are only kept, so that they go with the message. */
+      if (refs.length && !m.draft) {
+        const at = document.activeElement === input ? input.selectionStart : text.length;
+        const r = C.insertRefs(text, at, refs);
+        text = r.text;
+      }
+      if (typeof m.draft === 'string' && m.draft) text = C.appendDraft(text, m.draft);
+      input.value = text;
+      autosize();
+      saveDraft();
+      paintSend();
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    } else if (m.type === 'focus') {
+      input.focus();
+    } else if (m.type === 'detached') {
+      detached = Array.isArray(m.list) ? m.list.filter((d) => d && d.pid) : [];
+      renderBackground(bgItems);
     } else if (m.type === 'commands') {
       commands = Array.isArray(m.commands) ? m.commands : [];
       placeholder();
       if (document.activeElement === input) updateMenu();
     } else if (m.type === 'caps') {
-      caps = { images: m.images === true, files: m.files === true, selection: m.selection === true, rewind: m.rewind === true, info: m.info === true, replyImages: m.replyImages === true };
+      caps = { images: m.images === true, files: m.files === true, selection: m.selection === true, rewind: m.rewind === true, info: m.info === true, replyImages: m.replyImages === true,
+        connect: m.connect === true, forkFrom: m.forkFrom === true, detached: m.detached === true };
+      renderAttachments();
+      if (lastModels) applyModels(lastModels);
       infoBtn.hidden = !caps.info;
       placeholder();
       applySelection(selectionLabel);
@@ -1946,7 +2107,7 @@
       }
       input.focus();
     } else if (m.type === 'selection') {
-      applySelection(m.label);
+      applySelection(m.label, m.context);
     } else if (m.type === 'selectionAdded' && m.item) {
       const it = m.item;
       if (!selections.some((s) => s.path === it.path && s.startLine === it.startLine && s.endLine === it.endLine)) {

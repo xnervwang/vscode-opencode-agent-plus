@@ -34,6 +34,19 @@
  * links those ('paths' { results: [{ path, ok }] }). A relative path counts only inside a workspace folder or the
  * conversation's folder, an absolute one anywhere; answers are kept for a while in FILE_CACHE, which the paths listed in
  * `fresh` skip. 'openFile' { path, line } opens one beside the chat, at that line, after checking it again.
+ *   connectProvider   opens OpenCode's sign-in for a model provider; the model list offers it (reloadModels() lists
+ *              the models again afterwards)
+ *   composer   () => { ctrlEnter, attachFile, attachSelection }, the settings of the message box; settingsChanged()
+ *              sends them again
+ *   permissionMode   { get(), set(on), onDidChange(fn) }: whether this conversation's edits are allowed without asking
+ *              (src/host/auto-edit.js), which the mode pill sets
+ *   forkFrom   copies the history before a user message into a new conversation and opens it (OpenCode 2)
+ *   detached   () => [{ pid, command, startedAt }] or a promise of them: the conversation's detached commands
+ *              (src/host/detached.js), looked for when a turn starts or ends and when the background list opens
+ *   readRange  (path, startLine, endLine) => text or null: lines of a file named with @<path>#L.. in a message
+ *
+ * compose({ refs, draft }) puts @ references or a draft into the message box (after what it holds) and focuses it;
+ * before the page has loaded, it waits. focusInput() focuses the box.
  *
  * The plan bar's fragment brings its own style element, so the page's policy lets inline styles in. A diff opened from
  * a permission card gets Allow once, Allow in this project and Deny in its editor's title bar (see answerFromDiff);
@@ -208,6 +221,15 @@ class ChatPanel {
     this.links = opts.links && typeof opts.links.current === 'function' ? opts.links : null;
     this.beforeSend = typeof opts.beforeSend === 'function' ? opts.beforeSend : null;
     this.view = opts.view && typeof opts.view.focus === 'function' ? opts.view : null;
+    this.connectProvider = typeof opts.connectProvider === 'function' ? opts.connectProvider : null;
+    this.composer = typeof opts.composer === 'function' ? opts.composer : null;
+    this.permissionMode = opts.permissionMode && typeof opts.permissionMode.get === 'function' ? opts.permissionMode : null;
+    this.forkFrom = typeof opts.forkFrom === 'function' ? opts.forkFrom : null;
+    this.detached = typeof opts.detached === 'function' ? opts.detached : null;
+    this.readRange = typeof opts.readRange === 'function' ? opts.readRange : null;
+    /* Messages for the page held until it has loaded: compose and focus. */
+    this.waiting = [];
+    this.detachedTimer = null;
 
     let state = Array.isArray(opts.history) ? vm.fromRecords(opts.history, { modelInfo: opts.modelInfo }) : vm.initialState();
     if (opts.model) state = vm.reduce(state, { type: 'ui.model', model: opts.model });
@@ -236,6 +258,9 @@ class ChatPanel {
     if (this.selection) this.subs.push(toOff(this.selection.onDidChange(() => { if (this.ready) this.postSelection(); })));
     if (this.planBar) this.subs.push(toOff(this.planBar.onDidChange((summary) => { if (this.ready) this.post({ type: 'planBar', summary: summary || null }); })));
     if (this.links) this.subs.push(toOff(this.links.onDidChange(() => { if (this.ready) this.postConversations(); })));
+    if (this.permissionMode && typeof this.permissionMode.onDidChange === 'function') {
+      this.subs.push(toOff(this.permissionMode.onDidChange(() => { if (this.ready) this.postPermissionMode(); })));
+    }
   }
 
   html(webview, mdDir, iconDir, hlDir) {
@@ -295,7 +320,7 @@ ${icons}<link rel="stylesheet" href="${media('chat.css')}">
         <span id="ring" class="ring tool-btn"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6" fill="none"></circle><circle class="fill" cx="8" cy="8" r="6" fill="none"></circle></svg></span>
         <details id="background" class="pill" hidden><summary></summary><div class="bg-list"></div></details>
         <span class="pill model-pill"><select id="model" title="Model"><option>Loading models…</option></select><select id="effort" class="option" hidden></select></span>
-        <button id="addSelection" class="pill" type="button" hidden></button>
+        <span id="ctxPill" class="pill ctx-pill" hidden><button id="addSelection" type="button" hidden></button><button id="ctxDrop" class="ctx-drop" type="button" title="Do not send this with the message" aria-label="Do not send this with the message" hidden>×</button></span>
         <span class="spacer"></span>
         <button id="infoBtn" class="tool-btn" type="button" title="About this conversation" hidden>${icon('info')}</button>
         <button id="subBtn" class="pill toggle" type="button" aria-pressed="false" hidden>Subagents</button>
@@ -331,6 +356,7 @@ ${hl}<script src="${media('kit.js')}"></script>
     }
     this.state = vm.reduce(this.state, ev, this.now());
     if (ev && (ev.type === 'permissionSettled' || ev.type === 'turnEnd')) forgetDiffs(this, ev.type === 'turnEnd' ? undefined : ev.requestId);
+    if (ev && (ev.type === 'turnStart' || ev.type === 'turnEnd')) this.lookForDetached(ev.type === 'turnStart' ? 3000 : 500);
     const key = `${this.state.status}\n${this.state.title}`;
     if (this.onDidChangeState && key !== this.lastKey) {
       this.lastKey = key;
@@ -386,8 +412,60 @@ ${hl}<script src="${media('kit.js')}"></script>
     this.postPlanBar();
     this.postConversations();
     this.postView();
+    this.postComposer();
+    this.postPermissionMode();
     if (this.models || this.modelsError) this.postModels();
     else this.loadModels();
+    this.lookForDetached(0);
+    for (const m of this.waiting.splice(0)) this.post(m);
+  }
+
+  postComposer() {
+    let c = {};
+    try { c = this.composer ? this.composer() || {} : {}; } catch (_) { c = {}; }
+    this.post({ type: 'composer', ctrlEnter: c.ctrlEnter === true, attachFile: c.attachFile !== false, attachSelection: c.attachSelection !== false });
+  }
+
+  /* After a setting of the message box changed. */
+  settingsChanged() {
+    if (!this.ready || this.disposed) return;
+    this.postComposer();
+    this.postSelection();
+  }
+
+  postPermissionMode() {
+    let auto = false;
+    try { auto = this.permissionMode ? this.permissionMode.get() === true : false; } catch (_) { auto = false; }
+    this.post({ type: 'permissionMode', shown: !!this.permissionMode, auto });
+  }
+
+  /* `payload` is { refs?: [{ token, path, name, rel, startLine?, endLine? }], draft?: string }. */
+  compose(payload) {
+    if (this.disposed || !payload) return;
+    const refs = (Array.isArray(payload.refs) ? payload.refs : []).filter((r) => r && typeof r.token === 'string' && typeof r.path === 'string' && path.isAbsolute(r.path))
+      .slice(0, MAX_FILES).map((r) => ({ token: r.token, path: r.path, name: String(r.name || path.basename(r.path)), rel: String(r.rel || r.path),
+        ...(Number(r.startLine) > 0 ? { startLine: Number(r.startLine), endLine: Number(r.endLine) || Number(r.startLine) } : {}) }));
+    const msg = { type: 'compose', refs, draft: typeof payload.draft === 'string' ? payload.draft : '' };
+    if (this.ready) this.post(msg); else this.waiting.push(msg);
+  }
+
+  focusInput() {
+    if (this.disposed) return;
+    if (this.ready) this.post({ type: 'focus' }); else this.waiting.push({ type: 'focus' });
+  }
+
+  /* Looks for detached commands `ms` from now, once. */
+  lookForDetached(ms) {
+    if (!this.detached || this.disposed) return;
+    if (this.detachedTimer) clearTimeout(this.detachedTimer);
+    this.detachedTimer = setTimeout(() => {
+      this.detachedTimer = null;
+      Promise.resolve().then(() => this.detached()).then((list) => {
+        if (this.ready) this.post({ type: 'detached', list: (Array.isArray(list) ? list : []).filter((d) => d && Number(d.pid) > 0)
+          .map((d) => ({ pid: Number(d.pid), command: String(d.command || ''), startedAt: Number(d.startedAt) || 0 })) });
+      }, () => {});
+    }, ms);
+    if (typeof this.detachedTimer.unref === 'function') this.detachedTimer.unref();
   }
 
   readOptions() {
@@ -416,7 +494,16 @@ ${hl}<script src="${media('kit.js')}"></script>
   postCaps() {
     const a = this.read('attachments', {});
     this.post({ type: 'caps', images: a.images === true, files: a.files === true && !!this.findFiles, selection: a.selection === true && !!this.selection,
-      rewind: !!this.rewind, info: !!this.info, replyImages: !!this.loadImage });
+      rewind: !!this.rewind, info: !!this.info, replyImages: !!this.loadImage, connect: !!this.connectProvider, forkFrom: !!this.forkFrom,
+      detached: !!this.detached });
+  }
+
+  /* Lists the models again, as after a provider was connected; the page's list follows. */
+  reloadModels() {
+    if (this.disposed) return;
+    this.models = null;
+    this.modelsError = '';
+    if (this.ready) this.loadModels();
   }
 
   postSound() {
@@ -436,10 +523,15 @@ ${hl}<script src="${media('kit.js')}"></script>
     return null;
   }
 
+  /* The selection the page's button adds, and what a message takes along without asking: { selection, file }
+     (selection.js context()). */
   postSelection() {
     let label = '';
     try { const d = this.selection && this.selection.describe(); label = d && d.label ? String(d.label) : ''; } catch (_) { /* none */ }
-    this.post({ type: 'selection', label });
+    let context = { selection: null, file: null };
+    try { if (this.selection && typeof this.selection.context === 'function') context = this.selection.context() || context; } catch (_) { /* none */ }
+    const pick = (x) => (x ? { path: String(x.path), name: String(x.name), label: String(x.label), key: String(x.key) } : null);
+    this.post({ type: 'selection', label, context: { selection: pick(context.selection), file: pick(context.file) } });
   }
 
   /* Posts the conversations a reply may link to, with this one as `self` so the page can leave it out. */
@@ -525,10 +617,38 @@ ${hl}<script src="${media('kit.js')}"></script>
         files.push({ path: f.path, name: String(f.name || path.basename(f.path)), text: f.text, startLine: Number(f.startLine) || 0, endLine: Number(f.endLine) || 0 });
       }
     }
+    for (const f of Array.isArray(msg.ranges) ? msg.ranges : []) {
+      if (!f || typeof f.path !== 'string' || !path.isAbsolute(f.path) || !(Number(f.startLine) > 0) || !this.readRange) continue;
+      const from = Math.floor(Number(f.startLine));
+      const to = Math.max(from, Math.floor(Number(f.endLine) || from));
+      if (files.some((x) => x.path === f.path && x.startLine === from && x.endLine === to)) continue;
+      let text = null;
+      try { text = this.readRange(f.path, from, to); } catch (_) { text = null; }
+      if (typeof text === 'string') files.push({ path: f.path, name: String(f.name || path.basename(f.path)), text, startLine: from, endLine: to });
+      else if (!files.some((x) => x.path === f.path && x.text === undefined)) files.push({ path: f.path, name: String(f.name || path.basename(f.path)) });
+    }
+    this.addContext(msg.context, files);
     const out = {};
     if (images.length) out.images = images;
     if (files.length) out.files = files.slice(0, MAX_FILES);
     return out;
+  }
+
+  /* What the page showed as taken along from the editor ({ kind, key }), if the editor still has it. */
+  addContext(want, files) {
+    if (!want || typeof want.key !== 'string' || !this.selection) return;
+    let ctx = null;
+    try { ctx = typeof this.selection.context === 'function' ? this.selection.context() : null; } catch (_) { ctx = null; }
+    if (!ctx) return;
+    if (want.kind === 'selection' && ctx.selection && ctx.selection.key === want.key) {
+      let item = null;
+      try { item = this.selection.current(); } catch (_) { item = null; }
+      if (item && !files.some((x) => x.path === item.path && x.startLine === item.startLine && x.endLine === item.endLine && x.text !== undefined)) {
+        files.push({ path: item.path, name: item.name, text: item.text, startLine: item.startLine, endLine: item.endLine });
+      }
+    } else if (want.kind === 'file' && ctx.file && ctx.file.key === want.key && !files.some((x) => x.path === ctx.file.path && x.text === undefined)) {
+      files.push({ path: ctx.file.path, name: ctx.file.name });
+    }
   }
 
   answerQuestion(msg) {
@@ -582,8 +702,11 @@ ${hl}<script src="${media('kit.js')}"></script>
         break;
       case 'send': {
         const text = String(msg.text || '');
-        if (!text.trim()) break;
         const extra = this.extraOf(msg);
+        /* Without text, a message goes when the user attached something to it: images or a selection added with its
+           button. What the editor offers on its own does not make one. */
+        const attached = (extra.images && extra.images.length) || (Array.isArray(msg.selections) && msg.selections.length);
+        if (!text.trim() && !attached) break;
         if (this.state.status !== 'idle') this.dispatch({ type: 'ui.queued', text });
         Promise.resolve().then(() => (this.beforeSend ? this.beforeSend() : undefined)).catch(() => {})
           .then(() => (Object.keys(extra).length ? this.conversation.send(text, extra) : this.conversation.send(text))).catch((err) => this.showError(err));
@@ -639,7 +762,19 @@ ${hl}<script src="${media('kit.js')}"></script>
         break;
       case 'background':
         Promise.resolve().then(() => (typeof this.conversation.checkBackground === 'function' ? this.conversation.checkBackground() : undefined)).catch(() => {});
+        this.lookForDetached(0);
         break;
+      case 'setPermissionMode':
+        this.setPermissionMode(String(msg.mode || ''));
+        break;
+      case 'forkFrom': {
+        const found = this.forkFrom && this.userItem(String(msg.itemId || ''));
+        if (!found) break;
+        if (this.state.status !== 'idle') { this.showError(new Error('Stop the turn or wait for it to end before forking.')); break; }
+        Promise.resolve().then(() => this.forkFrom({ itemId: found.item.id, messageId: found.item.messageId || '', text: found.item.text, ordinal: found.ordinal }))
+          .catch((err) => this.showError(err));
+        break;
+      }
       case 'findFiles': {
         const seq = Number(msg.seq) || 0;
         const query = String(msg.query || '').slice(0, 200);
@@ -696,6 +831,9 @@ ${hl}<script src="${media('kit.js')}"></script>
         this.modelsError = '';
         this.loadModels();
         break;
+      case 'connectProvider':
+        if (this.connectProvider) Promise.resolve().then(() => this.connectProvider()).catch((err) => this.showError(err));
+        break;
       case 'copy':
         Promise.resolve(this.vscode.env.clipboard.writeText(String(msg.text || ''))).catch(() => {});
         break;
@@ -707,6 +845,24 @@ ${hl}<script src="${media('kit.js')}"></script>
       default:
         break;
     }
+  }
+
+  /* 'build' is OpenCode's build mode with edits asking first and 'build:auto' the same without asking (composer.js
+     permissionModes); any other value is that mode of OpenCode's, with edits asking. */
+  setPermissionMode(mode) {
+    const pm = this.permissionMode;
+    const auto = mode === 'build:auto';
+    const modeOpt = this.options.find((o) => o && o.id === 'mode');
+    const values = modeOpt && Array.isArray(modeOpt.values) ? modeOpt.values : [];
+    const offered = (v) => values.some((x) => x && x.value === v);
+    let want = '';
+    if (mode === 'build' || mode === 'build:auto') want = offered('build') ? 'build' : '';
+    else if (offered(mode)) want = mode;
+    else return;
+    if (pm && typeof pm.set === 'function') { try { pm.set(auto); } catch (err) { this.showError(err); } }
+    const after = () => { this.options = this.readOptions(); this.postOptions(); this.postPermissionMode(); };
+    if (!want || (modeOpt && modeOpt.value === want) || typeof this.conversation.setOption !== 'function') { after(); return; }
+    Promise.resolve().then(() => this.conversation.setOption('mode', want)).then(after, (err) => { this.showError(err); after(); });
   }
 
   async openDiff(requestId) {
@@ -735,6 +891,9 @@ ${hl}<script src="${media('kit.js')}"></script>
     this.disposed = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.detachedTimer) clearTimeout(this.detachedTimer);
+    this.detachedTimer = null;
+    this.waiting = [];
     for (const off of this.subs) {
       try {
         off();

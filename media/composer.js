@@ -52,18 +52,112 @@
     return { text: t.slice(0, token.start) + add + rest, caret: token.start + add.length };
   }
 
-  /* The picked files still named in the text as @<rel>, once each. */
+  /* Whether `token` stands in `text` as a word of its own: followed by the end, a space or a punctuation mark. */
+  function hasToken(text, token) {
+    if (!token) return false;
+    for (let i = text.indexOf(token); i >= 0; i = text.indexOf(token, i + 1)) {
+      const after = text.charAt(i + token.length);
+      if (after === '' || /[\s.,;:!?)]/.test(after)) return true;
+    }
+    return false;
+  }
+
+  /* The picked files still named in the text, once each: as their `token` (@<rel>, or @<rel>#L3-5 for lines of a file
+     that the editor added), or as @<rel>. */
   function filesInText(text, files) {
     const t = String(text || '');
     const seen = new Set();
     const out = [];
     for (const f of Array.isArray(files) ? files : []) {
-      if (!f || !f.rel || seen.has(f.path)) continue;
-      const i = t.indexOf(`@${f.rel}`);
-      const after = i >= 0 ? t.charAt(i + f.rel.length + 1) : '';
-      if (i >= 0 && (after === '' || /[\s.,;:!?)]/.test(after))) { seen.add(f.path); out.push(f); }
+      if (!f || !f.rel) continue;
+      const token = f.token || `@${f.rel}`;
+      const key = `${f.path}#${f.startLine || 0}-${f.endLine || 0}`;
+      if (seen.has(key)) continue;
+      if (hasToken(t, token)) { seen.add(key); out.push(f); }
     }
     return out;
+  }
+
+  /* Puts the tokens of `refs` into `text` at `caret` (the end when it is not a number), each set off by spaces;
+     returns the new text and caret. */
+  function insertRefs(text, caret, refs) {
+    const t = String(text || '');
+    const at = typeof caret === 'number' && caret >= 0 && caret <= t.length ? caret : t.length;
+    const tokens = (Array.isArray(refs) ? refs : []).map((r) => r && r.token).filter(Boolean);
+    if (!tokens.length) return { text: t, caret: at };
+    const before = t.slice(0, at);
+    const after = t.slice(at);
+    const lead = before && !/\s$/.test(before) ? ' ' : '';
+    const add = `${lead}${tokens.join(' ')}${after.startsWith(' ') ? '' : ' '}`;
+    return { text: before + add + after, caret: at + add.length };
+  }
+
+  /* A draft put after what the box holds, a blank line between; what was typed stays. */
+  function appendDraft(text, draft) {
+    const t = String(text || '');
+    const d = String(draft || '');
+    if (!d) return t;
+    if (!t.trim()) return d;
+    return `${t.replace(/\s+$/, '')}\n\n${d}`;
+  }
+
+  /* What a key in the message box does: 'accept' the list's item, 'send', or null to let it be (a new line, say).
+     With `ctrlEnter`, Enter makes a new line and Ctrl or Cmd with Enter sends. */
+  function enterAction({ key, shiftKey = false, ctrlKey = false, metaKey = false, composing = false, menu = false, ctrlEnter = false } = {}) {
+    if (composing) return null;
+    if (menu && ((key === 'Enter' && !shiftKey && !ctrlKey && !metaKey) || key === 'Tab')) return 'accept';
+    if (key !== 'Enter') return null;
+    if (ctrlEnter) return ctrlKey || metaKey ? 'send' : null;
+    return shiftKey ? null : 'send';
+  }
+
+  /* The permission modes the mode pill offers, from OpenCode's mode option ({ value, values }) or none, and whether
+     edits are allowed without asking: { entries: [{ value, name, description }], value }. Build is offered twice, as
+     Ask before edits (its own value) and Edit automatically (AUTO); plan and any other mode once each, with OpenCode's
+     value. */
+  const ASK = 'build';
+  const AUTO = 'build:auto';
+  function permissionModes(modeOption, autoEdit) {
+    const values = modeOption && Array.isArray(modeOption.values) ? modeOption.values.filter((v) => v && typeof v.value === 'string') : [];
+    const current = modeOption && typeof modeOption.value === 'string' ? modeOption.value : '';
+    const build = values.find((v) => v.value === 'build');
+    const entries = [
+      { value: ASK, name: 'Ask before edits', description: 'OpenCode asks before it edits a file' },
+      { value: AUTO, name: 'Edit automatically', description: 'Edits of files in this folder are allowed without asking; commands still ask' },
+    ];
+    for (const v of values) {
+      if (v === build) continue;
+      entries.push({ value: v.value, name: v.value === 'plan' ? 'Plan' : v.name || v.value, description: v.description || '' });
+    }
+    const onBuild = !values.length || !current || current === 'build';
+    const value = onBuild ? (autoEdit ? AUTO : ASK) : current;
+    return { entries, value };
+  }
+
+  /*
+   * The pill under the message box for what the editor offers, `ctx` being { selection, file }, each null or { key,
+   * label, ... }: { item: { kind, ...ctx entry }, goes } or null. The selection comes first while
+   * `settings.selection` is on, else the open file while `settings.file` is on, else a selection the user may add; `goes`
+   * says it goes with the message, which the user can undo for this message (its key in `dropped`). A selection added
+   * already (its key in `pinned`) stays on the pill as `pinned`, and does not go along a second time.
+   */
+  function contextPill(ctx, settings, dropped, pinned) {
+    const c = ctx || {};
+    const s = settings || {};
+    const has = (set, k) => !!set && typeof set.has === 'function' && set.has(k);
+    if (c.selection && c.selection.key && has(pinned, c.selection.key)) return { item: { kind: 'selection', ...c.selection }, goes: false, pinned: true };
+    const sel = c.selection && c.selection.key ? { kind: 'selection', ...c.selection } : null;
+    const file = c.file && c.file.key ? { kind: 'file', ...c.file } : null;
+    if (sel && s.selection) return { item: sel, goes: !has(dropped, sel.key) };
+    if (file && s.file) return { item: file, goes: !has(dropped, file.key) };
+    if (sel) return { item: sel, goes: false };
+    return null;
+  }
+
+  /* What a message takes along from the editor without being asked (contextPill's item while it goes), or null. */
+  function autoContext(ctx, settings, dropped, pinned) {
+    const p = contextPill(ctx, settings, dropped, pinned);
+    return p && p.goes ? p.item : null;
   }
 
   /* Base64 of a data: URL and its type, or null for anything that is not an image. */
@@ -112,16 +206,19 @@
     }).join('\n');
   }
 
-  /* The words on the background pill for head().background, or '' when nothing runs. */
-  function backgroundSummary(list) {
+  /* The words on the background pill for head().background and the detached commands found, or '' when nothing
+     runs. */
+  function backgroundSummary(list, detached = 0) {
     const items = Array.isArray(list) ? list : [];
-    if (!items.length) return '';
+    const away = Number(detached) > 0 ? Math.floor(Number(detached)) : 0;
+    if (!items.length && !away) return '';
     const subs = items.filter((b) => b && b.kind === 'subagent').length;
     const cmds = items.length - subs;
     const parts = [];
     if (subs) parts.push(`${subs} subagent${subs === 1 ? '' : 's'}`);
     if (cmds) parts.push(`${cmds} command${cmds === 1 ? '' : 's'}`);
-    return `${parts.join(', ')} running`;
+    const running = parts.length ? `${parts.join(', ')} running` : '';
+    return [running, away ? `${away} detached` : ''].filter(Boolean).join(' · ');
   }
 
   const COMPACTION_WORDS = { running: 'Compacting…', completed: 'Compacted', failed: 'Compacting failed', cancelled: 'Compacting cancelled' };
@@ -156,6 +253,12 @@
     return '';
   }
 
+  /* Whether the models listed are only OpenCode's own free ones (opencode/…), as before any provider is connected. */
+  function onlyFreeModels(list) {
+    const l = Array.isArray(list) ? list.filter((m) => m && typeof m.id === 'string') : [];
+    return l.length > 0 && l.every((m) => m.id.startsWith('opencode/'));
+  }
+
   return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl, escapeAction, chimeKind, ringLow, imageKind, driveSlashes, backgroundSummary,
-    outlineRows, subagentShare };
+    outlineRows, subagentShare, onlyFreeModels, hasToken, insertRefs, appendDraft, enterAction, permissionModes, contextPill, autoContext, ASK, AUTO };
 }));
