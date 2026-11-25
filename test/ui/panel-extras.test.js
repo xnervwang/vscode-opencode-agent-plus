@@ -238,6 +238,15 @@ test('replayed times reach the items: a user message and its reply are dated by 
   assert.equal(s.items.find((i) => i.kind === 'figures').durationMs, 4000);
 });
 
+test('a drive path in a link or an image keeps its backslashes as forward slashes; code and plain text stay', () => {
+  assert.equal(C.driveSlashes('![red square](D:\\a\\_temp\\ws\\red-square.png)'), '![red square](D:/a/_temp/ws/red-square.png)');
+  assert.equal(C.driveSlashes('see [notes](<C:\\x\\_y.txt>)'), 'see [notes](<C:/x/_y.txt>)');
+  assert.equal(C.driveSlashes('`![](C:\\keep\\_me.png)` and plain C:\\stays\\_too'), '`![](C:\\keep\\_me.png)` and plain C:\\stays\\_too');
+  assert.equal(C.driveSlashes('```\n![](C:\\in\\_block.png)\n```'), '```\n![](C:\\in\\_block.png)\n```');
+  assert.equal(C.driveSlashes('![](/tmp/a.png)'), '![](/tmp/a.png)');
+  assert.equal(C.imageKind('D:/a/_temp/ws/red-square.png', true), 'local');
+});
+
 test('media/composer.js without a page: Esc, the chimes, the ring\'s outline, images and the Background summary', () => {
   assert.equal(C.escapeAction({ box: true, menu: true, status: 'working' }), 'closeBox');
   assert.equal(C.escapeAction({ menu: true, status: 'working' }), 'closeMenu');

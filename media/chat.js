@@ -178,7 +178,7 @@
       target.classList.add('plain');
       return;
     }
-    target.innerHTML = md.render(text);
+    target.innerHTML = md.render(C.driveSlashes(text));
     placeImages(target);
     linkConversations(target);
     for (const pre of target.querySelectorAll('pre')) {

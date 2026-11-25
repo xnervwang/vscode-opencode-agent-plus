@@ -100,6 +100,18 @@
     return 'link';
   }
 
+  /* Markdown drops a backslash before punctuation, so the link C:\a\_temp\x.png would become C:\a_temp\x.png: a drive
+     path in a link or an image gets forward slashes, which Windows reads the same. Code blocks and code spans stay. */
+  const DRIVE_LINK = /(\]\(<?)([A-Za-z]:\\[^)\s>]*)/g;
+  function driveSlashes(text) {
+    let fence = false;
+    return String(text || '').split('\n').map((line) => {
+      if (/^\s*(?:```|~~~)/.test(line)) { fence = !fence; return line; }
+      if (fence) return line;
+      return line.split(/(`[^`]*`)/).map((part, i) => (i % 2 ? part : part.replace(DRIVE_LINK, (m, open, p) => open + p.replace(/\\/g, '/')))).join('');
+    }).join('\n');
+  }
+
   /* The words on the background pill for head().background, or '' when nothing runs. */
   function backgroundSummary(list) {
     const items = Array.isArray(list) ? list : [];
@@ -144,6 +156,6 @@
     return '';
   }
 
-  return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl, escapeAction, chimeKind, ringLow, imageKind, backgroundSummary,
+  return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl, escapeAction, chimeKind, ringLow, imageKind, driveSlashes, backgroundSummary,
     outlineRows, subagentShare };
 }));
