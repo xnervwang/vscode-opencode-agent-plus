@@ -11,7 +11,9 @@
  *
  * To take over from a live holder, a window writes <id>.takeover; the holder, which watches the folder with fs.watch
  * while it holds any lock, hands the request to onTakeover, releases the lock and answers with <id>.letgo naming the
- * asker. Over Remote-SSH a window whose client went away without closing keeps its extension host running for hours,
+ * asker. On macOS an event may name the temporary file a request was renamed from, or not come at all when the watch has
+ * only just started, so the holder looks for requests on any event, and the asker checks for the answer on a timer and
+ * writes its request again every second while it waits. Over Remote-SSH a window whose client went away without closing keeps its extension host running for hours,
  * holding its locks; that host still answers.
  *
  * A lock also names its holder's VS Code window (windowToken), so that a window reloaded while its old extension host
@@ -29,6 +31,7 @@ const LETGO = '.letgo';
 /* A request older than this was left behind by an asker that gave up. */
 const REQUEST_TTL_MS = 60000;
 const TAKEOVER_WAIT_MS = 10000;
+const POLL_MS = 250;
 
 function processAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -94,10 +97,7 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
   function syncWatcher() {
     if (held.size && !watcher) {
       try {
-        watcher = watch(dir, (event, name) => {
-          const n = String(name || '');
-          if (n.endsWith(TAKEOVER)) answer(n.slice(0, -TAKEOVER.length));
-        });
+        watcher = watch(dir, () => { for (const id of [...held]) answer(id); });
         if (watcher && typeof watcher.on === 'function') watcher.on('error', () => { closeWatcher(); });
         if (watcher && typeof watcher.unref === 'function') watcher.unref();
       } catch (e) {
@@ -177,11 +177,13 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
     return new Promise((resolve) => {
       let w = null;
       let timer = null;
+      let poll = null;
       let settled = false;
       const finish = (outcome) => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
+        if (poll) clearInterval(poll);
         try { if (w) w.close(); } catch (_) { /* closed */ }
         const req = readJson(reqFile);
         if (req && req.pid === pid) unlink(reqFile);
@@ -197,6 +199,12 @@ function createLocks({ dir, pid = process.pid, window = '', alive = processAlive
       };
       try { w = watch(dir, () => check()); } catch (e) { note(`watching ${dir} failed: ${e.message}`); }
       timer = setTimeout(() => finish(holder(id) === first ? 'timeout' : 'released'), timeoutMs);
+      let ticks = 0;
+      poll = setInterval(() => {
+        check();
+        if (settled || ++ticks % 4) return;
+        try { writeWhole(reqFile, { pid, at: now(), host: os.hostname() }); } catch (_) { /* written again on the next round */ }
+      }, POLL_MS);
       check();
     });
   }

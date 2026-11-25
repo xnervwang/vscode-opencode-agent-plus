@@ -79,6 +79,36 @@ test('a holder asked to let go stops the conversation, releases and answers; the
   assert.deepStrictEqual(fs.readdirSync(dir), [`${ID}.lock`], 'the request and the answer are cleaned up');
 });
 
+test('the holder answers a request whatever file the event names, as macOS may name the temporary one', async () => {
+  const dir = tmp();
+  let fire = null;
+  const holder = createLocks({ dir, pid: 111, alive: () => true, watch: (d, fn) => { fire = fn; return { close() {} }; } });
+  const asked = [];
+  holder.onTakeover((id) => { asked.push(id); });
+  holder.acquire(ID);
+  fs.writeFileSync(path.join(dir, `${ID}.takeover`), JSON.stringify({ pid: 222, at: Date.now() }));
+  fire('rename', `.${ID}.takeover.222.1.tmp`);
+  await new Promise((r) => setImmediate(r));
+  assert.deepStrictEqual(asked, [ID]);
+  assert.deepStrictEqual(holder.held(), []);
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, `${ID}.letgo`), 'utf8')).for, 222);
+});
+
+test('an asker whose watch never fires still sees the answer, and writes its request again while it waits', async () => {
+  const dir = tmp();
+  createLocks({ dir, pid: 111, alive: () => true, watch: () => ({ close() {} }) }).acquire(ID);
+  const asker = createLocks({ dir, pid: 222, alive: (pid) => pid === 111, watch: () => ({ close() {} }) });
+  const req = path.join(dir, `${ID}.takeover`);
+  const waiting = asker.requestTakeover(ID, { timeoutMs: 5000 });
+  const first = JSON.parse(fs.readFileSync(req, 'utf8')).at;
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.ok(JSON.parse(fs.readFileSync(req, 'utf8')).at > first, 'the request was written again');
+  fs.writeFileSync(path.join(dir, `${ID}.letgo`), JSON.stringify({ pid: 111, for: 222, at: Date.now() }));
+  const started = Date.now();
+  assert.strictEqual(await waiting, 'released');
+  assert.ok(Date.now() - started < 1000, 'found on the next round of checks, not at the timeout');
+});
+
 test('a holder that does not answer times out; force takes the lock anyway', async () => {
   const dir = tmp();
   createLocks({ dir, pid: 111, alive: () => true, watch: () => ({ close() {} }) }).acquire(ID);
