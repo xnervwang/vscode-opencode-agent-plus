@@ -38,7 +38,7 @@ test('build/pack-vsix.js packs the extension, its run-time packages and nothing 
   assert.match(manifest, /ExtensionDependencies" Value="xnervwang\.agent-plus"/);
 });
 
-test('rebaseLinks points relative links and images at the base URLs and leaves the others alone', () => {
+test('rebaseLinks points relative links and images at the base URLs', () => {
   const { rebaseLinks } = require('../../build/pack-vsix');
   const md = '[a](docs/setup.md#x) [b](#here) [c](https://example.com/) ![i](images/i.png) [d](./LICENSE) [e](mailto:x@example.com)';
   assert.strictEqual(rebaseLinks(md, 'https://h/o/r/blob/s', 'https://h/o/r/raw/s/'),

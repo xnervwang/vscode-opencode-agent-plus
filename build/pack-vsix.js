@@ -98,9 +98,8 @@ function stage(root, dir) {
 }
 
 /*
- * A marketplace page shows README.md without the files beside it, so a relative link there opens nothing. The packed
- * copy points such links at the repository: an image at imagesBase, any other link at contentBase. Links with a scheme
- * and links within the page stay as they are.
+ * Marketplace pages show README.md without the files beside it, so the packed copy points its relative links at the
+ * repository.
  */
 function rebaseLinks(text, contentBase, imagesBase) {
   const dir = (url) => (url && !url.endsWith('/') ? `${url}/` : url);
