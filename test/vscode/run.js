@@ -1241,15 +1241,13 @@ async function main() {
           const beforeAsk = await figures();
           await chat.fill('#input', askText);
           await chat.press('#input', 'Enter');
-          await waitTurn(beforeAsk, '14', async () => {
-            if (refused) return;
-            for (const b of await chat.$$('button[data-decision="allowOnce"]')) {
-              if (await b.isVisible()) {
-                refused = await ext('return api.test.source.deliverAnswer(arg, "a message from the steward", { deliveryId: "window-test-1" });', sessionId);
-                return;
-              }
-            }
-          });
+          /* Delivered before waitTurn runs, since waitTurn answers the request as soon as it sees it. */
+          const asked = await until(async () => {
+            for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) return true;
+            return null;
+          }, 120000, 200);
+          if (asked) refused = await ext('return api.test.source.deliverAnswer(arg, "a message from the steward", { deliveryId: "window-test-1" });', sessionId);
+          await waitTurn(beforeAsk, '14');
           check(!!refused && refused.outcome === 'notReceived' && /^\S+ is waiting for approval in its window$/.test(refused.reason || ''),
             "while the conversation waits for an approval, the source's deliverAnswer refuses the message and names what it waits for", refused);
           const replyFile = path.join(plansDir, `${sessionId}.reply.json`);
@@ -1349,9 +1347,12 @@ async function main() {
           await rewindOn();
           const again = await until(dialog, 20000);
           if (again) await clickDialog('Rewind');
+          let lastSeen = null;
           const after = await until(async () => {
             const gone = await chat.evaluate((t) => ![...document.querySelectorAll('#log .msg.user .bubble')].some((b) => b.textContent === t), REWIND_TEXT);
-            return gone && read(rewound) === null && read(notes) === 'Some notes.\n' ? { box: await chat.inputValue('#input') } : null;
+            const box = await chat.inputValue('#input');
+            lastSeen = { gone, box };
+            return gone && read(rewound) === null && read(notes) === 'Some notes.\n' && box === REWIND_TEXT ? { box } : null;
           }, 30000);
           let stored = null;
           if (!real) stored = gapCi.fakeUserTexts(p.agentHome, sessionId);
@@ -1360,7 +1361,7 @@ async function main() {
             try { stored = JSON.parse(exported.stdout).messages.filter((m) => m.type === 'user').map((m) => m.text); } catch (_) { /* below */ }
           }
           check(!!after && after.box === REWIND_TEXT && !!stored && !stored.includes(REWIND_TEXT) && stored.length > 0,
-            'after Rewind the files are as before the message, the page and OpenCode no longer have it, and its text is back in the box', { after, stored: stored && stored.slice(-3), files: { rewound: read(rewound), notes: read(notes) } });
+            'after Rewind the files are as before the message, the page and OpenCode no longer have it, and its text is back in the box', { after, lastSeen, stored: stored && stored.slice(-3), files: { rewound: read(rewound), notes: read(notes) } });
           await shot('17b-rewound', { features: ['rewound conversation'],
             expect: 'The conversation ends with the turn before the rewound message (the earlier replies are all there); the message box holds the rewound request ("Use the write tool to create a file named…").',
             part: '#workbench\\.parts\\.editor' });
