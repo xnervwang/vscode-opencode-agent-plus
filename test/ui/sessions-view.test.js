@@ -47,14 +47,14 @@ test('lists conversations by last activity with title, age and status icon', asy
   assert.equal(b.description, 'now');
   assert.equal(b.iconPath.id, 'sync~spin');
   assert.equal(b.iconPath.color.id, 'charts.green');
-  assert.equal(b.contextValue, 'opencodePlus.session.busy');
-  assert.deepEqual(b.command, { command: 'opencodePlus.openConversation', title: 'Open Conversation', arguments: ['b'] });
+  assert.equal(b.contextValue, 'opencodeAgentPlus.session.busy');
+  assert.deepEqual(b.command, { command: 'opencodeAgentPlus.openConversation', title: 'Open Conversation', arguments: ['b'] });
   assert.equal(c.label, 'Untitled conversation');
   assert.equal(c.description, '5m');
   assert.equal(c.iconPath.id, 'bell-dot');
   assert.equal(a.description, '2d');
   assert.equal(a.iconPath.id, 'comment-discussion');
-  assert.equal(a.contextValue, 'opencodePlus.session');
+  assert.equal(a.contextValue, 'opencodeAgentPlus.session');
   assert.match(a.tooltip, /Folder: \/w\nModel: deepseek\.v3\.2\nID: a$/);
   assert.deepEqual(await view.getChildren(rows[0]), []);
 });
@@ -124,7 +124,7 @@ test('age', () => {
 test('rename from a chat tab: the argument names the conversation through idOf, and the box starts at its title', async () => {
   const vscode = createFakeVscode({ input: 'From the tab' });
   const calls = [];
-  const tabUri = { scheme: 'opencodeplus-session', path: '/ses_tab' };
+  const tabUri = { scheme: 'opencodeagentplus-session', path: '/ses_tab' };
   const view = new SessionsView({
     vscode,
     listSessions: async () => [],

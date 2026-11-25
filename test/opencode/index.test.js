@@ -19,7 +19,7 @@ const CWD = '/work/project';
 const GROK = 'amazon-bedrock/us.xai.grok-4.7';
 
 function setup(t, script, version, more = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-oc-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-oc-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const starter = fakeStarter(script, more.extra || []);
   const oc = createOpenCode({
@@ -247,7 +247,7 @@ test('detect() reports the version line, and config can depend on it', async (t)
 
 test('session/new that gets no answer fails as unavailable, and the next try starts OpenCode again', async (t) => {
   const { fakeAgent, loadScript } = require('./fake-agent');
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-oc-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-oc-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const recorded = loadScript('v2-run.jsonl');
   const init = recorded.find((e) => e.on === 'initialize');

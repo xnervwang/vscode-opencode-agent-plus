@@ -41,7 +41,7 @@ document.getElementById('manage').addEventListener('click', () => vscode.postMes
 /*
  * deps:
  *   vscode
- *   viewType      opencodePlus.chat (the chat editor)
+ *   viewType      opencodeAgentPlus.chat (the chat editor)
  *   viewId        the Conversations view
  *   commands      the ids of the commands package.json contributes
  *   log(line)     optional

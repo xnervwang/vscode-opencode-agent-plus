@@ -25,7 +25,7 @@ const ORIGINAL = 'ses_df2534a3cffeV5DpIbep0DaQLs';
 const fixture = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
 
 function setup(t, script, { exported = {}, alive = () => false, calls = [] } = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-times-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-times-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const starter = fakeStarter(script);
   const execFile = (file, args, opts, cb) => {

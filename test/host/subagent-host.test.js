@@ -35,7 +35,7 @@ function conv() {
 }
 
 async function managerWith(looking) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-sh-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-sh-'));
   const made = [];
   const manager = createSessionManager({
     locks: createLocks({ dir, pid: 1000, alive: () => true }),

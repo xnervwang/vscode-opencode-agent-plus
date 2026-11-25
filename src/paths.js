@@ -8,7 +8,7 @@ const os = require('os');
 const path = require('path');
 
 function root() {
-  return process.env.OPENCODE_PLUS_HOME || path.join(os.homedir(), '.opencode-plus');
+  return process.env.OPENCODE_AGENT_PLUS_HOME || path.join(os.homedir(), '.opencode-agent-plus');
 }
 
 module.exports = {

@@ -9,7 +9,7 @@
  * and a conversation's history is read when its tab opens. In Restricted Mode not even that: start() waits until the
  * workspace is trusted (src/host/trust-gate.js).
  *
- *   src/host/chat-editor.js       a chat tab is the custom editor opencodePlus.chat of opencodeplus-session:/<session id>
+ *   src/host/chat-editor.js       a chat tab is the custom editor opencodeAgentPlus.chat of opencodeagentplus-session:/<session id>
  *   src/host/session-manager.js   the conversations open in this window, one window each (src/host/locks.js)
  *   src/host/provider-config.js   the settings OpenCode starts with, the Bedrock API key
  *   src/host/models.js            the models OpenCode offers, and the picker
@@ -27,8 +27,8 @@
  *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
  *   src/host/trust-gate.js        what the commands, the chat tabs and the view do before the workspace is trusted
  *
- * OPENCODE_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
- * the window tests; OPENCODE_PLUS_TEST_CONTROL makes activate() return a few internals for them.
+ * OPENCODE_AGENT_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
+ * the window tests; OPENCODE_AGENT_PLUS_TEST_CONTROL makes activate() return a few internals for them.
  */
 const vscode = require('vscode');
 const os = require('os');
@@ -94,7 +94,7 @@ function activate(context) {
   const gate = createTrustGate({ vscode, viewType: ap.VIEW_TYPE, viewId: VIEW_ID, commands: COMMANDS, log });
   context.subscriptions.push(gate);
   /* The window tests' handle; its other members come with start(). */
-  const api = process.env.OPENCODE_PLUS_TEST_CONTROL ? { test: { restricted: () => !gate.started, waitingTabs: () => gate.waiting() } } : undefined;
+  const api = process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL ? { test: { restricted: () => !gate.started, waitingTabs: () => gate.waiting() } } : undefined;
   gate.whenTrusted(() => {
     const test = start(context, log, gate);
     if (api && test) Object.assign(api.test, test);
@@ -633,7 +633,7 @@ function start(context, log, gate) {
 
   running = { manager, backend, registration: null };
   log(`activated ${context.extension ? context.extension.packageJSON.version : ''}`.trim());
-  if (process.env.OPENCODE_PLUS_TEST_CONTROL) {
+  if (process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL) {
     return { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
       source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready, windowFile: windows.file,
       send: (id, text) => manager.send(id, text), snapshot: (id) => manager.snapshot(id), replyFile: (id) => replies.fileOf(id),

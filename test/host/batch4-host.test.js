@@ -44,7 +44,7 @@ test("the list joins Agent Plus's conversations with this extension's own, each 
   let fired = 0;
   l.onDidChange(() => fired++);
   const c = core([
-    { sourceId: 'opencode-plus', label: 'OpenCode Plus', sessionId: 'ses_own1', title: 'Own one (open)', cwd: '/w', lastActiveAt: 9 },
+    { sourceId: 'opencode-plus', label: 'OpenCode Agent Plus', sessionId: 'ses_own1', title: 'Own one (open)', cwd: '/w', lastActiveAt: 9 },
     { sourceId: 'claude-code', label: 'Claude Code', sessionId: '0f9e8d7c-1111-4222-8333-444455556666', title: 'Other agent', cwd: '/x', lastActiveAt: '2026-11-24T06:00:00Z' },
     { sourceId: 'codex', sessionId: '' },
   ]);
@@ -70,7 +70,7 @@ test("the list joins Agent Plus's conversations with this extension's own, each 
   state.own = state.own.concat([{ id: 'ses_own2', title: 'Second own' }]);
   l.refresh();
   await settle();
-  assert.ok(l.current().list.some((e) => e.sessionId === 'ses_own2' && e.sourceId === 'opencode-plus' && e.label === 'OpenCode Plus'));
+  assert.ok(l.current().list.some((e) => e.sessionId === 'ses_own2' && e.sourceId === 'opencode-plus' && e.label === 'OpenCode Agent Plus'));
   l.dispose();
   assert.equal(c.listening(), 0);
 });

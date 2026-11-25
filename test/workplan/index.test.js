@@ -26,12 +26,12 @@ test('sourceFile is the plugin this repository ships', () => {
 test('pluginDir and scriptsDir sit under the root, by default paths.root()', () => {
   assert.equal(workplan.pluginDir('/r'), path.join('/r', 'opencode-plugin', 'agent-work-plan'));
   assert.equal(workplan.scriptsDir('/r'), path.join('/r', 'opencode-plugin', 'agent-work-plan', 'hooks'));
-  const saved = process.env.OPENCODE_PLUS_HOME;
-  process.env.OPENCODE_PLUS_HOME = '/somewhere/home';
+  const saved = process.env.OPENCODE_AGENT_PLUS_HOME;
+  process.env.OPENCODE_AGENT_PLUS_HOME = '/somewhere/home';
   try {
     assert.equal(workplan.pluginDir(), path.join('/somewhere/home', 'opencode-plugin', 'agent-work-plan'));
   } finally {
-    if (saved === undefined) delete process.env.OPENCODE_PLUS_HOME; else process.env.OPENCODE_PLUS_HOME = saved;
+    if (saved === undefined) delete process.env.OPENCODE_AGENT_PLUS_HOME; else process.env.OPENCODE_AGENT_PLUS_HOME = saved;
   }
 });
 
@@ -103,10 +103,10 @@ test('configFor gives OpenCode 1 a file URL of the plugin and nothing else', () 
 });
 
 test('pluginEnv names the scripts folder and the home folder', () => {
-  assert.deepEqual(workplan.pluginEnv({ hooksDir: '/h/hooks', home: '/h' }), { OPENCODE_PLUS_HOOKS_DIR: '/h/hooks', OPENCODE_PLUS_HOME: '/h' });
+  assert.deepEqual(workplan.pluginEnv({ hooksDir: '/h/hooks', home: '/h' }), { OPENCODE_AGENT_PLUS_HOOKS_DIR: '/h/hooks', OPENCODE_AGENT_PLUS_HOME: '/h' });
   const env = workplan.pluginEnv();
-  assert.equal(env.OPENCODE_PLUS_HOOKS_DIR, workplan.scriptsDir());
-  assert.equal(env.OPENCODE_PLUS_HOME, require('../../src/paths').root());
+  assert.equal(env.OPENCODE_AGENT_PLUS_HOOKS_DIR, workplan.scriptsDir());
+  assert.equal(env.OPENCODE_AGENT_PLUS_HOME, require('../../src/paths').root());
 });
 
 test('support: OpenCode 2 keeps a work plan; OpenCode 1 and an unknown version say it needs OpenCode 2', () => {
@@ -121,8 +121,8 @@ test('support: OpenCode 2 keeps a work plan; OpenCode 1 and an unknown version s
 });
 
 test('planDir is paths.plansDir(); planPath names a plan by an OpenCode session id and nothing else', () => {
-  const saved = process.env.OPENCODE_PLUS_HOME;
-  process.env.OPENCODE_PLUS_HOME = '/data/na';
+  const saved = process.env.OPENCODE_AGENT_PLUS_HOME;
+  process.env.OPENCODE_AGENT_PLUS_HOME = '/data/na';
   try {
     assert.equal(workplan.planDir(), path.join('/data/na', 'plans'));
     assert.equal(workplan.planPath(SID), path.join('/data/na', 'plans', `${SID}.json`));
@@ -130,6 +130,6 @@ test('planDir is paths.plansDir(); planPath names a plan by an OpenCode session 
       assert.equal(workplan.planPath(bad), null, String(bad));
     }
   } finally {
-    if (saved === undefined) delete process.env.OPENCODE_PLUS_HOME; else process.env.OPENCODE_PLUS_HOME = saved;
+    if (saved === undefined) delete process.env.OPENCODE_AGENT_PLUS_HOME; else process.env.OPENCODE_AGENT_PLUS_HOME = saved;
   }
 });

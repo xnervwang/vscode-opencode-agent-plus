@@ -19,7 +19,7 @@ const CWD = '/work/project';
 const LOADED = 'ses_df3c3e455ffe3KZVShQ00LZ15D';
 
 function setup(t, version, execFile) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-rename-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-rename-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const starter = fakeStarter('v2-load.jsonl', []);
   const oc = createOpenCode({

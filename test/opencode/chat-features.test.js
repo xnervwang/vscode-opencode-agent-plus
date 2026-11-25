@@ -28,7 +28,7 @@ const PARENT = 'ses_df2f996ffffeLwA1ybtBSrRv0s';
 const CHILD = 'ses_df2f98d80ffe7j34s9Psh2tGdb';
 
 function setup(t, script) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-feat-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-feat-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const starter = fakeStarter(script);
   const oc = createOpenCode({

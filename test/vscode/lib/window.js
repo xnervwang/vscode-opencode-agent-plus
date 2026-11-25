@@ -39,7 +39,7 @@ async function open({ exe, profile, env, playwright, log, size = '1600x1000', tr
   const [prog, argv] = process.platform === 'linux' && !env.DISPLAY
     ? ['xvfb-run', ['-a', `--server-args=-screen 0 ${size}x24`, exe, ...args]]
     : [exe, args];
-  const proc = spawn(prog, argv, { env: { ...env, OPENCODE_PLUS_UI_CONTROL: profile.control }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const proc = spawn(prog, argv, { env: { ...env, OPENCODE_AGENT_PLUS_UI_CONTROL: profile.control }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   const out = fs.createWriteStream(log);
   proc.stdout.pipe(out);
   proc.stderr.pipe(out);

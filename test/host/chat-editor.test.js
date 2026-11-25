@@ -114,7 +114,7 @@ test('while this window takes back its own conversation, the tab says it is open
 test('a URI that names no conversation, and a tab closed while it opened', async () => {
   const s = setup();
   const bad = control.panel();
-  await open(s.provider, vscode.Uri.from({ scheme: 'opencodeplus-session', path: '/../x' }), bad);
+  await open(s.provider, vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: '/../x' }), bad);
   assert.match(bad.webview.html, /has no valid conversation id/);
 
   const panel = control.panel();

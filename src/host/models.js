@@ -5,7 +5,7 @@
 'use strict';
 /*
  * Lists the models of the providers OpenCode has connected and shows the picker for them. A model is named <provider>/<model> in
- * opencodePlus.model, the form of OpenCode's ModelInfo.id; the model part alone also matches. The list comes from the backend each time: OpenCode keeps it, and learns a model's context window once the
+ * opencodeAgentPlus.model, the form of OpenCode's ModelInfo.id; the model part alone also matches. The list comes from the backend each time: OpenCode keeps it, and learns a model's context window once the
  * model has been used.
  */
 const brand = require('../brand');

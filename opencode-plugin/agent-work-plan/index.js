@@ -4,12 +4,12 @@
 
 'use strict';
 /*
- * The work plan on OpenCode 2. The OpenCode Plus extension copies this file to <OPENCODE_PLUS_HOME>/opencode-plugin/
+ * The work plan on OpenCode 2. The OpenCode Agent Plus extension copies this file to <OPENCODE_AGENT_PLUS_HOME>/opencode-plugin/
  * agent-work-plan/ and names that folder in OPENCODE_CONFIG_CONTENT (src/workplan). OpenCode 2 reads `id` and calls
  * setup(ctx); OpenCode 1 calls server(), which only says the plan needs OpenCode 2.
  *
  * What the model is told each turn and at the end of one, and every change to a plan, comes from the shared Python
- * scripts in OPENCODE_PLUS_HOOKS_DIR, run as Claude Code runs its hooks: the plans folder as the first argument, the
+ * scripts in OPENCODE_AGENT_PLUS_HOOKS_DIR, run as Claude Code runs its hooks: the plans folder as the first argument, the
  * event as JSON on standard input. Without Python or those scripts nothing is injected and the tools say why.
  *
  *   prompt       the text inject-work-plan.py gives for this turn, with the notes from tell-time-zone.py and
@@ -22,9 +22,9 @@
  *   events       session.compaction.ended runs resume-work-plan.py and the two notes again; session.usage.updated is recorded;
  *                session.execution.succeeded runs nudge-work-plan.py and keeps what it says as a synthetic message
  *
- * Environment: OPENCODE_PLUS_HOOKS_DIR (the scripts), OPENCODE_PLUS_HOME (plans are in its plans/, ~/.opencode-plus by default),
- * OPENCODE_PLUS_PLAN_NUDGE ("note", the default, keeps the reminder for the next turn; "resume" also runs a turn for it;
- * "off"), OPENCODE_PLUS_PLAN_LOG (a file to append a JSON line to for each thing done, for tests).
+ * Environment: OPENCODE_AGENT_PLUS_HOOKS_DIR (the scripts), OPENCODE_AGENT_PLUS_HOME (plans are in its plans/, ~/.opencode-agent-plus by default),
+ * OPENCODE_AGENT_PLUS_PLAN_NUDGE ("note", the default, keeps the reminder for the next turn; "resume" also runs a turn for it;
+ * "off"), OPENCODE_AGENT_PLUS_PLAN_LOG (a file to append a JSON line to for each thing done, for tests).
  */
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -49,16 +49,16 @@ const RUNNER = 'run-hooks.py';
 /* Notes that run on a user message and after a compaction, besides the plan; each has its own setting. */
 const NOTES = ['tell-time-zone.py', 'tell-reply-images.py'];
 
-const home = () => process.env.OPENCODE_PLUS_HOME || path.join(os.homedir(), '.opencode-plus');
+const home = () => process.env.OPENCODE_AGENT_PLUS_HOME || path.join(os.homedir(), '.opencode-agent-plus');
 const plansDir = () => path.join(home(), 'plans');
 const planPath = (sessionID) => path.join(plansDir(), `${sessionID}.json`);
 const hooksDir = () => {
-  const d = process.env.OPENCODE_PLUS_HOOKS_DIR || '';
+  const d = process.env.OPENCODE_AGENT_PLUS_HOOKS_DIR || '';
   return d && path.isAbsolute(d) ? d : '';
 };
 
 function log(kind, data) {
-  const file = process.env.OPENCODE_PLUS_PLAN_LOG;
+  const file = process.env.OPENCODE_AGENT_PLUS_PLAN_LOG;
   if (!file) return;
   try { fs.appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), kind, ...data }) + '\n'); } catch (_) { /* never breaks a turn */ }
 }
@@ -103,7 +103,7 @@ function runScript(script, args, input) {
   const file = dir ? path.join(dir, script) : '';
   if (!file || !fs.existsSync(file)) return Promise.resolve({ missing: MISSING_SCRIPTS });
   const words = launcher(dir);
-  const env = { ...process.env, OPENCODE_PLUS_PLAN_TOOLS: 'tools', PYTHONIOENCODING: 'utf-8', PYTHONDONTWRITEBYTECODE: '1' };
+  const env = { ...process.env, OPENCODE_AGENT_PLUS_PLAN_TOOLS: 'tools', PYTHONIOENCODING: 'utf-8', PYTHONDONTWRITEBYTECODE: '1' };
   return new Promise((resolve) => {
     let child;
     try {
@@ -326,7 +326,7 @@ function turnRecord(messages, sessionID, s) {
 async function withRecord(lines, fn) {
   let dir = '';
   try {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-plan-'));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-plan-'));
     const file = path.join(dir, 'turn.jsonl');
     fs.writeFileSync(file, lines.join('\n') + (lines.length ? '\n' : ''));
     return await fn(file);
@@ -349,7 +349,7 @@ async function setup(ctx) {
   const state = sessions();
   const registrations = [];
   const windows = new Map();
-  const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.OPENCODE_PLUS_PLAN_NUDGE) ? process.env.OPENCODE_PLUS_PLAN_NUDGE : 'note');
+  const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE) ? process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE : 'note');
 
   /* The tools are registered while plans are on and withdrawn while they are off; a change applies to the requests
      made after it. */
@@ -410,7 +410,7 @@ async function setup(ctx) {
       if (s) s.model = ev.model;
     }
     const kept = attach(ev && ev.messages);
-    if (process.env.OPENCODE_PLUS_PLAN_LOG) {
+    if (process.env.OPENCODE_AGENT_PLUS_PLAN_LOG) {
       const tools = (ev && ev.tools) || {};
       const shell = tools.shell && tools.shell.input && tools.shell.input.properties;
       log('context', { sessionID: ev && ev.sessionID, messages: ((ev && ev.messages) || []).length, kept,

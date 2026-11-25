@@ -25,7 +25,7 @@ const PARENT = 'ses_df344a772ffeuYwN4u7YoTQnyv';
 const CHILD = 'ses_df3449ad2fferB4flZgQI8hkdG';
 
 function setup(t, script, version, more = {}) {
-  const root = more.root || fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-sub-'));
+  const root = more.root || fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-sub-'));
   if (!more.root) t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const starter = fakeStarter(script, more.extra || []);
   const calls = [];
@@ -154,7 +154,7 @@ test('2.x: sessions nobody here has seen are looked up once with `opencode api -
 });
 
 test('a subagent session another window recorded stays out of the list; 1.x is never looked up; after a failed lookup the rest all show', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-sub-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-sub-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.writeFileSync(path.join(root, 'opencode-sessions.json'), JSON.stringify({ format: 1, parents: { ses_df3c4ce95ffeUPMXgrnL6AjyQW: 'ses_df3c3e455ffe3KZVShQ00LZ15D' } }));
   const v2 = setup(t, 'v2-load.jsonl', V2, { root, execFile: (f, a, o, cb) => { v2calls.push(a); cb(new Error('boom')); } });

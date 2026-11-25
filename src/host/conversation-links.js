@@ -17,7 +17,7 @@
  * Nothing is read unless a chat page is open and the setting is on. No editor API here.
  */
 const SOURCE = 'opencode-plus';
-const LABEL = 'OpenCode Plus';
+const LABEL = 'OpenCode Agent Plus';
 const MAX_LISTED = 2000;
 const MAX_TITLE = 300;
 
@@ -53,7 +53,7 @@ const ownEntries = (rows) => (Array.isArray(rows) ? rows : []).filter((r) => r &
 
 /*
  * deps:
- *   on()                     the setting opencodePlus.conversationLinks
+ *   on()                     the setting opencodeAgentPlus.conversationLinks
  *   active()                 whether a chat page is open in this window
  *   own()                    Promise of this extension's sessions ({ id, title, cwd, lastActiveAt })
  *   openCore(target)         runs agentPlus.openConversation with { sourceId, sessionId, title, cwd }

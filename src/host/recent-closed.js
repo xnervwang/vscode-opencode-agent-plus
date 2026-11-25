@@ -10,7 +10,7 @@
  * event. The view filters the list: it leaves out tabs that are open again and conversations its own list no longer
  * has.
  */
-const KEY = 'opencodePlus.recentlyClosed';
+const KEY = 'opencodeAgentPlus.recentlyClosed';
 /* More than the view shows, so one that is open again does not push an older one out. */
 const KEEP = 30;
 const SHOWN = 10;

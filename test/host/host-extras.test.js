@@ -52,7 +52,7 @@ test('the rewind confirmation names the messages that leave and the files that g
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108020000009077053e0000000c4944415408d763f8cfc00000030101009cf9f6770000000049454e44ae426082', 'hex');
 
 test('a local image becomes a data: URL whose type comes from its bytes; anything else is refused with a reason', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-img-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-img-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const png = path.join(dir, 'chart.png');
   fs.writeFileSync(png, PNG);

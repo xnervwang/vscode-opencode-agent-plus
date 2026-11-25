@@ -187,7 +187,7 @@ function create() {
       if (!groups[0].tabs.includes(groups[0].activeTab)) groups[0].activeTab = groups[0].tabs[0];
       tabsChanged.fire({ opened: [], closed: gone, changed: [] });
     },
-    chatTab(sessionId) { return { label: 'chat', input: new TabInputCustom(Uri.from({ scheme: 'opencodeplus-session', path: `/${sessionId}` }), 'opencodePlus.chat') }; },
+    chatTab(sessionId) { return { label: 'chat', input: new TabInputCustom(Uri.from({ scheme: 'opencodeagentplus-session', path: `/${sessionId}` }), 'opencodeAgentPlus.chat') }; },
     fileTab(p) { return { label: path.basename(p), input: new TabInputText(Uri.file(p)) }; },
     /* The user trusts the workspace. */
     grantTrust() {

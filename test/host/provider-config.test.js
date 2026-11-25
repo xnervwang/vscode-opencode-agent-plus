@@ -22,7 +22,7 @@ test('empty settings add nothing; set ones become the environment OpenCode start
   const empty = setup();
   await empty.cfg.ready;
   assert.deepStrictEqual(empty.cfg.options(), { binaryPath: '', permissions: true, env: {} });
-  const s = setup({ 'opencodePlus.bedrock.profile': 'self', 'opencodePlus.bedrock.region': 'us-east-1', 'opencodePlus.opencode.path': '/opt/oc', 'opencodePlus.opencode.askPermissions': false }, 'k-1');
+  const s = setup({ 'opencodeAgentPlus.bedrock.profile': 'self', 'opencodeAgentPlus.bedrock.region': 'us-east-1', 'opencodeAgentPlus.opencode.path': '/opt/oc', 'opencodeAgentPlus.opencode.askPermissions': false }, 'k-1');
   await s.cfg.ready;
   assert.deepStrictEqual(s.cfg.options(), { binaryPath: '/opt/oc', permissions: false, env: { AWS_PROFILE: 'self', AWS_REGION: 'us-east-1', AWS_BEARER_TOKEN_BEDROCK: 'k-1' } });
   assert.deepStrictEqual(s.restarts, [], 'reading the key at activation is no change');
@@ -31,15 +31,15 @@ test('empty settings add nothing; set ones become the environment OpenCode start
 test('a change of setting or key starts OpenCode again, once per real change, and the key is never logged', async () => {
   const s = setup();
   await s.cfg.ready;
-  s.control.setConfig('opencodePlus.bedrock.profile', 'self');
-  s.control.setConfig('opencodePlus.model', 'x/y');
-  s.control.setConfig('opencodePlus.bedrock.profile', 'self');
+  s.control.setConfig('opencodeAgentPlus.bedrock.profile', 'self');
+  s.control.setConfig('opencodeAgentPlus.model', 'x/y');
+  s.control.setConfig('opencodeAgentPlus.bedrock.profile', 'self');
   await new Promise((r) => setImmediate(r));
   assert.deepStrictEqual(s.restarts.map((o) => o.env), [{ AWS_PROFILE: 'self' }]);
   await s.control.secrets.store(SECRET_KEY, 'secret-value');
   await new Promise((r) => setImmediate(r));
   assert.strictEqual(s.restarts.at(-1).env.AWS_BEARER_TOKEN_BEDROCK, 'secret-value');
-  s.control.setConfig('opencodePlus.opencode.askPermissions', false);
+  s.control.setConfig('opencodeAgentPlus.opencode.askPermissions', false);
   await new Promise((r) => setImmediate(r));
   assert.strictEqual(s.restarts.at(-1).permissions, false);
   assert.strictEqual(s.restarts.length, 3);

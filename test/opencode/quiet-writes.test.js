@@ -19,7 +19,7 @@ const SID = 'ses_df2534a3cffeV5DpIbep0DaQLs';
 const WS = '/work/batch/runs/rewind/ws';
 const OPTIONS = [{ optionId: 'once', kind: 'allow_once', name: 'Allow once' }, { optionId: 'always', kind: 'allow_always', name: 'Always allow' },
   { optionId: 'reject', kind: 'reject_once', name: 'Reject' }];
-const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-quiet-')));
+const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-quiet-')));
 
 /* A write request as OpenCode 2.4.1 sends it (fixtures/v2-rewind.jsonl). */
 function writeCall(file, name = 'write') {

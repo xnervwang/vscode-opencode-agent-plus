@@ -28,18 +28,18 @@ function run(plans, names, payload, env = {}) {
 }
 
 test('one Python process answers for the plan, the time zone and the reply images', { skip: !python && 'no python3' }, (t) => {
-  const plans = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-runhooks-'));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-runhooks-home-'));
+  const plans = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-runhooks-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-runhooks-home-'));
   t.after(() => { fs.rmSync(plans, { recursive: true, force: true }); fs.rmSync(home, { recursive: true, force: true }); });
   fs.writeFileSync(path.join(plans, 'config.json'), JSON.stringify({ enabled: true, tellTimeZone: true, replyImages: true }));
   fs.writeFileSync(path.join(plans, 'client-time-zone.json'), JSON.stringify({ timeZone: 'America/Los_Angeles' }));
   const payload = { hook_event_name: 'UserPromptSubmit', session_id: SID, turn_id: 'msg_1', prompt: 'hi', cwd: '/w', in_panel: true };
   const texts = run(plans, ['inject-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py', 'no-such.py', '../plan-row.py'], payload,
-    { OPENCODE_PLUS_HOME: home });
+    { OPENCODE_AGENT_PLUS_HOME: home });
   assert.deepEqual(Object.keys(texts), ['inject-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py', 'no-such.py', '../plan-row.py']);
   assert.match(texts['tell-time-zone.py'], /^The user is in America\/Los_Angeles \(P[DS]T, UTC-0[78]:00\)/);
   assert.equal(texts['inject-work-plan.py'], '', 'no plan yet');
-  /* In the panel the image note names the conversation's own folder under OPENCODE_PLUS_HOME, the one deleting the
+  /* In the panel the image note names the conversation's own folder under OPENCODE_AGENT_PLUS_HOME, the one deleting the
      conversation removes. */
   assert.ok(texts['tell-reply-images.py'].startsWith('This panel shows images'), texts['tell-reply-images.py']);
   assert.equal(workplan.scratchDir(SID, home), path.join(home, 'scratch', SID));
@@ -55,7 +55,7 @@ test('one Python process answers for the plan, the time zone and the reply image
 });
 
 test('the same answers as each script started alone', { skip: !python && 'no python3' }, (t) => {
-  const plans = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-runhooks-'));
+  const plans = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-runhooks-'));
   t.after(() => fs.rmSync(plans, { recursive: true, force: true }));
   fs.writeFileSync(path.join(plans, 'client-time-zone.json'), JSON.stringify({ timeZone: 'Asia/Kolkata' }));
   const payload = { hook_event_name: 'UserPromptSubmit', session_id: SID, turn_id: 'msg_1', prompt: 'hi', cwd: '/w' };

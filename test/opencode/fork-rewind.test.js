@@ -27,7 +27,7 @@ const MSG = 'msg_20dacbf6a0018X6RZP6hV4o0Fe';
 const fixture = (name) => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
 
 function setup(t, script, version, reply = () => [null, '', '']) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-fork-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-fork-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const starter = fakeStarter(script);
   const calls = [];
@@ -65,7 +65,7 @@ test('1.x: session/fork works the same, and the fork opens with its messages', a
 });
 
 test('without session/fork in its capabilities there is no fork', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-fork-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-fork-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const init = JSON.parse(fixture('v2-rewind.jsonl').split('\n')[0]);
   delete init.reply.agentCapabilities.sessionCapabilities.fork;
@@ -160,7 +160,7 @@ test('debug paths runs without --standalone, which it refuses; 1.x names no db, 
   assert.equal(p.data, '/work/xdg/data/opencode');
   await v2.oc.dataPaths();
   assert.equal(v2.calls.length, 1, 'read once');
-  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-paths-'));
+  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-paths-'));
   t.after(() => fs.rmSync(data, { recursive: true, force: true }));
   fs.writeFileSync(path.join(data, 'opencode.db'), '');
   const v1 = setup(t, 'v1-fork.jsonl', V1, () => [null, fixture('v1-debug-paths.txt').replace('/work/xdg/data/opencode', data), '']);

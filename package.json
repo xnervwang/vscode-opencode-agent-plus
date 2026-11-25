@@ -1,6 +1,6 @@
 {
-  "name": "opencode-plus",
-  "displayName": "OpenCode Plus",
+  "name": "opencode-agent-plus",
+  "displayName": "OpenCode Agent Plus",
   "description": "Chat with OpenCode, an open-source coding agent, in VS Code editor tabs using any model provider OpenCode supports.",
   "version": "0.0.1",
   "publisher": "xnervwang",
@@ -26,18 +26,18 @@
   },
   "activationEvents": [
     "onStartupFinished",
-    "onCustomEditor:opencodePlus.chat",
-    "onView:opencodePlus.sessions"
+    "onCustomEditor:opencodeAgentPlus.chat",
+    "onView:opencodeAgentPlus.sessions"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
       "description": "In Restricted Mode, this extension does nothing. It starts when the workspace is trusted.",
       "restrictedConfigurations": [
-        "opencodePlus.opencode.path",
-        "opencodePlus.opencode.askPermissions",
-        "opencodePlus.bedrock.profile",
-        "opencodePlus.bedrock.region"
+        "opencodeAgentPlus.opencode.path",
+        "opencodeAgentPlus.opencode.askPermissions",
+        "opencodeAgentPlus.bedrock.profile",
+        "opencodeAgentPlus.bedrock.region"
       ]
     }
   },
@@ -45,323 +45,323 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "opencodePlus",
-          "title": "OpenCode Plus",
+          "id": "opencodeAgentPlus",
+          "title": "OpenCode Agent Plus",
           "icon": "images/sidebar.svg"
         }
       ]
     },
     "views": {
-      "opencodePlus": [
+      "opencodeAgentPlus": [
         {
-          "id": "opencodePlus.sessions",
+          "id": "opencodeAgentPlus.sessions",
           "name": "Conversations"
         }
       ]
     },
     "commands": [
       {
-        "command": "opencodePlus.newConversation",
+        "command": "opencodeAgentPlus.newConversation",
         "title": "New Conversation",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(add)"
       },
       {
-        "command": "opencodePlus.openConversation",
+        "command": "opencodeAgentPlus.openConversation",
         "title": "Open Conversation",
-        "category": "OpenCode Plus"
+        "category": "OpenCode Agent Plus"
       },
       {
-        "command": "opencodePlus.renameConversation",
+        "command": "opencodeAgentPlus.renameConversation",
         "title": "Rename Conversation",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(edit)"
       },
       {
-        "command": "opencodePlus.forkConversation",
+        "command": "opencodeAgentPlus.forkConversation",
         "title": "Fork Conversation",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(repo-forked)"
       },
       {
-        "command": "opencodePlus.deleteConversation",
+        "command": "opencodeAgentPlus.deleteConversation",
         "title": "Delete Conversation",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(trash)"
       },
       {
-        "command": "opencodePlus.chooseModel",
+        "command": "opencodeAgentPlus.chooseModel",
         "title": "Choose Model for New Conversations",
-        "category": "OpenCode Plus"
+        "category": "OpenCode Agent Plus"
       },
       {
-        "command": "opencodePlus.testConnection",
+        "command": "opencodeAgentPlus.testConnection",
         "title": "Test OpenCode Connection",
-        "category": "OpenCode Plus"
+        "category": "OpenCode Agent Plus"
       },
       {
-        "command": "opencodePlus.setBedrockApiKey",
+        "command": "opencodeAgentPlus.setBedrockApiKey",
         "title": "Set Amazon Bedrock API Key",
-        "category": "OpenCode Plus"
+        "category": "OpenCode Agent Plus"
       },
       {
-        "command": "opencodePlus.clearBedrockApiKey",
+        "command": "opencodeAgentPlus.clearBedrockApiKey",
         "title": "Clear Amazon Bedrock API Key",
-        "category": "OpenCode Plus"
+        "category": "OpenCode Agent Plus"
       },
       {
-        "command": "opencodePlus.downloadPython",
+        "command": "opencodeAgentPlus.downloadPython",
         "title": "Download Python for Work Plans",
-        "category": "OpenCode Plus"
+        "category": "OpenCode Agent Plus"
       },
       {
-        "command": "opencodePlus.findPython",
+        "command": "opencodeAgentPlus.findPython",
         "title": "Look for Python Again for Work Plans",
-        "category": "OpenCode Plus"
+        "category": "OpenCode Agent Plus"
       },
       {
-        "command": "opencodePlus.findConversation",
+        "command": "opencodeAgentPlus.findConversation",
         "title": "Find Conversation…",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(search)"
       },
       {
-        "command": "opencodePlus.clearRecentlyClosed",
+        "command": "opencodeAgentPlus.clearRecentlyClosed",
         "title": "Clear Recently Closed",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(clear-all)"
       },
       {
-        "command": "opencodePlus.showMcpServers",
+        "command": "opencodeAgentPlus.showMcpServers",
         "title": "Show MCP Servers",
-        "category": "OpenCode Plus"
+        "category": "OpenCode Agent Plus"
       },
       {
-        "command": "opencodePlus.diffAllowOnce",
+        "command": "opencodeAgentPlus.diffAllowOnce",
         "title": "Allow Once",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(check)"
       },
       {
-        "command": "opencodePlus.diffAllowInProject",
+        "command": "opencodeAgentPlus.diffAllowInProject",
         "title": "Allow in This Project",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(check-all)"
       },
       {
-        "command": "opencodePlus.diffDeny",
+        "command": "opencodeAgentPlus.diffDeny",
         "title": "Deny",
-        "category": "OpenCode Plus",
+        "category": "OpenCode Agent Plus",
         "icon": "$(close)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "opencodePlus.newConversation",
-          "when": "view == opencodePlus.sessions && isWorkspaceTrusted",
+          "command": "opencodeAgentPlus.newConversation",
+          "when": "view == opencodeAgentPlus.sessions && isWorkspaceTrusted",
           "group": "navigation"
         },
         {
-          "command": "opencodePlus.findConversation",
-          "when": "view == opencodePlus.sessions && isWorkspaceTrusted",
+          "command": "opencodeAgentPlus.findConversation",
+          "when": "view == opencodeAgentPlus.sessions && isWorkspaceTrusted",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "opencodePlus.renameConversation",
-          "when": "view == opencodePlus.sessions && viewItem =~ /^opencodePlus\\.session/ && opencodePlus.canRename",
+          "command": "opencodeAgentPlus.renameConversation",
+          "when": "view == opencodeAgentPlus.sessions && viewItem =~ /^opencodeAgentPlus\\.session/ && opencodeAgentPlus.canRename",
           "group": "1_edit@1"
         },
         {
-          "command": "opencodePlus.forkConversation",
-          "when": "view == opencodePlus.sessions && viewItem =~ /^opencodePlus\\.session/ && opencodePlus.canFork",
+          "command": "opencodeAgentPlus.forkConversation",
+          "when": "view == opencodeAgentPlus.sessions && viewItem =~ /^opencodeAgentPlus\\.session/ && opencodeAgentPlus.canFork",
           "group": "1_edit@2"
         },
         {
-          "command": "opencodePlus.deleteConversation",
-          "when": "view == opencodePlus.sessions && viewItem == opencodePlus.session",
+          "command": "opencodeAgentPlus.deleteConversation",
+          "when": "view == opencodeAgentPlus.sessions && viewItem == opencodeAgentPlus.session",
           "group": "9_delete@1"
         },
         {
-          "command": "opencodePlus.clearRecentlyClosed",
-          "when": "view == opencodePlus.sessions && viewItem == opencodePlus.group.recent",
+          "command": "opencodeAgentPlus.clearRecentlyClosed",
+          "when": "view == opencodeAgentPlus.sessions && viewItem == opencodeAgentPlus.group.recent",
           "group": "inline"
         }
       ],
       "editor/title/context": [
         {
-          "command": "opencodePlus.renameConversation",
-          "when": "resourceScheme == opencodeplus-session && opencodePlus.canRename",
-          "group": "1_opencodePlus@1"
+          "command": "opencodeAgentPlus.renameConversation",
+          "when": "resourceScheme == opencodeagentplus-session && opencodeAgentPlus.canRename",
+          "group": "1_opencodeAgentPlus@1"
         },
         {
-          "command": "opencodePlus.forkConversation",
-          "when": "resourceScheme == opencodeplus-session && opencodePlus.canFork",
-          "group": "1_opencodePlus@2"
+          "command": "opencodeAgentPlus.forkConversation",
+          "when": "resourceScheme == opencodeagentplus-session && opencodeAgentPlus.canFork",
+          "group": "1_opencodeAgentPlus@2"
         }
       ],
       "editor/title": [
         {
-          "command": "opencodePlus.diffAllowOnce",
-          "when": "resourceScheme =~ /^opencodeplus-diff$/i && resourcePath in opencodePlus.openDiffs",
+          "command": "opencodeAgentPlus.diffAllowOnce",
+          "when": "resourceScheme =~ /^opencodeagentplus-diff$/i && resourcePath in opencodeAgentPlus.openDiffs",
           "group": "navigation@1"
         },
         {
-          "command": "opencodePlus.diffAllowInProject",
-          "when": "resourceScheme =~ /^opencodeplus-diff$/i && resourcePath in opencodePlus.openDiffs",
+          "command": "opencodeAgentPlus.diffAllowInProject",
+          "when": "resourceScheme =~ /^opencodeagentplus-diff$/i && resourcePath in opencodeAgentPlus.openDiffs",
           "group": "navigation@2"
         },
         {
-          "command": "opencodePlus.diffDeny",
-          "when": "resourceScheme =~ /^opencodeplus-diff$/i && resourcePath in opencodePlus.openDiffs",
+          "command": "opencodeAgentPlus.diffDeny",
+          "when": "resourceScheme =~ /^opencodeagentplus-diff$/i && resourcePath in opencodeAgentPlus.openDiffs",
           "group": "navigation@3"
         },
         {
-          "command": "opencodePlus.renameConversation",
-          "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canRename",
-          "group": "1_opencodePlus@1"
+          "command": "opencodeAgentPlus.renameConversation",
+          "when": "activeCustomEditorId == opencodeAgentPlus.chat && opencodeAgentPlus.canRename",
+          "group": "1_opencodeAgentPlus@1"
         },
         {
-          "command": "opencodePlus.forkConversation",
-          "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canFork",
-          "group": "1_opencodePlus@2"
+          "command": "opencodeAgentPlus.forkConversation",
+          "when": "activeCustomEditorId == opencodeAgentPlus.chat && opencodeAgentPlus.canFork",
+          "group": "1_opencodeAgentPlus@2"
         }
       ],
       "commandPalette": [
         {
-          "command": "opencodePlus.openConversation",
+          "command": "opencodeAgentPlus.openConversation",
           "when": "false"
         },
         {
-          "command": "opencodePlus.renameConversation",
+          "command": "opencodeAgentPlus.renameConversation",
           "when": "false"
         },
         {
-          "command": "opencodePlus.deleteConversation",
+          "command": "opencodeAgentPlus.deleteConversation",
           "when": "false"
         },
         {
-          "command": "opencodePlus.forkConversation",
-          "when": "activeCustomEditorId == opencodePlus.chat && opencodePlus.canFork && isWorkspaceTrusted"
+          "command": "opencodeAgentPlus.forkConversation",
+          "when": "activeCustomEditorId == opencodeAgentPlus.chat && opencodeAgentPlus.canFork && isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.diffAllowOnce",
+          "command": "opencodeAgentPlus.diffAllowOnce",
           "when": "false"
         },
         {
-          "command": "opencodePlus.diffAllowInProject",
+          "command": "opencodeAgentPlus.diffAllowInProject",
           "when": "false"
         },
         {
-          "command": "opencodePlus.diffDeny",
+          "command": "opencodeAgentPlus.diffDeny",
           "when": "false"
         },
         {
-          "command": "opencodePlus.newConversation",
+          "command": "opencodeAgentPlus.newConversation",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.chooseModel",
+          "command": "opencodeAgentPlus.chooseModel",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.testConnection",
+          "command": "opencodeAgentPlus.testConnection",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.setBedrockApiKey",
+          "command": "opencodeAgentPlus.setBedrockApiKey",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.clearBedrockApiKey",
+          "command": "opencodeAgentPlus.clearBedrockApiKey",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.downloadPython",
+          "command": "opencodeAgentPlus.downloadPython",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.findPython",
+          "command": "opencodeAgentPlus.findPython",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.findConversation",
+          "command": "opencodeAgentPlus.findConversation",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.clearRecentlyClosed",
+          "command": "opencodeAgentPlus.clearRecentlyClosed",
           "when": "isWorkspaceTrusted"
         },
         {
-          "command": "opencodePlus.showMcpServers",
+          "command": "opencodeAgentPlus.showMcpServers",
           "when": "isWorkspaceTrusted"
         }
       ],
       "webview/context": [
         {
-          "command": "opencodePlus.forkConversation",
-          "when": "webviewId == 'opencodePlus.chat' && opencodePlus.canFork",
-          "group": "1_opencodePlus@1"
+          "command": "opencodeAgentPlus.forkConversation",
+          "when": "webviewId == 'opencodeAgentPlus.chat' && opencodeAgentPlus.canFork",
+          "group": "1_opencodeAgentPlus@1"
         }
       ]
     },
     "configuration": {
-      "title": "OpenCode Plus",
+      "title": "OpenCode Agent Plus",
       "properties": {
-        "opencodePlus.model": {
+        "opencodeAgentPlus.model": {
           "type": "string",
           "default": "",
           "description": "Model for new conversations, as provider/model, such as amazon-bedrock/us.xai.grok-4.7. Leave it empty to choose one when you send your first message."
         },
-        "opencodePlus.opencode.path": {
+        "opencodeAgentPlus.opencode.path": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "Path to the opencode executable. If it is empty, OpenCode Plus looks on PATH and in the folders OpenCode's installers use."
+          "description": "Path to the opencode executable. If it is empty, OpenCode Agent Plus looks on PATH and in the folders OpenCode's installers use."
         },
-        "opencodePlus.opencode.askPermissions": {
+        "opencodeAgentPlus.opencode.askPermissions": {
           "type": "boolean",
           "default": true,
           "scope": "machine",
           "description": "Ask before OpenCode edits files, runs commands, fetches web pages or reads or writes files outside the project. This replaces the edit, bash (shell on OpenCode 2), webfetch and external_directory rules of your own OpenCode configuration; turn it off to keep those."
         },
-        "opencodePlus.bedrock.profile": {
+        "opencodeAgentPlus.bedrock.profile": {
           "type": "string",
           "default": "",
           "scope": "machine",
           "description": "AWS profile for Amazon Bedrock, passed to OpenCode as AWS_PROFILE. Leave it empty to use OpenCode's own configuration and your AWS configuration."
         },
-        "opencodePlus.bedrock.region": {
+        "opencodeAgentPlus.bedrock.region": {
           "type": "string",
           "default": "",
           "scope": "machine",
           "description": "AWS Region for Amazon Bedrock, passed to OpenCode as AWS_REGION. Leave it empty to use OpenCode's own configuration and your AWS configuration."
         },
-        "opencodePlus.workPlan": {
+        "opencodeAgentPlus.workPlan": {
           "type": "boolean",
           "default": true,
           "scope": "application",
           "markdownDescription": "Keep a work plan in each conversation on OpenCode 2: the plan goes with every message, and the model gets tools to change it. Used only while `#agentPlus.tokenMode#` is Custom."
         },
-        "opencodePlus.planBar": {
+        "opencodeAgentPlus.planBar": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Show the conversation's work plan from Agent Plus in a bar above the input box. Click the bar to open the Work plan view."
         },
-        "opencodePlus.conversationLinks": {
+        "opencodeAgentPlus.conversationLinks": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Turn another conversation's title or session ID in a reply into a link that opens that conversation. With Agent Plus, conversations of its other agents are linked too."
         },
-        "opencodePlus.conversationBrief": {
+        "opencodeAgentPlus.conversationBrief": {
           "type": "boolean",
           "default": true,
           "scope": "application",
           "markdownDescription": "Have the model keep a short summary and status of each conversation in its plan, shown by Agent Plus when the conversation is clicked. Used only while `#agentPlus.tokenMode#` is Custom."
         },
-        "opencodePlus.tellOpenCodeYourTimeZone": {
+        "opencodeAgentPlus.tellOpenCodeYourTimeZone": {
           "type": "boolean",
           "default": true,
           "scope": "application",
@@ -371,11 +371,11 @@
     },
     "customEditors": [
       {
-        "viewType": "opencodePlus.chat",
-        "displayName": "OpenCode Plus Conversation",
+        "viewType": "opencodeAgentPlus.chat",
+        "displayName": "OpenCode Agent Plus Conversation",
         "selector": [
           {
-            "filenamePattern": "*.opencodeplus-chat"
+            "filenamePattern": "*.opencodeagentplus-chat"
           }
         ],
         "priority": "option"
@@ -383,20 +383,20 @@
     ],
     "viewsWelcome": [
       {
-        "view": "opencodePlus.sessions",
-        "contents": "No conversations yet.\n[New Conversation](command:opencodePlus.newConversation)",
+        "view": "opencodeAgentPlus.sessions",
+        "contents": "No conversations yet.\n[New Conversation](command:opencodeAgentPlus.newConversation)",
         "when": "isWorkspaceTrusted"
       },
       {
-        "view": "opencodePlus.sessions",
-        "contents": "OpenCode Plus does nothing in Restricted Mode. It starts when you trust this workspace.\n[Manage Workspace Trust](command:workbench.trust.manage)",
+        "view": "opencodeAgentPlus.sessions",
+        "contents": "OpenCode Agent Plus does nothing in Restricted Mode. It starts when you trust this workspace.\n[Manage Workspace Trust](command:workbench.trust.manage)",
         "when": "!isWorkspaceTrusted"
       }
     ]
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/xnervwang/vscode-opencode-plus"
+    "url": "https://github.com/xnervwang/vscode-opencode-agent-plus"
   },
   "dependencies": {
     "markdown-it": "15.0.3"

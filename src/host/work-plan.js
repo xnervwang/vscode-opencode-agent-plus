@@ -9,8 +9,8 @@
  *
  *   config.json   { enabled, brief, tellTimeZone, replyImages } from Agent Plus's token mode (src/shared/token-mode.js):
  *                 Interface turns them off and unloads the plugin, Essential keeps the plan and the time-zone
- *                 note without the brief, All keeps all three, and in Custom opencodePlus.workPlan,
- *                 opencodePlus.conversationBrief and opencodePlus.tellOpenCodeYourTimeZone decide. replyImages is on outside
+ *                 note without the brief, All keeps all three, and in Custom opencodeAgentPlus.workPlan,
+ *                 opencodeAgentPlus.conversationBrief and opencodeAgentPlus.tellOpenCodeYourTimeZone decide. replyImages is on outside
  *                 Interface: the chat page draws the local images a reply links. Written at activation and on every change of those
  *                 settings; the plugin reads it at each user message, so a change applies from the next one.
  *   launcher.json the Python found (src/shared/python-runtime.js). With none, the plugin adds nothing, and a row above

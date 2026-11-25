@@ -25,7 +25,7 @@ const { createFakeConversation } = require('../ui/fake-conversation');
 
 const A = 'ses_stewardtest00000000000a';
 const B = 'ses_stewardtest00000000000b';
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-steward-'));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-steward-'));
 const row = (id, extra = {}) => ({ sessionId: id, title: id, cwd: '/w', state: 'idle', activity: 'stopped', unseen: false, running: true, lastActiveAt: 1, hasPlan: false, ...extra });
 
 function liveManager() {

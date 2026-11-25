@@ -19,9 +19,9 @@ const fake = require('./fake-vscode');
 const ROOT = path.join(__dirname, '..', '..');
 const { vscode, control } = fake.create();
 fake.install(vscode);
-process.env.OPENCODE_PLUS_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'na-ext-takeback-'));
-process.env.OPENCODE_PLUS_TEST_BACKEND = path.join(ROOT, 'test', 'vscode', 'fake-backend.js');
-process.env.OPENCODE_PLUS_TEST_CONTROL = '1';
+process.env.OPENCODE_AGENT_PLUS_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'na-ext-takeback-'));
+process.env.OPENCODE_AGENT_PLUS_TEST_BACKEND = path.join(ROOT, 'test', 'vscode', 'fake-backend.js');
+process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL = '1';
 const extension = require('../../extension');
 const { createLocks } = require('../../src/host/locks');
 
@@ -32,13 +32,13 @@ const context = {
   secrets: control.secrets,
   extensionPath: ROOT,
   extensionUri: vscode.Uri.file(ROOT),
-  globalStorageUri: vscode.Uri.file(path.join(process.env.OPENCODE_PLUS_HOME, 'storage')),
+  globalStorageUri: vscode.Uri.file(path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'storage')),
   globalState: memento(new Map()),
   workspaceState: memento(store),
   extension: { packageJSON: { version: '0.0.1' } },
 };
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
-const uriOf = (id) => vscode.Uri.from({ scheme: 'opencodeplus-session', path: `/${id}` });
+const uriOf = (id) => vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${id}` });
 const BUSY = 'This conversation is open in another VS Code window';
 
 test('this window takes back what its earlier extension host holds without asking; another window still asks', async (t) => {
@@ -48,13 +48,13 @@ test('this window takes back what its earlier extension host holds without askin
   extension.activate(context);
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
-  await control.state.handlers['opencodePlus.newConversation']();
-  await control.state.handlers['opencodePlus.newConversation']();
-  const [a, b] = opened.map((u) => u.slice('opencodeplus-session:/'.length));
-  const token = store.get('opencodePlus.window');
+  await control.state.handlers['opencodeAgentPlus.newConversation']();
+  await control.state.handlers['opencodeAgentPlus.newConversation']();
+  const [a, b] = opened.map((u) => u.slice('opencodeagentplus-session:/'.length));
+  const token = store.get('opencodeAgentPlus.window');
   assert.match(String(token), /^[0-9a-f-]{36}$/, 'the window has a name, kept in its workspace state');
 
-  const dir = path.join(process.env.OPENCODE_PLUS_HOME, 'locks');
+  const dir = path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'locks');
   const asked = [];
   const earlier = createLocks({ dir, pid: ghost.pid, window: token });
   earlier.onTakeover((id) => { asked.push(id); });
@@ -64,7 +64,7 @@ test('this window takes back what its earlier extension host holds without askin
   t.after(() => other.dispose());
   assert.deepStrictEqual(other.acquire(b), { ok: true });
 
-  const provider = control.state.editors['opencodePlus.chat'].provider;
+  const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
   const panelA = control.panel();
   await provider.resolveCustomEditor(provider.openCustomDocument(uriOf(a)), panelA);
   assert.deepStrictEqual(asked, [a]);
@@ -90,14 +90,14 @@ test('the lock of an earlier host of this window that does not answer is taken b
   extension.activate(context);
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
-  await control.state.handlers['opencodePlus.newConversation']();
-  const id = opened[0].slice('opencodeplus-session:/'.length);
-  const dir = path.join(process.env.OPENCODE_PLUS_HOME, 'locks');
+  await control.state.handlers['opencodeAgentPlus.newConversation']();
+  const id = opened[0].slice('opencodeagentplus-session:/'.length);
+  const dir = path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'locks');
   /* A frozen host: it holds the lock and never sees the request. */
-  const frozen = createLocks({ dir, pid: ghost.pid, window: store.get('opencodePlus.window'), watch: () => ({ close() {} }) });
+  const frozen = createLocks({ dir, pid: ghost.pid, window: store.get('opencodeAgentPlus.window'), watch: () => ({ close() {} }) });
   assert.deepStrictEqual(frozen.acquire(id), { ok: true });
   const saidBefore = control.state.said.length;
-  const provider = control.state.editors['opencodePlus.chat'].provider;
+  const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
   const panel = control.panel();
   const started = Date.now();
   await provider.resolveCustomEditor(provider.openCustomDocument(uriOf(id)), panel);

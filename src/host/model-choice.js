@@ -5,7 +5,7 @@
 'use strict';
 /*
  * A session object (src/host/backend.js) that asks the user for a model before the first message of a new
- * conversation when the opencodePlus.model setting is empty: OpenCode gives every new session a default model of its
+ * conversation when the opencodeAgentPlus.model setting is empty: OpenCode gives every new session a default model of its
  * own, which may not be one the user wants. The choice reaches the chat page as a { type: 'ui.model', model } event,
  * which src/ui/view-model.js reduces. Everything else passes through.
  */

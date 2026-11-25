@@ -59,7 +59,7 @@ test('the subagent filter hides what subagents did, folds the call that started 
 });
 
 const SELF = { sourceId: 'opencode-plus', sessionId: 'ses_selfselfselfselfselfself' };
-const opencodeRow = (sessionId, title = '', lastActiveAt = 1) => ({ sourceId: 'opencode-plus', label: 'OpenCode Plus', sessionId, title, lastActiveAt });
+const opencodeRow = (sessionId, title = '', lastActiveAt = 1) => ({ sourceId: 'opencode-plus', label: 'OpenCode Agent Plus', sessionId, title, lastActiveAt });
 
 test("Agent Plus's kit finds an OpenCode session id in a reply whole and as written, not inside a path or a file name", () => {
   const ix = kit.mentionIndex([opencodeRow('ses_df2751c45ffeo343ehNzaBtgRH'), opencodeRow('ses_other00000000000000000')], SELF);
@@ -84,7 +84,7 @@ test("Agent Plus's kit finds OpenCode conversations by title and by id, and neve
   assert.deepEqual(got, [['title', 'ses_aaaaaaaaaaaaaaaaaaaaaaaaaa'], ['quoted', '0f9e8d7c-1111-4222-8333-444455556666'],
     ['id', '0f9e8d7c-1111-4222-8333-444455556666'], ['id', 'ses_aaaaaaaaaaaaaaaaaaaaaaaaaa']]);
   assert.ok(kit.mentionIndex([known[2]], SELF).size === 0, 'a list of only the page itself names nothing');
-  assert.match(kit.mentionTip({ ...known[0], others: [] }, 61000), /OpenCode Plus conversation ses_aaaa, active 1m ago/);
+  assert.match(kit.mentionTip({ ...known[0], others: [] }, 61000), /OpenCode Agent Plus conversation ses_aaaa, active 1m ago/);
 });
 
 test("Agent Plus's kit links an OpenCode session id in a reply's text and inline code, not in a code block or a link", () => {

@@ -4,11 +4,11 @@
 
 'use strict';
 /*
- * OPENCODE_PLUS_TEST_BACKEND for the window tests: createOpenCode's shape (src/opencode/index.js) with the scripted
+ * OPENCODE_AGENT_PLUS_TEST_BACKEND for the window tests: createOpenCode's shape (src/opencode/index.js) with the scripted
  * conversation of test/ui/fake-conversation.js as each session, so no OpenCode and no model are needed. A session's
  * first turn draws every kind of item, a permission request included; a message "Say: <text>" is answered with <text>,
  * for a reply the test writes itself. Sessions and the events each one emitted are kept in
- * <OPENCODE_PLUS_HOME>/fake-backend.json, so a reloaded window finds them again.
+ * <OPENCODE_AGENT_PLUS_HOME>/fake-backend.json, so a reloaded window finds them again.
  */
 const crypto = require('crypto');
 const fs = require('fs');
@@ -21,7 +21,7 @@ const MODELS = [
 ];
 
 function createOpenCode() {
-  const file = path.join(process.env.OPENCODE_PLUS_HOME || '/tmp', 'fake-backend.json');
+  const file = path.join(process.env.OPENCODE_AGENT_PLUS_HOME || '/tmp', 'fake-backend.json');
   const read = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return { sessions: {} }; } };
   const write = (db) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(`${file}.tmp`, JSON.stringify(db)); fs.renameSync(`${file}.tmp`, file); };
   const listeners = new Set();

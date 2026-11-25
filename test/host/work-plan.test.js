@@ -17,7 +17,7 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'na-host-wp-'));
 
 function make({ trusted = true, find, config = {} } = {}) {
   const home = tmp();
-  process.env.OPENCODE_PLUS_HOME = home;
+  process.env.OPENCODE_AGENT_PLUS_HOME = home;
   const { vscode, control } = fake.create();
   vscode.workspace.isTrusted = trusted;
   Object.assign(control.state.config, config);
@@ -44,7 +44,7 @@ test('the token mode decides the switches; in Custom our own settings do', () =>
     [{ 'agentPlus.tokenMode': 'custom', [KEYS.timeZone]: false }, { enabled: true, brief: true, tellTimeZone: false }],
     [{ 'agentPlus.tokenMode': 'no-such-mode' }, { enabled: true, brief: true, tellTimeZone: true }],
   ];
-  assert.equal(KEYS.timeZone, 'opencodePlus.tellOpenCodeYourTimeZone');
+  assert.equal(KEYS.timeZone, 'opencodeAgentPlus.tellOpenCodeYourTimeZone');
   for (const [config, want] of cases) {
     const { plan } = make({ config });
     assert.deepEqual(plan.values(), { ...want, replyImages: config['agentPlus.tokenMode'] !== 'interface' }, JSON.stringify(config));
@@ -127,7 +127,7 @@ test('on OpenCode 1 the notice that the work plan needs OpenCode 2 shows once pe
   const row = plan.planNotice();
   assert.equal(row.title, 'Work plans need OpenCode 2');
   assert.equal(row.description, 'OpenCode 1.19.6 is in use');
-  assert.deepEqual([row.command, row.arguments], ['workbench.action.openSettings', ['opencodePlus.opencode.path']]);
+  assert.deepEqual([row.command, row.arguments], ['workbench.action.openSettings', ['opencodeAgentPlus.opencode.path']]);
   plan.checkVersion({ major: 2, text: '2.4.1' });
   assert.equal(plan.planNotice(), null);
   plan.dispose();
@@ -157,14 +157,14 @@ test('launch adds the plugin environment and configuration to the settings OpenC
   const o = plan.launch({ binaryPath: '/x/opencode', permissions: true, env: { AWS_PROFILE: 'p' } });
   assert.equal(o.binaryPath, '/x/opencode');
   assert.equal(o.permissions, true);
-  assert.deepEqual(o.env, { AWS_PROFILE: 'p', OPENCODE_PLUS_HOOKS_DIR: workplan.scriptsDir(home), OPENCODE_PLUS_HOME: home });
+  assert.deepEqual(o.env, { AWS_PROFILE: 'p', OPENCODE_AGENT_PLUS_HOOKS_DIR: workplan.scriptsDir(home), OPENCODE_AGENT_PLUS_HOME: home });
   assert.deepEqual(o.config(2).plugins, [workplan.pluginDir(home)]);
   assert.ok(o.config(2).permissions.some((r) => r.action === 'read' && r.resource === `${path.join(home, 'plans')}/*`));
   assert.match(o.config(1).plugin[0], /^file:\/\/.*\/agent-work-plan\/index\.js$/);
   /* Writes into a conversation's own image folder go without asking (src/opencode/quiet-writes.js). */
   assert.equal(o.quietFolder('ses_df3c28ab2ffe0TYFbXAnoBpqy6'), path.join(home, 'scratch', 'ses_df3c28ab2ffe0TYFbXAnoBpqy6'));
   assert.equal(o.quietFolder('../x'), null);
-  assert.deepEqual(plan.launch(undefined).env, { OPENCODE_PLUS_HOOKS_DIR: workplan.scriptsDir(home), OPENCODE_PLUS_HOME: home });
+  assert.deepEqual(plan.launch(undefined).env, { OPENCODE_AGENT_PLUS_HOOKS_DIR: workplan.scriptsDir(home), OPENCODE_AGENT_PLUS_HOME: home });
   plan.dispose();
 });
 

@@ -7,7 +7,7 @@
 
     run-hooks.py <plans folder> <script>... < event.json
 
-The OpenCode Plus plugin calls this on a user message and after a compaction, for the work plan, the time-zone note and
+The OpenCode Agent Plus plugin calls this on a user message and after a compaction, for the work plan, the time-zone note and
 the reply-image note together, instead of starting Python once for each. Each script's main() runs as if the script
 had been started on its own: it gets the plans folder as its first argument and the event on standard input, and what
 it prints is taken as its answer.

@@ -30,15 +30,15 @@
  *
  * The plan bar's fragment brings its own style element, so the page's policy lets inline styles in. A diff opened from
  * a permission card gets Allow once, Allow in this project and Deny in its editor's title bar (see answerFromDiff);
- * its right side's path is listed under the context key opencodePlus.openDiffs while the request is open.
+ * its right side's path is listed under the context key opencodeAgentPlus.openDiffs while the request is open.
  */
 const path = require('path');
 const fs = require('fs');
 const vm = require('./view-model');
 const { PERMISSION_DECISIONS } = require('../contracts');
 
-const DIFF_SCHEME = 'opencodePlus-diff';
-const OPEN_DIFFS_KEY = 'opencodePlus.openDiffs';
+const DIFF_SCHEME = 'opencodeAgentPlus-diff';
+const OPEN_DIFFS_KEY = 'opencodeAgentPlus.openDiffs';
 /* Limits per message. Image bytes are counted after base64 decoding; MAX_FILES covers files and selections together. */
 const MAX_IMAGES = 8;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;

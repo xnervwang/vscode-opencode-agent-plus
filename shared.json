@@ -1,5 +1,5 @@
 {
-  "core": "847ea203d645c0c799f136e7059660204af5bb96",
+  "core": "d6e6cdcc51e68dcc6375673c652c189f31018ddb",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -34,7 +34,7 @@
     {
       "path": "src/shared/token-mode.js",
       "from": "src/token-mode.js",
-      "sha256": "a553851c26affe53aed17aabbc82bc96aae557ebd52eb88a95c4b466a7522a16"
+      "sha256": "83fd03f44579844674e6733ed24161a483355da11728f81a8667e12813911174"
     },
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan_path.py",
@@ -74,7 +74,7 @@
     {
       "path": "opencode-plugin/agent-work-plan/hooks/tell-reply-images.py",
       "from": "shared/plugin/hooks/tell-reply-images.py",
-      "sha256": "4b2cdd6f6f20cd17197cf084a16b7cb858e89d1e3e95f0a27bfa6fdcfe4cca6f"
+      "sha256": "983c11fe93bb48464e2a207ee920d03790bcd4e261b36d07dfee16c62022548e"
     },
     {
       "path": "opencode-plugin/agent-work-plan/hooks/nudge-work-plan.py",
@@ -89,7 +89,7 @@
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/opencode/plan_agent.py",
-      "sha256": "e9ac34b56f03c2d30ecd71e04a5c50ab22d074960279e909d83d40d699509b7a"
+      "sha256": "5120d71ab84c73fd2fb02079c2ad810e02c9a70bcacd7f57b1403244383f3aaa"
     },
     {
       "path": "src/shared/title-marks.js",

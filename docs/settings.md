@@ -4,20 +4,20 @@ Back to the [README](../README.md).
 
 ## Settings
 
-You can change these settings under OpenCode Plus in the VS Code Settings editor.
+You can change these settings under OpenCode Agent Plus in the VS Code Settings editor.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `opencodePlus.model` | Empty | Sets the [model for new conversations](setup.md#installing-opencode-plus). Use `provider/model`, such as `amazon-bedrock/us.xai.grok-4.7`. If you leave it empty, OpenCode Plus asks you to choose a model when you send your first message. |
-| `opencodePlus.opencode.path` | Empty | Sets the path to the [OpenCode executable](setup.md#how-opencode-plus-finds-opencode). If you leave it empty, OpenCode Plus searches for it. Set it in User or Remote settings, not Workspace settings. |
-| `opencodePlus.opencode.askPermissions` | On | Applies [OpenCode Plus's permission rules](features.md#permission-prompts) for edits, commands, web requests and access outside the project. Set it in User or Remote settings, not Workspace settings. |
-| `opencodePlus.bedrock.profile` | Empty | Sets the [AWS profile for Amazon Bedrock](setup.md#through-opencode-plus-settings). Set it in User or Remote settings, not Workspace settings. |
-| `opencodePlus.bedrock.region` | Empty | Sets the [AWS Region for Amazon Bedrock](setup.md#through-opencode-plus-settings). Set it in User or Remote settings, not Workspace settings. |
-| `opencodePlus.workPlan` | On | In Custom [token mode](features.md#token-mode), lets the model keep a work plan. |
-| `opencodePlus.planBar` | On | Shows the [plan bar](features.md#work-plan-and-plan-bar) above the input box. |
-| `opencodePlus.conversationLinks` | On | Turns mentions of other conversations into [links in replies](features.md#links-and-images-in-replies). |
-| `opencodePlus.conversationBrief` | On | In Custom token mode, lets the model keep a [conversation brief](features.md#conversation-brief). |
-| `opencodePlus.tellOpenCodeYourTimeZone` | On | In Custom token mode, tells the model [your time zone](setup.md#remote-ssh) when it differs from the OpenCode machine's time zone. |
+| `opencodeAgentPlus.model` | Empty | Sets the [model for new conversations](setup.md#installing-opencode-agent-plus). Use `provider/model`, such as `amazon-bedrock/us.xai.grok-4.7`. If you leave it empty, OpenCode Agent Plus asks you to choose a model when you send your first message. |
+| `opencodeAgentPlus.opencode.path` | Empty | Sets the path to the [OpenCode executable](setup.md#how-opencode-agent-plus-finds-opencode). If you leave it empty, OpenCode Agent Plus searches for it. Set it in User or Remote settings, not Workspace settings. |
+| `opencodeAgentPlus.opencode.askPermissions` | On | Applies [OpenCode Agent Plus's permission rules](features.md#permission-prompts) for edits, commands, web requests and access outside the project. Set it in User or Remote settings, not Workspace settings. |
+| `opencodeAgentPlus.bedrock.profile` | Empty | Sets the [AWS profile for Amazon Bedrock](setup.md#through-opencode-agent-plus-settings). Set it in User or Remote settings, not Workspace settings. |
+| `opencodeAgentPlus.bedrock.region` | Empty | Sets the [AWS Region for Amazon Bedrock](setup.md#through-opencode-agent-plus-settings). Set it in User or Remote settings, not Workspace settings. |
+| `opencodeAgentPlus.workPlan` | On | In Custom [token mode](features.md#token-mode), lets the model keep a work plan. |
+| `opencodeAgentPlus.planBar` | On | Shows the [plan bar](features.md#work-plan-and-plan-bar) above the input box. |
+| `opencodeAgentPlus.conversationLinks` | On | Turns mentions of other conversations into [links in replies](features.md#links-and-images-in-replies). |
+| `opencodeAgentPlus.conversationBrief` | On | In Custom token mode, lets the model keep a [conversation brief](features.md#conversation-brief). |
+| `opencodeAgentPlus.tellOpenCodeYourTimeZone` | On | In Custom token mode, tells the model [your time zone](setup.md#remote-ssh) when it differs from the OpenCode machine's time zone. |
 
 ### Settings That Restart OpenCode
 
@@ -25,37 +25,37 @@ You can change these settings under OpenCode Plus in the VS Code Settings editor
 
 ## Turning Features Off
 
-Agent Plus's [Token Mode](features.md#token-mode) controls what OpenCode Plus adds to the model's context. In any token mode, you can adjust the plan bar, conversation links, permission rules and chimes.
+Agent Plus's [Token Mode](features.md#token-mode) controls what OpenCode Agent Plus adds to the model's context. In any token mode, you can adjust the plan bar, conversation links, permission rules and chimes.
 
 | What | How |
 |---|---|
-| Everything OpenCode Plus adds to the model's context | Choose Interface features as the token mode. |
-| Work plan | Choose Custom and turn off `opencodePlus.workPlan`. |
-| Conversation brief | Choose Custom and turn off `opencodePlus.conversationBrief`. |
-| Time-zone note | Choose Custom and turn off `opencodePlus.tellOpenCodeYourTimeZone`. |
+| Everything OpenCode Agent Plus adds to the model's context | Choose Interface features as the token mode. |
+| Work plan | Choose Custom and turn off `opencodeAgentPlus.workPlan`. |
+| Conversation brief | Choose Custom and turn off `opencodeAgentPlus.conversationBrief`. |
+| Time-zone note | Choose Custom and turn off `opencodeAgentPlus.tellOpenCodeYourTimeZone`. |
 | Note about images in replies | Choose Interface features. This note has no separate switch. |
-| Plan bar | Turn off `opencodePlus.planBar`. |
-| Links to other conversations | Turn off `opencodePlus.conversationLinks`. |
-| OpenCode Plus's permission rules | Turn off `opencodePlus.opencode.askPermissions` to use your own OpenCode rules. |
+| Plan bar | Turn off `opencodeAgentPlus.planBar`. |
+| Links to other conversations | Turn off `opencodeAgentPlus.conversationLinks`. |
+| OpenCode Agent Plus's permission rules | Turn off `opencodeAgentPlus.opencode.askPermissions` to use your own OpenCode rules. |
 | Chimes | Click the note button beside Send. |
 
 ## Commands
 
-In the Command Palette, search for `OpenCode Plus:` to find these commands.
+In the Command Palette, search for `OpenCode Agent Plus:` to find these commands.
 
 | Command | What it does |
 |---|---|
-| `OpenCode Plus: New Conversation` | Opens a new conversation in an editor tab. |
-| `OpenCode Plus: Fork Conversation` | Copies the conversation into a new tab. Available when a chat tab is active. |
-| `OpenCode Plus: Find Conversation…` | Finds a conversation by title, session ID or folder. |
-| `OpenCode Plus: Clear Recently Closed` | Clears the Recently closed group in the Conversations view. |
-| `OpenCode Plus: Choose Model for New Conversations` | Lists the models OpenCode offers and saves your choice in `opencodePlus.model`. |
-| `OpenCode Plus: Test OpenCode Connection` | Checks whether OpenCode is installed and reports [model counts or Bedrock credential errors](setup.md#checking-the-connection) when available. |
-| `OpenCode Plus: Set Amazon Bedrock API Key` | Saves your Bedrock API key in VS Code's secret storage. |
-| `OpenCode Plus: Clear Amazon Bedrock API Key` | Removes the stored Bedrock API key. |
-| `OpenCode Plus: Download Python for Work Plans` | Downloads Python for the work plan on Windows. |
-| `OpenCode Plus: Look for Python Again for Work Plans` | Checks again for a Python installation the work plan can use. |
-| `OpenCode Plus: Show MCP Servers` | Runs `opencode mcp list` and shows OpenCode's MCP (Model Context Protocol) servers in a VS Code output channel. |
+| `OpenCode Agent Plus: New Conversation` | Opens a new conversation in an editor tab. |
+| `OpenCode Agent Plus: Fork Conversation` | Copies the conversation into a new tab. Available when a chat tab is active. |
+| `OpenCode Agent Plus: Find Conversation…` | Finds a conversation by title, session ID or folder. |
+| `OpenCode Agent Plus: Clear Recently Closed` | Clears the Recently closed group in the Conversations view. |
+| `OpenCode Agent Plus: Choose Model for New Conversations` | Lists the models OpenCode offers and saves your choice in `opencodeAgentPlus.model`. |
+| `OpenCode Agent Plus: Test OpenCode Connection` | Checks whether OpenCode is installed and reports [model counts or Bedrock credential errors](setup.md#checking-the-connection) when available. |
+| `OpenCode Agent Plus: Set Amazon Bedrock API Key` | Saves your Bedrock API key in VS Code's secret storage. |
+| `OpenCode Agent Plus: Clear Amazon Bedrock API Key` | Removes the stored Bedrock API key. |
+| `OpenCode Agent Plus: Download Python for Work Plans` | Downloads Python for the work plan on Windows. |
+| `OpenCode Agent Plus: Look for Python Again for Work Plans` | Checks again for a Python installation the work plan can use. |
+| `OpenCode Agent Plus: Show MCP Servers` | Runs `opencode mcp list` and shows OpenCode's MCP (Model Context Protocol) servers in a VS Code output channel. |
 
 To add an MCP server, run `opencode mcp add` or edit OpenCode's configuration file.
 

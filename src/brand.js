@@ -5,8 +5,8 @@
 'use strict';
 // Everything that shows or derives from the product name reads it from here and package.json.
 module.exports = Object.freeze({
-  displayName: 'OpenCode Plus',
-  packageName: 'opencode-plus',
-  prefix: 'opencodePlus',
+  displayName: 'OpenCode Agent Plus',
+  packageName: 'opencode-agent-plus',
+  prefix: 'opencodeAgentPlus',
   publisher: 'xnervwang',
 });

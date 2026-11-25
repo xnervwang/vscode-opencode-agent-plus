@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * The settings OpenCode starts with: opencodePlus.opencode.path and .askPermissions, and for Amazon Bedrock the settings
- * opencodePlus.bedrock.profile and .region plus an API key kept only in VS Code's secret storage. OpenCode gets these
+ * The settings OpenCode starts with: opencodeAgentPlus.opencode.path and .askPermissions, and for Amazon Bedrock the settings
+ * opencodeAgentPlus.bedrock.profile and .region plus an API key kept only in VS Code's secret storage. OpenCode gets these
  * three as AWS_PROFILE, AWS_REGION and AWS_BEARER_TOKEN_BEDROCK in its environment. An empty setting adds nothing, so
  * what the user set up in OpenCode or in the environment stays in force. A change restarts OpenCode (backend.restart).
  */

@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * The Conversations view in the activity bar (opencodePlus.sessions): one row per saved conversation, most recently
+ * The Conversations view in the activity bar (opencodeAgentPlus.sessions): one row per saved conversation, most recently
  * active first, with its title, how long ago it was active and a status icon. Everything shown comes from the injected
  * listSessions(). onDidChange and the view becoming visible again redraw the list; the second also keeps the "5m" ages
  * roughly current without a timer.
@@ -15,13 +15,13 @@
  * clears it.
  */
 
-const RENAME_COMMAND = 'opencodePlus.renameConversation';
-const DELETE_COMMAND = 'opencodePlus.deleteConversation';
-const OPEN_COMMAND = 'opencodePlus.openConversation';
-const CONTEXT_IDLE = 'opencodePlus.session';
-const CONTEXT_BUSY = 'opencodePlus.session.busy';
-const CONTEXT_GROUP = 'opencodePlus.group';
-const CONTEXT_RECENT = 'opencodePlus.group.recent';
+const RENAME_COMMAND = 'opencodeAgentPlus.renameConversation';
+const DELETE_COMMAND = 'opencodeAgentPlus.deleteConversation';
+const OPEN_COMMAND = 'opencodeAgentPlus.openConversation';
+const CONTEXT_IDLE = 'opencodeAgentPlus.session';
+const CONTEXT_BUSY = 'opencodeAgentPlus.session.busy';
+const CONTEXT_GROUP = 'opencodeAgentPlus.group';
+const CONTEXT_RECENT = 'opencodeAgentPlus.group.recent';
 const GROUPS = Object.freeze({ recent: 'Recently closed', open: 'Open in this window', other: 'Other conversations' });
 const SHOWN = 10;
 
@@ -163,7 +163,7 @@ class SessionsView {
   /* Creates the tree view and registers Rename and Delete. */
   register() {
     const vscode = this.vscode;
-    this.treeView = vscode.window.createTreeView('opencodePlus.sessions', { treeDataProvider: this });
+    this.treeView = vscode.window.createTreeView('opencodeAgentPlus.sessions', { treeDataProvider: this });
     const disposables = [
       this.treeView,
       this.treeView.onDidChangeVisibility((e) => {

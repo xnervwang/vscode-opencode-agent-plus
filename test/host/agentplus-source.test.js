@@ -30,7 +30,7 @@ function make(manager, more = {}) {
   const calls = { reveal: [], openHere: [] };
   const made = ap.createAgentPlusSource({
     manager,
-    planDir: () => '/home/u/.opencode-plus/plans',
+    planDir: () => '/home/u/.opencode-agent-plus/plans',
     logo: () => ({ light: vscode.Uri.file('/ext/l.svg'), dark: vscode.Uri.file('/ext/d.svg') }),
     reveal: async (id) => { calls.reveal.push(id); return true; },
     openHere: async (id) => { calls.openHere.push(id); return true; },
@@ -44,12 +44,12 @@ test('identity members', () => {
   const { source } = make(fakeManager());
   assert.strictEqual(source.protocol, 1);
   assert.strictEqual(source.id, 'opencode-plus');
-  assert.strictEqual(source.label, 'OpenCode Plus');
-  assert.strictEqual(source.extensionId, 'xnervwang.opencode-plus');
+  assert.strictEqual(source.label, 'OpenCode Agent Plus');
+  assert.strictEqual(source.extensionId, 'xnervwang.opencode-agent-plus');
   assert.deepStrictEqual(source.features, ['shows', 'openHere']);
   assert.strictEqual(source.logo.light.fsPath, '/ext/l.svg');
-  assert.strictEqual(source.planDir(), '/home/u/.opencode-plus/plans');
-  assert.strictEqual(source.planPath(A), `/home/u/.opencode-plus/plans/${A}.json`);
+  assert.strictEqual(source.planDir(), '/home/u/.opencode-agent-plus/plans');
+  assert.strictEqual(source.planPath(A), `/home/u/.opencode-agent-plus/plans/${A}.json`);
   assert.strictEqual(source.planPath('../x'), null);
   assert.strictEqual(source.planPath(undefined), null);
   const broken = make(fakeManager(), { logo: () => { throw new Error('no file'); } }).source;
@@ -59,10 +59,10 @@ test('identity members', () => {
 test('sessionForTab: ours by viewType and scheme, null for any other tab', () => {
   const { source } = make(fakeManager());
   assert.strictEqual(source.sessionForTab(control.chatTab(A)), A);
-  assert.strictEqual(source.sessionForTab({ input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'opencodeplus-session', path: '/' }), 'opencodePlus.chat') }), '');
+  assert.strictEqual(source.sessionForTab({ input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: '/' }), 'opencodeAgentPlus.chat') }), '');
   assert.strictEqual(source.sessionForTab({ input: new vscode.TabInputCustom(vscode.Uri.from({ scheme: 'openai-codex', path: `/${A}` }), 'chatgpt.conversationEditor') }), null);
   assert.strictEqual(source.sessionForTab(control.fileTab('/w/a.txt')), null);
-  assert.strictEqual(source.sessionForTab({ input: new vscode.TabInputWebview('mainThreadWebview-opencodePlus.chat') }), null);
+  assert.strictEqual(source.sessionForTab({ input: new vscode.TabInputWebview('mainThreadWebview-opencodeAgentPlus.chat') }), null);
   assert.strictEqual(source.sessionForTab(undefined), null);
   assert.strictEqual(ap.sessionOfUri(ap.uriOf(A)), A);
 });
@@ -211,7 +211,7 @@ test('plan members: planPath and planNotice from deps, and brief listed only whi
   assert.strictEqual(source.planNotice(), null);
   let fired = 0;
   source.onDidChangePlanNotice(() => { fired++; });
-  notice = { title: 'Work plans need Python 3', description: 'click to try again', detail: 'd', command: 'opencodePlus.findPython', arguments: [] };
+  notice = { title: 'Work plans need Python 3', description: 'click to try again', detail: 'd', command: 'opencodeAgentPlus.findPython', arguments: [] };
   made.noticeChanged();
   assert.strictEqual(fired, 1);
   assert.strictEqual(source.planNotice().title, 'Work plans need Python 3');

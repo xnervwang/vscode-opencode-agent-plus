@@ -5,7 +5,7 @@
 'use strict';
 /*
  * Loaded as a development extension into the window that test/vscode/run.js drives, which cannot reach the vscode API
- * from outside. run.js writes <id>.req.json into the folder OPENCODE_PLUS_UI_CONTROL names; this runs its body as an async
+ * from outside. run.js writes <id>.req.json into the folder OPENCODE_AGENT_PLUS_UI_CONTROL names; this runs its body as an async
  * function of (vscode, require, arg) and writes <id>.res.json. Files rather than a socket, because the window is
  * reloaded during a run and a request left in the folder waits for the next extension host, which announces itself in
  * host-<pid>.json.
@@ -17,7 +17,7 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
 
 function activate(context) {
   const vscode = require('vscode');
-  const dir = process.env.OPENCODE_PLUS_UI_CONTROL;
+  const dir = process.env.OPENCODE_AGENT_PLUS_UI_CONTROL;
   if (!dir) return;
   const write = (name, value) => {
     const tmp = path.join(dir, `.${name}.${process.pid}.tmp`);

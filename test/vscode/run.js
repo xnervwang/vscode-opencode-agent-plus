@@ -29,7 +29,7 @@
  * once a second source is registered (Agent Plus draws a source's logo only then). With OpenCode 1 the notice that the
  * work plan needs OpenCode 2 is shown once, the / and @ lists, question forms and compaction line show only what it
  * offers, and its tab offers Fork but not Rename. The plugin writes what it does to <out>/plugin.jsonl
- * (OPENCODE_PLUS_PLAN_LOG).
+ * (OPENCODE_AGENT_PLUS_PLAN_LOG).
  * --restricted runs test/vscode/lib/restricted.js instead: the folder untrusted, then trusted.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
@@ -51,7 +51,7 @@ const has = (name) => { const i = args.indexOf(name); if (i < 0) return false; a
 
 const LOCAL = has('--local');
 const EXE = flag('--vscode');
-const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-plus-ui-${Date.now()}`)));
+const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-agent-plus-ui-${Date.now()}`)));
 /* 1.4.0 or later: the plan bar needs Agent Plus's planSummary. Without --agent-plus, the newest package built in a
    vscode-agent-plus checkout beside this repository. */
 function siblingAgentPlus() {
@@ -68,7 +68,7 @@ const MODEL = flag('--model', BACKEND === 'fake' ? 'fake/fake-small' : 'amazon-b
 const DEPS = flag('--deps');
 const FONTS = flag('--fonts');
 const RESTRICTED = has('--restricted');
-const ID = 'xnervwang.opencode-plus';
+const ID = 'xnervwang.opencode-agent-plus';
 const HAIKU = 'amazon-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
 /* A PNG of one colour, for the paste step. */
@@ -163,7 +163,7 @@ async function main() {
   if (!AGENT_PLUS || !fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix${AGENT_PLUS ? ` at ${AGENT_PLUS}` : ' beside this repository'}; pass --agent-plus <.vsix>`);
   const playwright = need('playwright-core');
 
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-ui-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-ui-')));
   const shots = path.join(OUT, 'shots');
   fs.mkdirSync(shots, { recursive: true });
   const p = { exts: path.join(root, 'exts'), user: path.join(root, 'user'), folder: path.join(root, 'ws'), control: path.join(root, 'ctl'),
@@ -178,7 +178,7 @@ async function main() {
   const prepared = RESTRICTED ? restricted.prepareFolder(p.folder, root) : null;
   console.log(`temporary root ${root}; results in ${OUT}`);
 
-  const vsix = path.join(root, 'opencode-plus.vsix');
+  const vsix = path.join(root, 'opencode-agent-plus.vsix');
   const pack = cp.spawnSync(process.execPath, [path.join(ROOT, 'build', 'pack-vsix.js'), ROOT, '--out', vsix], { encoding: 'utf8' });
   if (pack.status !== 0) throw new Error(`packing failed: ${pack.stderr}`);
   console.log(pack.stdout.trim());
@@ -203,9 +203,9 @@ async function main() {
   }
   const planLog = path.join(OUT, 'plugin.jsonl');
   const env = cleanEnv(real ? '' : p.home, {
-    OPENCODE_PLUS_HOME: p.agentHome, OPENCODE_PLUS_TEST_CONTROL: '1', ...xdgEnv, ...(FONTS ? { FONTCONFIG_FILE: path.resolve(FONTS) } : {}),
-    ...(real ? { OPENCODE_PLUS_PLAN_LOG: planLog } : {}),
-    ...(real ? {} : { OPENCODE_PLUS_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
+    OPENCODE_AGENT_PLUS_HOME: p.agentHome, OPENCODE_AGENT_PLUS_TEST_CONTROL: '1', ...xdgEnv, ...(FONTS ? { FONTCONFIG_FILE: path.resolve(FONTS) } : {}),
+    ...(real ? { OPENCODE_AGENT_PLUS_PLAN_LOG: planLog } : {}),
+    ...(real ? {} : { OPENCODE_AGENT_PLUS_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
   });
   if (real) for (const k of Object.keys(env)) if (/^AWS_/.test(k)) delete env[k];
   const code = cliOf(EXE);
@@ -214,8 +214,8 @@ async function main() {
     if (r.status !== 0) throw new Error(`installing ${ext} failed: ${r.out}`);
   }
   console.log(code(['--list-extensions', '--show-versions', `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`], env).out);
-  writeSettings(p.user, { 'opencodePlus.model': MODEL, ...(OPENCODE ? { 'opencodePlus.opencode.path': OPENCODE } : {}),
-    ...(real ? { 'opencodePlus.bedrock.profile': 'self', 'opencodePlus.bedrock.region': 'us-east-1' } : {}), ...(RESTRICTED ? restricted.TRUST_SETTINGS : {}) });
+  writeSettings(p.user, { 'opencodeAgentPlus.model': MODEL, ...(OPENCODE ? { 'opencodeAgentPlus.opencode.path': OPENCODE } : {}),
+    ...(real ? { 'opencodeAgentPlus.bedrock.profile': 'self', 'opencodeAgentPlus.bedrock.region': 'us-east-1' } : {}), ...(RESTRICTED ? restricted.TRUST_SETTINGS : {}) });
 
   const steps = [];
   let failed = 0, passed = 0;
@@ -250,7 +250,7 @@ async function main() {
   };
   const ext = (body, arg, ms) => call(`const e = vscode.extensions.getExtension(${JSON.stringify(ID)}); const api = e.isActive ? e.exports : await e.activate(); ${body}`, arg, ms);
   /* The chat tab of conversation `id` as VS Code's tab API has it: its label and whether it is in front. */
-  const tabOf = (id) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === "opencodeplus-session:/" + arg);
+  const tabOf = (id) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === "opencodeagentplus-session:/" + arg);
     return t ? { label: t.label, active: t.isActive } : null;`, id);
   /* The image the tab strip draws as the icon of the tab whose label starts with `label`. */
   const iconOf = (label) => page.evaluate((t) => {
@@ -292,7 +292,7 @@ async function main() {
   /* The chat page's links to other conversations: [{ session, source, text, tip }]. */
   const convLinks = (f) => f.evaluate(() => [...document.querySelectorAll('#log a.conv-link')].map((a) => ({ session: a.dataset.session, source: a.dataset.source, text: a.textContent, tip: a.title })));
   const activeUri = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
-  const closeChat = (id) => call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeplus-session:/" + arg);
+  const closeChat = (id) => call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeagentplus-session:/" + arg);
     await vscode.window.tabGroups.close(tabs); return true;`, id).catch(() => false);
   /* Clicks the page's last link to conversation `id`; resolves to the id of the chat tab in front after the click. */
   const followLink = async (f, id) => {
@@ -300,7 +300,7 @@ async function main() {
       const l = document.getElementById('log');
       if (a) l.scrollTop += a.getBoundingClientRect().top - l.getBoundingClientRect().top - l.clientHeight / 2; }, id);
     await f.click(`#log a.conv-link[data-session="${id}"] >> nth=-1`);
-    return until(async () => { const u = await activeUri(); return u === `opencodeplus-session:/${id}` ? id : null; }, 20000);
+    return until(async () => { const u = await activeUri(); return u === `opencodeagentplus-session:/${id}` ? id : null; }, 20000);
   };
   /* The outline beside the log, and the messages in the log. */
   const outlineOf = (f) => f.evaluate(() => {
@@ -327,7 +327,7 @@ async function main() {
      activity bar, whose label goes when the pointer does; moving into a chat page alone does not clear it, as the
      workbench hears nothing in there. */
   const dropHover = async () => {
-    await page.hover('.activitybar .action-item [aria-label^="OpenCode Plus"]', { timeout: 3000 }).catch(() => {});
+    await page.hover('.activitybar .action-item [aria-label^="OpenCode Agent Plus"]', { timeout: 3000 }).catch(() => {});
     await sleep(1200);
     await page.mouse.move(900, 500);
     await sleep(300);
@@ -361,7 +361,7 @@ async function main() {
   });
   /* Recently closed: its group lists `titles` (each the start of a title), and the button on its row empties it. */
   const recentStep = async (titles, name, expect) => {
-    await call('await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
+    await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
     const group = await until(() => page.evaluate((want) => {
       const rows = [...document.querySelectorAll('#workbench\\.parts\\.sidebar .monaco-list-row')].map((r) => r.textContent.trim());
       const at = rows.findIndex((t) => /^Recently closed/.test(t));
@@ -383,7 +383,7 @@ async function main() {
     /* The row's buttons show while the pointer is on it, which a screenshot does not keep. */
     let clicked = false;
     if (visible) clicked = await row.hover().then(() => button.click({ timeout: 5000 })).then(() => true, () => false);
-    if (!clicked) await call('return vscode.commands.executeCommand("opencodePlus.clearRecentlyClosed");');
+    if (!clicked) await call('return vscode.commands.executeCommand("opencodeAgentPlus.clearRecentlyClosed");');
     await dropHover();
     const cleared = await until(async () => {
       const r = (await ext('return api.test.recent();')) || [];
@@ -395,7 +395,7 @@ async function main() {
   /* Find Conversation: typing part of `id` in its pick leaves only that conversation; Enter opens it. */
   const findStep = async (id, name, expect) => {
     await dropHover();
-    await call(`vscode.commands.executeCommand("opencodePlus.findConversation"); return true;`);
+    await call(`vscode.commands.executeCommand("opencodeAgentPlus.findConversation"); return true;`);
     await page.waitForSelector('.quick-input-widget input', { state: 'visible', timeout: 15000 });
     const part = id.slice(5, 14);
     await page.fill('.quick-input-widget input', part);
@@ -405,7 +405,7 @@ async function main() {
     }, 15000);
     await shot(name, { features: ['find by session id'], expect });
     await page.keyboard.press('Enter');
-    const opened = await until(async () => ((await activeUri()) === `opencodeplus-session:/${id}` ? id : null), 20000);
+    const opened = await until(async () => ((await activeUri()) === `opencodeagentplus-session:/${id}` ? id : null), 20000);
     check(!!rows && !!opened, 'Find Conversation finds the conversation by part of its session id, and Enter opens it', { part, rows, opened,
       listed: await page.evaluate(() => [...document.querySelectorAll('.quick-input-list .monaco-list-row')].map((x) => x.textContent)) });
     return opened;
@@ -435,8 +435,8 @@ async function main() {
     await until(() => ext('return !!(api && api.test);'), 60000);
 
     // 1. The activity bar icon and the Conversations view.
-    const icon = await page.waitForSelector('.activitybar .action-item a[aria-label^="OpenCode Plus"], .activitybar .action-item [aria-label^="OpenCode Plus"]', { timeout: 30000 }).catch(() => null);
-    check(!!icon, 'the activity bar has the OpenCode Plus icon');
+    const icon = await page.waitForSelector('.activitybar .action-item a[aria-label^="OpenCode Agent Plus"], .activitybar .action-item [aria-label^="OpenCode Agent Plus"]', { timeout: 30000 }).catch(() => null);
+    check(!!icon, 'the activity bar has the OpenCode Agent Plus icon');
     if (icon) await icon.click();
     const viewOk = await until(() => page.evaluate(() => [...document.querySelectorAll('.pane-header')].some((h) => /Conversations/i.test(h.textContent))), 20000);
     check(viewOk, 'the Conversations view shows in the side bar');
@@ -446,7 +446,7 @@ async function main() {
       && fs.existsSync(path.join(plansDir, 'config.json')), 20000);
     check(inPlace, "the work plan plugin, its scripts and config.json are in place in the extension's folder");
     await shot('01-activity-bar', { features: ['activity bar icon', 'Conversations view'],
-      expect: 'The activity bar on the far left has the OpenCode Plus icon (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour) selected; the side bar shows the OpenCode Plus container with a Conversations view (its header may read "OpenCode Plus: Convers…"), empty or with a hint.',
+      expect: 'The activity bar on the far left has the OpenCode Agent Plus icon (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour) selected; the side bar shows the OpenCode Agent Plus container with a Conversations view (its header may read "OpenCode Agent Plus: Convers…"), empty or with a hint.',
       part: '#workbench\\.parts\\.sidebar' });
     /* VS Code puts a progress badge over a container's icon while one of its views loads; the close-ups wait it out. */
     const barQuiet = () => until(() => page.evaluate(() => {
@@ -456,39 +456,39 @@ async function main() {
     }), 30000);
     await barQuiet();
     await shot('01a-activity-bar-icon-dark', { features: ['activity bar icon'],
-      expect: 'A close-up of the activity bar in the dark theme. Among the icons is the OpenCode Plus one, the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour, drawn in the same light grey as the other icons (brighter, as the selected one), about their size, sharp and centred in its slot, not cut off or blurred.',
+      expect: 'A close-up of the activity bar in the dark theme. Among the icons is the OpenCode Agent Plus one, the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour, drawn in the same light grey as the other icons (brighter, as the selected one), about their size, sharp and centred in its slot, not cut off or blurred.',
       part: '#workbench\\.parts\\.activitybar' });
 
     // 1b. The extension's own icon in the Extensions view.
-    await call('await vscode.commands.executeCommand("workbench.view.extensions"); await vscode.commands.executeCommand("workbench.extensions.search", "@installed OpenCode Plus"); return true;');
+    await call('await vscode.commands.executeCommand("workbench.view.extensions"); await vscode.commands.executeCommand("workbench.extensions.search", "@installed OpenCode Agent Plus"); return true;');
     const extIcon = await until(() => page.evaluate(() => {
       for (const row of document.querySelectorAll('.extensions-viewlet .monaco-list-row')) {
-        if (!/OpenCode Plus/.test(row.textContent)) continue;
+        if (!/OpenCode Agent Plus/.test(row.textContent)) continue;
         const img = row.querySelector('img.icon');
         return img && img.complete && img.naturalWidth > 0 ? { width: img.naturalWidth, height: img.naturalHeight } : null;
       }
       return null;
     }), 30000);
-    check(!!extIcon && extIcon.width === 256 && extIcon.height === 256, 'the Extensions view lists OpenCode Plus with its 256 by 256 icon', extIcon);
+    check(!!extIcon && extIcon.width === 256 && extIcon.height === 256, 'the Extensions view lists OpenCode Agent Plus with its 256 by 256 icon', extIcon);
     await page.mouse.move(800, 600);
     await shot('01b-extensions-view-icon', { features: ['extension icon'],
-      expect: 'The Extensions view in the side bar, searched for "@installed OpenCode Plus", lists OpenCode Plus with its icon at the left of the row: a rounded indigo square with a white document outline holding three list rows (the first with a green tick), and a white circle at its left edge holding the OpenCode mark (an upright rectangular frame whose lower inner half is fainter). The icon is sharp, not stretched or cut off, and its rounded corners show the side bar behind them.',
+      expect: 'The Extensions view in the side bar, searched for "@installed OpenCode Agent Plus", lists OpenCode Agent Plus with its icon at the left of the row: a rounded indigo square with a white document outline holding three list rows (the first with a green tick), and a white circle at its left edge holding the OpenCode mark (an upright rectangular frame whose lower inner half is fainter). The icon is sharp, not stretched or cut off, and its rounded corners show the side bar behind them.',
       part: '#workbench\\.parts\\.sidebar' });
-    await call('await vscode.commands.executeCommand("workbench.extensions.search", ""); await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
+    await call('await vscode.commands.executeCommand("workbench.extensions.search", ""); await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
 
     // 2. A new conversation opens a chat tab.
     const before = Date.now();
-    await page.click('.pane-header [aria-label="New Conversation"], .pane-header .codicon-add').catch(async () => { await call('return vscode.commands.executeCommand("opencodePlus.newConversation");'); });
+    await page.click('.pane-header [aria-label="New Conversation"], .pane-header .codicon-add').catch(async () => { await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");'); });
     const tab = await until(() => call(`const t = vscode.window.tabGroups.activeTabGroup.activeTab;
       return t && t.input instanceof vscode.TabInputCustom ? { viewType: t.input.viewType, uri: t.input.uri.toString(), label: t.label } : null;`), 30000);
-    check(tab && tab.viewType === 'opencodePlus.chat' && /^opencodeplus-session:\/ses_/.test(tab.uri), 'a new conversation opens a opencodePlus.chat tab of opencodeplus-session:/<id>', tab);
+    check(tab && tab.viewType === 'opencodeAgentPlus.chat' && /^opencodeagentplus-session:\/ses_/.test(tab.uri), 'a new conversation opens a opencodeAgentPlus.chat tab of opencodeagentplus-session:/<id>', tab);
     let chat = await frameWith(page, '#input', 30000);
     check(!!chat, 'the chat page loaded in the tab');
     await shot('02-new-conversation', { features: ['new conversation', 'chat editor tab'],
       expect: `An editor tab is open with the chat page: a header with a model selector showing ${real ? 'the Grok model' : 'Fake Small'}, an empty message area, and a message box at the bottom with a Send button.`,
       part: '#workbench\\.parts\\.editor' });
 
-    let sessionId = tab ? tab.uri.replace(/^opencodeplus-session:\//, '') : '';
+    let sessionId = tab ? tab.uri.replace(/^opencodeagentplus-session:\//, '') : '';
     const NEEDS_V2 = /The work plan needs OpenCode 2/;
     const toldV2 = async () => ((await ext('return api.test.told();')) || []).filter((t) => NEEDS_V2.test(t)).length;
     if (real && line === 1) {
@@ -580,19 +580,19 @@ async function main() {
           await page.locator('.monaco-menu .action-label', { hasText: 'Fork Conversation' }).first().click();
           forkId = await until(async () => {
             const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
-            return u && u !== `opencodeplus-session:/${sessionId}` ? u.replace(/^opencodeplus-session:\//, '') : null;
+            return u && u !== `opencodeagentplus-session:/${sessionId}` ? u.replace(/^opencodeagentplus-session:\//, '') : null;
           }, 20000);
         } else await page.keyboard.press('Escape');
         const forkPage = forkId && await frameWith(page, '#input', 20000);
         const forkShows = forkPage && await until(() => forkPage.evaluate(() => /subtracted instead of adding/.test(document.getElementById('log').textContent)), 15000);
         check(!!forkId && !!forkShows, "Fork Conversation in the chat tab's menu opens a copy of the conversation in a new tab", { items: forkItems, forkId, forkShows });
         if (forkId) {
-          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeplus-session:/" + arg);
+          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeagentplus-session:/" + arg);
             await vscode.window.tabGroups.close(tabs); return true;`, forkId).catch(() => {});
           await sleep(800);
           chat = await frameWith(page, '#input', 20000);
         }
-        await call('await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
+        await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
         const grouped = await until(() => page.evaluate(() => { const t = document.getElementById('workbench.parts.sidebar').textContent; return /Open in this window/.test(t) && /Other conversations/.test(t); }), 15000);
         check(grouped, 'the Conversations view has "Open in this window" with the open one and "Other conversations" with the fork');
         await shot('04x-groups', { features: ['open conversations first'],
@@ -607,7 +607,7 @@ async function main() {
         await chat.fill('#input', `Say: The copy is \u300CRenamed in the fake run (fork)\u300D, session ${forkId}; this one is ${sessionId}.`);
         await chat.press('#input', 'Enter');
         const linked = await until(async () => { const l = await convLinks(chat); return l.filter((x) => x.session === forkId).length >= 2 ? l : null; }, 20000);
-        check(!!linked && linked.every((x) => x.session === forkId && x.source === 'opencode-plus') && linked.some((x) => /OpenCode Plus conversation ses_/.test(x.tip)),
+        check(!!linked && linked.every((x) => x.session === forkId && x.source === 'opencode-plus') && linked.some((x) => /OpenCode Agent Plus conversation ses_/.test(x.tip)),
           "a reply naming another conversation by its title and by its id links both, not the page's own id, and a link's hover names the conversation", { linked: linked || await convLinks(chat) });
         await shot('04v-conversation-links', { features: ['links to other conversations'],
           expect: 'The last reply reads "The copy is 「Renamed in the fake run (fork)」, session ses_… ; this one is ses_…." where the fork\'s title inside the corner brackets and the first session id are links (link colour, dotted underline) and the second id, this conversation\'s own, is plain text. A column "YOUR MESSAGES" on the right lists the two messages.',
@@ -1108,10 +1108,10 @@ async function main() {
           'when the turn ends, the latest reply is written beside the plan: the message just sent and the reply to it, and not the refused one', { latest, shown: await lastReply() });
 
           // 3n. A reply in a tab not in front: an envelope after its title, gone once the tab comes to the front.
-          await call('return vscode.commands.executeCommand("opencodePlus.newConversation");');
+          await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
           const secondId = await until(async () => {
             const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
-            return u && u !== `opencodeplus-session:/${sessionId}` ? u.replace(/^opencodeplus-session:\//, '') : null;
+            return u && u !== `opencodeagentplus-session:/${sessionId}` ? u.replace(/^opencodeagentplus-session:\//, '') : null;
           }, 30000);
           const delivered = await ext('return api.test.source.deliverAnswer(arg, "Reply with only the word five.", { deliveryId: "window-test-2" });', sessionId);
           const unread = await until(async () => {
@@ -1131,10 +1131,10 @@ async function main() {
           check(all.some((c) => c.sessionId === sessionId) && all.some((c) => c.sessionId === secondId) && !!windowFile && windowFile.conversations.some((c) => c.sessionId === sessionId),
             "listAllConversations gives both conversations, and this window's file holds them for the other windows",
             { all: all.map((c) => c.sessionId), file: windowFile && windowFile.conversations.map((c) => c.sessionId) });
-          await call('return vscode.commands.executeCommand("opencodePlus.openConversation", arg);', sessionId);
+          await call('return vscode.commands.executeCommand("opencodeAgentPlus.openConversation", arg);', sessionId);
           const seen = await until(async () => { const t = await tabOf(sessionId); return t && t.active && t.label === NEW_TITLE ? t : null; }, 15000);
           check(!!seen, 'once that tab comes to the front, the envelope is gone', seen || await tabOf(sessionId));
-          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeplus-session:/" + arg);
+          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeagentplus-session:/" + arg);
             await vscode.window.tabGroups.close(tabs); return true;`, secondId).catch(() => {});
           await sleep(1000);
           chat = await frameWith(page, '#input', 30000);
@@ -1283,7 +1283,7 @@ async function main() {
           const mcpShown = await until(() => page.evaluate(() => { const e = document.getElementById('workbench.parts.panel'); return !!e && /No MCP servers configured/.test(e.textContent.replace(/\u00a0/g, ' ')); }), 20000);
           check(/No MCP servers configured/.test(mcp || '') && mcpShown, 'Show MCP Servers puts the output of opencode mcp list in an output channel', { mcp, mcpShown });
           await shot('22-mcp', { features: ['MCP servers'],
-            expect: 'The panel at the bottom shows the output channel "OpenCode Plus: MCP Servers": a line "$ opencode mcp list (…)", "No MCP servers configured" and a line on adding a server with opencode mcp add.',
+            expect: 'The panel at the bottom shows the output channel "OpenCode Agent Plus: MCP Servers": a line "$ opencode mcp list (…)", "No MCP servers configured" and a line on adding a server with opencode mcp add.',
             part: '#workbench\\.parts\\.panel' });
           await call('await vscode.commands.executeCommand("workbench.action.closePanel"); return true;').catch(() => {});
 
@@ -1296,19 +1296,19 @@ async function main() {
             await page.locator('.monaco-menu .action-label', { hasText: 'Fork Conversation' }).first().click();
             forked = await until(async () => {
               const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
-              return u && u !== 'opencodeplus-session:/' + sessionId ? u.replace(/^opencodeplus-session:\//, '') : null;
+              return u && u !== 'opencodeagentplus-session:/' + sessionId ? u.replace(/^opencodeagentplus-session:\//, '') : null;
             }, 30000);
           } else await page.keyboard.press('Escape');
           const forkPage = forked && await frameWith(page, '#input', 30000);
           const copied = forkPage && await until(() => forkPage.evaluate(() => /列出工作目录下的文件/.test(document.getElementById('log').textContent) && /red square/.test(document.getElementById('log').textContent)), 30000);
           check(!!forked && !!copied, "Fork Conversation in the chat tab's menu opens a copy of the whole conversation in a new tab", { items, forked, copied });
-          await call('await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
+          await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
           const groups = await until(() => page.evaluate(() => { const t = document.getElementById('workbench.parts.sidebar').textContent; return /Open in this window/.test(t) && /Other conversations/.test(t); }), 20000);
           check(groups, 'the Conversations view puts the conversations open here under "Open in this window" and the rest under "Other conversations"');
           await shot('23-fork-groups', { features: ['fork', 'open conversations first'],
             expect: 'The editor shows the fork in a new tab (the same conversation); the Conversations view has three groups: "Recently closed" with the untitled one closed earlier, "Open in this window" with the conversation and its fork, and "Other conversations" with the untitled one again; each group header shows a count.' });
           if (forked) {
-            await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeplus-session:/" + arg); await vscode.window.tabGroups.close(tabs); return true;', forked).catch(() => {});
+            await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeagentplus-session:/" + arg); await vscode.window.tabGroups.close(tabs); return true;', forked).catch(() => {});
             await sleep(1000);
           }
           chat = await frameWith(page, '#input', 30000);
@@ -1414,10 +1414,10 @@ async function main() {
       const panel = document.getElementById('workbench.parts.panel');
       return !!panel && [...panel.querySelectorAll('.monaco-list-row *')].some((e) => /conversation-icons/.test(e.style.backgroundImage || ''));
     }), 30000);
-    check(second === true && await logoShown(), "with a second source registered, Agent Plus's rows of this source show the OpenCode Plus logo", { second });
+    check(second === true && await logoShown(), "with a second source registered, Agent Plus's rows of this source show the OpenCode Agent Plus logo", { second });
     await page.mouse.move(800, 300);
     await shot('05b-agent-plus-logo-dark', { features: ['Agent Plus logo'],
-      expect: 'Agent Plus\'s Conversations view in the dark theme: this conversation\'s row starts with the OpenCode Plus logo, the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour, in light grey, readable against the dark panel, about the size of a tree icon, with no activity dot since the conversation has stopped.',
+      expect: 'Agent Plus\'s Conversations view in the dark theme: this conversation\'s row starts with the OpenCode Agent Plus logo, the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour, in light grey, readable against the dark panel, about the size of a tree icon, with no activity dot since the conversation has stopped.',
       part: '#workbench\\.parts\\.panel' });
     const setTheme = async (theme, cls) => {
       await call('await vscode.workspace.getConfiguration().update("workbench.colorTheme", arg, vscode.ConfigurationTarget.Global); return true;', theme);
@@ -1427,35 +1427,35 @@ async function main() {
     await logoShown();
     await page.mouse.move(800, 300);
     await shot('05c-agent-plus-logo-light', { features: ['Agent Plus logo'],
-      expect: 'The same Conversations view in the light theme: the row\'s OpenCode Plus logo is now dark grey on the light panel (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour), readable, with no dot.',
+      expect: 'The same Conversations view in the light theme: the row\'s OpenCode Agent Plus logo is now dark grey on the light panel (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour), readable, with no dot.',
       unchanged: 'The rows and their titles, apart from the colours of the theme.',
       part: '#workbench\\.parts\\.panel' });
     await barQuiet();
     await shot('05d-activity-bar-icon-light', { features: ['activity bar icon'],
-      expect: 'A close-up of the activity bar in the light theme. The OpenCode Plus icon (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour) is drawn in the same dark grey as the other icons, about their size, sharp and readable against the light bar.',
+      expect: 'A close-up of the activity bar in the light theme. The OpenCode Agent Plus icon (the OpenCode mark: an upright rectangular frame whose lower inner half is filled in a fainter tone of the same colour) is drawn in the same dark grey as the other icons, about their size, sharp and readable against the light bar.',
       part: '#workbench\\.parts\\.activitybar' });
     check(await setTheme('Default Dark Modern', 'vs-dark'), 'the window switches back to the dark theme');
     await call('if (global.__lookSecond) global.__lookSecond.dispose(); global.__lookSecond = null; return true;');
     await call('await vscode.commands.executeCommand("workbench.action.closePanel"); return true;').catch(() => {});
 
     // 5. The Conversations view lists it. (Clicking the icon of the container already shown would hide the side bar.)
-    await call('await vscode.commands.executeCommand("workbench.view.extension.opencodePlus"); return true;');
+    await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
     const inList = await until(async () => page.evaluate((t) => document.getElementById('workbench.parts.sidebar').textContent.includes(t), await titleNow()), 30000);
     check(inList, 'the Conversations view lists the conversation');
     await shot('06-sessions', { features: ['session list'],
       expect: real && line >= 2
-        ? 'The OpenCode Plus Conversations view has three groups: "Recently closed" with the fork (the same title, or one OpenCode gave it), whose tab was closed last; "Open in this window" with the conversation by its title; and "Other conversations" with the fork and an "Untitled conversation", the empty one the envelope step opened and closed (OpenCode keeps a conversation from the moment it is made); speech-bubble icons, and a relative time such as "now" that a long title may cut off.'
+        ? 'The OpenCode Agent Plus Conversations view has three groups: "Recently closed" with the fork (the same title, or one OpenCode gave it), whose tab was closed last; "Open in this window" with the conversation by its title; and "Other conversations" with the fork and an "Untitled conversation", the empty one the envelope step opened and closed (OpenCode keeps a conversation from the moment it is made); speech-bubble icons, and a relative time such as "now" that a long title may cut off.'
         : real
-          ? 'The OpenCode Plus Conversations view lists one row with the conversation title and a speech-bubble icon (a relative time such as "now" may be cut off by a long title).'
-          : 'The OpenCode Plus Conversations view has three groups: "Recently closed" with the fork ("Renamed in the fake run (fork)"), "Open in this window" with "Renamed in the fake run", and "Other conversations" with the fork again.',
+          ? 'The OpenCode Agent Plus Conversations view lists one row with the conversation title and a speech-bubble icon (a relative time such as "now" may be cut off by a long title).'
+          : 'The OpenCode Agent Plus Conversations view has three groups: "Recently closed" with the fork ("Renamed in the fake run (fork)"), "Open in this window" with "Renamed in the fake run", and "Other conversations" with the fork again.',
       part: '#workbench\\.parts\\.sidebar' });
 
     // 6. A reload brings the tab back with its history.
     const recentBefore = ((await ext('return api.test.recent();')) || []).map((e) => e.id);
     await w.reload();
     await until(() => ext('return !!(api && api.test);'), 60000);
-    const back = await until(() => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodePlus.chat").map((t) => t.input.uri.toString());`), 30000);
-    check(Array.isArray(back) && back.includes(`opencodeplus-session:/${sessionId}`), 'after a reload the chat tab is back for the same conversation', back);
+    const back = await until(() => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map((t) => t.input.uri.toString());`), 30000);
+    check(Array.isArray(back) && back.includes(`opencodeagentplus-session:/${sessionId}`), 'after a reload the chat tab is back for the same conversation', back);
     const again = await frameWith(page, '#input', 30000);
     const history = again && await until(() => again.evaluate((re) => new RegExp(re).test(document.getElementById('log').textContent), real ? '列出工作目录下的文件' : 'subtracted instead of adding'), 30000);
     check(!!history, 'the restored tab shows the conversation so far');

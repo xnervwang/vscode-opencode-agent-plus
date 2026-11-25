@@ -18,9 +18,9 @@ const fake = require('./fake-vscode');
 const ROOT = path.join(__dirname, '..', '..');
 const { vscode, control } = fake.create();
 fake.install(vscode);
-process.env.OPENCODE_PLUS_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'na-ext3-'));
-process.env.OPENCODE_PLUS_TEST_BACKEND = path.join(ROOT, 'test', 'vscode', 'fake-backend.js');
-process.env.OPENCODE_PLUS_TEST_CONTROL = '1';
+process.env.OPENCODE_AGENT_PLUS_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'na-ext3-'));
+process.env.OPENCODE_AGENT_PLUS_TEST_BACKEND = path.join(ROOT, 'test', 'vscode', 'fake-backend.js');
+process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL = '1';
 const extension = require('../../extension');
 
 const memo = new Map();
@@ -29,7 +29,7 @@ const context = {
   secrets: control.secrets,
   extensionPath: ROOT,
   extensionUri: vscode.Uri.file(ROOT),
-  globalStorageUri: vscode.Uri.file(path.join(process.env.OPENCODE_PLUS_HOME, 'storage')),
+  globalStorageUri: vscode.Uri.file(path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'storage')),
   globalState: { get: (k, d) => (memo.has(k) ? memo.get(k) : d), update: async (k, v) => { memo.set(k, v); } },
   extension: { packageJSON: { version: '0.0.1' } },
 };
@@ -39,18 +39,18 @@ test('through extension.js: the time zone, the info box, the chimes, Fork from t
   const api = extension.activate(context);
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
-  await control.state.handlers['opencodePlus.newConversation']();
-  const id = opened[0].slice('opencodeplus-session:/'.length);
-  const provider = control.state.editors['opencodePlus.chat'].provider;
+  await control.state.handlers['opencodeAgentPlus.newConversation']();
+  const id = opened[0].slice('opencodeagentplus-session:/'.length);
+  const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
   const panel = control.panel();
-  await provider.resolveCustomEditor(provider.openCustomDocument(vscode.Uri.from({ scheme: 'opencodeplus-session', path: `/${id}` })), panel);
+  await provider.resolveCustomEditor(provider.openCustomDocument(vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${id}` })), panel);
   assert.strictEqual(api.test.chats(), 1);
 
   /* The page's zone goes to the plans folder, where the plugin's time-zone hook reads it. */
   panel.fromPage({ type: 'ready', tz: 'America/Los_Angeles' });
   await settle();
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(api.test.zoneFile(), 'utf8')), { timeZone: 'America/Los_Angeles' });
-  assert.strictEqual(memo.get('opencodePlus.timeZone'), 'America/Los_Angeles');
+  assert.strictEqual(memo.get('opencodeAgentPlus.timeZone'), 'America/Los_Angeles');
   const caps = panel.webview.posted.filter((m) => m.type === 'caps').pop();
   assert.deepStrictEqual([caps.rewind, caps.info, caps.replyImages], [false, true, true], 'the fake backend cannot rewind');
 
@@ -67,30 +67,30 @@ test('through extension.js: the time zone, the info box, the chimes, Fork from t
   panel.fromPage({ type: 'setSound', on: false });
   await settle();
   assert.strictEqual(api.test.sound(), false);
-  assert.strictEqual(memo.get('opencodePlus.sound'), false);
+  assert.strictEqual(memo.get('opencodeAgentPlus.sound'), false);
   assert.strictEqual(panel.webview.posted.filter((m) => m.type === 'sound').pop().on, false);
 
   /* Fork from the list's row: a new conversation opens in a tab of its own, and from then on the view shows its groups. */
-  const tree = control.state.trees['opencodePlus.sessions'].opts.treeDataProvider;
+  const tree = control.state.trees['opencodeAgentPlus.sessions'].opts.treeDataProvider;
   const before = await tree.getChildren();
   assert.strictEqual(before.length, 1);
-  assert.strictEqual(await control.state.handlers['opencodePlus.forkConversation'](before[0]), true);
+  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.forkConversation'](before[0]), true);
   assert.strictEqual(opened.length, 2);
   assert.notStrictEqual(opened[1], opened[0]);
-  assert.strictEqual(control.state.context['opencodePlus.canFork'], true);
+  assert.strictEqual(control.state.context['opencodeAgentPlus.canFork'], true);
   const groups = await tree.getChildren();
   assert.deepStrictEqual(groups.map((g) => g.label), ['Open in this window', 'Other conversations']);
   assert.deepStrictEqual(groups[0].rows.map((r) => r.id), [id]);
-  assert.strictEqual(await control.state.handlers['opencodePlus.forkConversation'](groups[0]), false, 'a group is not a conversation');
+  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.forkConversation'](groups[0]), false, 'a group is not a conversation');
 
   /* The MCP list goes to an output channel of its own. */
-  const text = await control.state.handlers['opencodePlus.showMcpServers']();
+  const text = await control.state.handlers['opencodeAgentPlus.showMcpServers']();
   assert.match(text, /No MCP servers configured/);
-  assert.strictEqual(control.state.shownChannel, 'OpenCode Plus: MCP Servers');
+  assert.strictEqual(control.state.shownChannel, 'OpenCode Agent Plus: MCP Servers');
   assert.ok(control.state.log.some((l) => /opencode mcp add/.test(String(l))));
 
   const said = control.state.said.length;
-  assert.strictEqual(await control.state.handlers['opencodePlus.diffAllowOnce'](vscode.Uri.from({ scheme: 'opencodePlus-diff', path: '/p9/after/a.js' })), false);
+  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.diffAllowOnce'](vscode.Uri.from({ scheme: 'opencodeAgentPlus-diff', path: '/p9/after/a.js' })), false);
   assert.match(control.state.said[said].message, /already been answered/);
   extension.deactivate();
 });

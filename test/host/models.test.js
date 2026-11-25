@@ -20,9 +20,9 @@ function setup({ models = [GROK, KIMI], def } = {}) {
 
 test('the setting names the model, by provider/id or by bare id', async () => {
   const s = setup();
-  s.control.state.config['opencodePlus.model'] = 'amazon-bedrock/us.xai.grok-4.7';
+  s.control.state.config['opencodeAgentPlus.model'] = 'amazon-bedrock/us.xai.grok-4.7';
   assert.strictEqual(await s.m.forNew(), GROK);
-  s.control.state.config['opencodePlus.model'] = 'moonshotai.kimi-k2.5';
+  s.control.state.config['opencodeAgentPlus.model'] = 'moonshotai.kimi-k2.5';
   assert.strictEqual(await s.m.forNew(), KIMI);
   assert.strictEqual(s.m.cached('amazon-bedrock/moonshotai.kimi-k2.5'), KIMI);
   assert.strictEqual(fullId({ id: 'x' }), 'x');
@@ -40,14 +40,14 @@ test("without the setting: the backend's default, then the user's pick, which is
   assert.strictEqual(await s.m.forNew(), null, 'dismissed');
   s.control.state.pickAnswer = (list) => list[1];
   assert.strictEqual(await s.m.forNew(), KIMI);
-  assert.deepStrictEqual(s.control.state.configWrites.at(-1), ['opencodePlus.model', 'amazon-bedrock/moonshotai.kimi-k2.5', s.vscode.ConfigurationTarget.Global]);
+  assert.deepStrictEqual(s.control.state.configWrites.at(-1), ['opencodeAgentPlus.model', 'amazon-bedrock/moonshotai.kimi-k2.5', s.vscode.ConfigurationTarget.Global]);
   assert.deepStrictEqual(s.control.state.picks[0].list.map((i) => i.description), ['amazon-bedrock/us.xai.grok-4.7', 'amazon-bedrock/moonshotai.kimi-k2.5']);
   assert.match(s.control.state.picks[0].list[0].detail, /256K context/);
 });
 
 test('a named model that is not connected asks for another; with no models the message says how to connect a provider', async () => {
   const s = setup();
-  s.control.state.config['opencodePlus.model'] = 'gone/model';
+  s.control.state.config['opencodeAgentPlus.model'] = 'gone/model';
   s.control.state.pickAnswer = (list) => list[0];
   assert.strictEqual(await s.m.forNew(), GROK);
   assert.match(s.control.state.picks[0].opts.placeHolder, /gone\/model is not among/);

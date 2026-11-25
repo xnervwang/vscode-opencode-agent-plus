@@ -76,18 +76,18 @@ test('a request answered in the page, or a turn that ends, takes its diff off th
 test('the title bar buttons are in package.json for those diffs only, and Fork shows where OpenCode can fork', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   const title = pkg.contributes.menus['editor/title'];
-  const buttons = title.filter((m) => /^opencodePlus\.diff/.test(m.command));
-  assert.deepEqual(buttons.map((b) => b.command), ['opencodePlus.diffAllowOnce', 'opencodePlus.diffAllowInProject', 'opencodePlus.diffDeny']);
+  const buttons = title.filter((m) => /^opencodeAgentPlus\.diff/.test(m.command));
+  assert.deepEqual(buttons.map((b) => b.command), ['opencodeAgentPlus.diffAllowOnce', 'opencodeAgentPlus.diffAllowInProject', 'opencodeAgentPlus.diffDeny']);
   for (const b of buttons) {
-    assert.equal(b.when, 'resourceScheme =~ /^opencodeplus-diff$/i && resourcePath in opencodePlus.openDiffs');
+    assert.equal(b.when, 'resourceScheme =~ /^opencodeagentplus-diff$/i && resourcePath in opencodeAgentPlus.openDiffs');
     assert.match(b.group, /^navigation@/);
   }
   const titles = Object.fromEntries(pkg.contributes.commands.map((c) => [c.command, c.title]));
   assert.deepEqual(buttons.map((b) => titles[b.command]), ['Allow Once', 'Allow in This Project', 'Deny']);
-  const fork = Object.entries(pkg.contributes.menus).flatMap(([where, list]) => list.filter((m) => m.command === 'opencodePlus.forkConversation').map((m) => [where, m.when]));
+  const fork = Object.entries(pkg.contributes.menus).flatMap(([where, list]) => list.filter((m) => m.command === 'opencodeAgentPlus.forkConversation').map((m) => [where, m.when]));
   assert.deepEqual(fork.map((f) => f[0]).sort(), ['commandPalette', 'editor/title', 'editor/title/context', 'view/item/context', 'webview/context']);
-  for (const [, when] of fork) assert.match(when, /opencodePlus\.canFork/);
-  assert.ok(pkg.contributes.commands.some((c) => c.command === 'opencodePlus.showMcpServers' && c.title === 'Show MCP Servers'));
+  for (const [, when] of fork) assert.match(when, /opencodeAgentPlus\.canFork/);
+  assert.ok(pkg.contributes.commands.some((c) => c.command === 'opencodeAgentPlus.showMcpServers' && c.title === 'Show MCP Servers'));
 });
 
 test('rewinding: offered when a rewinder is given, it passes on the message and its position, and is refused while a turn runs', async () => {

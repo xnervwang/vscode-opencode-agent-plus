@@ -88,7 +88,7 @@ test('a title that already carries an envelope or a crown shows without them, an
 });
 
 test('tab icons: the logo in each theme colour, a green or red dot for working and waiting, written once', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-plus-icons-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-icons-'));
   try {
     const files = tabIcons(ROOT, dir);
     assert.deepStrictEqual(Object.keys(files), ['stopped', 'working', 'waiting']);

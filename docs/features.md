@@ -8,13 +8,13 @@ Each conversation opens in a VS Code editor tab that shows the conversation's ti
 
 ### Permission Prompts
 
-By default, OpenCode asks you before it edits files, runs commands, fetches web pages, or reads or writes files outside the project. OpenCode Plus keeps a separate folder outside the project for each conversation. Under the default rules, OpenCode can write to [the conversation's own folder](#links-and-images-in-replies) without asking.
+By default, OpenCode asks you before it edits files, runs commands, fetches web pages, or reads or writes files outside the project. OpenCode Agent Plus keeps a separate folder outside the project for each conversation. Under the default rules, OpenCode can write to [the conversation's own folder](#links-and-images-in-replies) without asking.
 
 When OpenCode asks for permission, a permission card offers Allow once, Allow in this project and Deny. If you choose Allow in this project, OpenCode saves the pattern the request names, such as a command or file path. It then allows matching requests without asking in any conversation in this project, even after OpenCode restarts. If the request names no pattern, your choice allows only that request.
 
 If a subagent made the request, the card identifies the subagent. For a file edit, choose View diff to review the proposed changes in VS Code's diff view. While the request is open, you can use the same three permission buttons in the diff's title bar.
 
-The `opencodePlus.opencode.askPermissions` setting applies these defaults in place of the `edit`, `bash` (`shell` on OpenCode 2), `webfetch` and `external_directory` rules in your OpenCode configuration. Turn it off to keep your own rules. Let any running turn finish before changing the setting because the change [restarts OpenCode](settings.md#settings-that-restart-opencode).
+The `opencodeAgentPlus.opencode.askPermissions` setting applies these defaults in place of the `edit`, `bash` (`shell` on OpenCode 2), `webfetch` and `external_directory` rules in your OpenCode configuration. Turn it off to keep your own rules. Let any running turn finish before changing the setting because the change [restarts OpenCode](settings.md#settings-that-restart-opencode).
 
 ### Questions from the Model
 
@@ -66,13 +66,13 @@ Chimes play on the computer showing the chat page. You hear two rising notes whe
 
 ## Links and Images in Replies
 
-When a reply mentions one of your other conversations, its session ID or its title in corner brackets (「title」) becomes a link. A title without corner brackets becomes a link if it is at least 10 characters wide, counting each Chinese, Japanese or Korean character as two. With Agent Plus, replies can also link to your Claude Code and Codex conversations. OpenCode Plus skips code blocks and existing links. To turn off conversation links, disable `opencodePlus.conversationLinks`.
+When a reply mentions one of your other conversations, its session ID or its title in corner brackets (「title」) becomes a link. A title without corner brackets becomes a link if it is at least 10 characters wide, counting each Chinese, Japanese or Korean character as two. With Agent Plus, replies can also link to your Claude Code and Codex conversations. OpenCode Agent Plus skips code blocks and existing links. To turn off conversation links, disable `opencodeAgentPlus.conversationLinks`.
 
 Hover over a conversation link to see which agent it belongs to, part of its session ID and when it was last active. Click to open the conversation in this window. If another window already has it open, Agent Plus brings that window forward. Links to Claude Code or Codex conversations open in the corresponding extension.
 
-Replies can display PNG, JPEG, GIF, WebP and SVG images up to 8 MB in any token mode. An image appears in the reply when the model gives its absolute path, a `file://` address or a `data:` address. Relative paths and web addresses stay as links, and OpenCode Plus does not fetch images from the web.
+Replies can display PNG, JPEG, GIF, WebP and SVG images up to 8 MB in any token mode. An image appears in the reply when the model gives its absolute path, a `file://` address or a `data:` address. Relative paths and web addresses stay as links, and OpenCode Agent Plus does not fetch images from the web.
 
-On OpenCode 2, OpenCode Plus tells the model that replies can display images unless you choose Interface features for [Token Mode](#token-mode). When it sends that note, it also asks the model to save each image in the conversation's own folder and include its absolute path in the reply. The folder is `~/.opencode-plus/scratch/<session id>/` on the machine where OpenCode runs. Deleting the conversation also removes this folder; see [The Conversations List](#the-conversations-list).
+On OpenCode 2, OpenCode Agent Plus tells the model that replies can display images unless you choose Interface features for [Token Mode](#token-mode). When it sends that note, it also asks the model to save each image in the conversation's own folder and include its absolute path in the reply. The folder is `~/.opencode-agent-plus/scratch/<session id>/` on the machine where OpenCode runs. Deleting the conversation also removes this folder; see [The Conversations List](#the-conversations-list).
 
 ## Rewinding and Forking
 
@@ -88,33 +88,33 @@ On OpenCode 2, you can rewind an idle conversation to just before one of your me
 
 Forking in OpenCode 1 and 2 creates a copy of the whole conversation and opens it in a new tab; you cannot fork from a specific message.
 
-Choose Fork Conversation from the context menu in the Conversations view, on the chat tab or on the chat page. You can also use the editor title's `...` menu or run `OpenCode Plus: Fork Conversation` from the Command Palette with the chat tab active.
+Choose Fork Conversation from the context menu in the Conversations view, on the chat tab or on the chat page. You can also use the editor title's `...` menu or run `OpenCode Agent Plus: Fork Conversation` from the Command Palette with the chat tab active.
 
 ## Subagents and Background Work
 
-A row above the input box counts running subagents and any shell commands still running in the background. For example, you might see "Background: 1 subagent, 1 command running". Expand the row to see each item's kind, command or title, process ID and start time. Click an item to scroll to its card. OpenCode Plus checks whether a background command is still running only when a turn starts or ends or when you open the row.
+A row above the input box counts running subagents and any shell commands still running in the background. For example, you might see "Background: 1 subagent, 1 command running". Expand the row to see each item's kind, command or title, process ID and start time. Click an item to scroll to its card. OpenCode Agent Plus checks whether a background command is still running only when a turn starts or ends or when you open the row.
 
-In OpenCode 2, look below the tool card that started a subagent. The Subagent box there shows its title, status and latest output. Expand "Its steps (n)", where n counts all of the subagent's steps, to see the last 60 entries, including tool calls and text. Subagent conversations stay out of the Conversations view, `OpenCode Plus: Find Conversation…` and Agent Plus. On OpenCode 1, OpenCode Plus does not distinguish subagent conversations from other conversations.
+In OpenCode 2, look below the tool card that started a subagent. The Subagent box there shows its title, status and latest output. Expand "Its steps (n)", where n counts all of the subagent's steps, to see the last 60 entries, including tool calls and text. Subagent conversations stay out of the Conversations view, `OpenCode Agent Plus: Find Conversation…` and Agent Plus. On OpenCode 1, OpenCode Agent Plus does not distinguish subagent conversations from other conversations.
 
 A subagent or background command finishing can trigger a new turn. The page shows a separate turn with the line "OpenCode started this turn on its own, for a background subagent or command." During the turn, the conversation appears as working. If you aren't viewing it when the reply arrives, the reply counts as unread. The turn's cost is still unknown when it ends; the next time OpenCode reports usage, that cost is added to the conversation cost you see in the line under each reply.
 
 ## The Conversations List
 
-Click the OpenCode Plus icon in the activity bar to open the Conversations view. It lists OpenCode conversations in any of the workspace folders open in this window. With no folder open, you see conversations from all folders.
+Click the OpenCode Agent Plus icon in the activity bar to open the Conversations view. It lists OpenCode conversations in any of the workspace folders open in this window. With no folder open, you see conversations from all folders.
 
 The view groups conversations under Recently closed, Open in this window, and Other conversations. Recently closed lists up to 10 conversations whose tabs you closed in this workspace. You see a flat list when Recently closed is empty and the conversations all fall into the same remaining group.
 
 Each row shows the conversation's state and how long ago it was active. Hover over a row for the same details plus the folder, session ID and exact time of the last activity, such as "5m ago (11/24/2026, 8:08:35 AM UTC)". The timestamp includes the time zone name and uses the zone of the machine running OpenCode, which can differ from yours over Remote-SSH.
 
-The view's title bar has `OpenCode Plus: New Conversation` and `OpenCode Plus: Find Conversation…`. Use Find Conversation to search all OpenCode conversations across folders, most recent first. You can enter part of a title, session ID or folder.
+The view's title bar has `OpenCode Agent Plus: New Conversation` and `OpenCode Agent Plus: Find Conversation…`. Use Find Conversation to search all OpenCode conversations across folders, most recent first. You can enter part of a title, session ID or folder.
 
-Right-click a row for `OpenCode Plus: Rename Conversation` (OpenCode 2), `OpenCode Plus: Fork Conversation` (see [Forking](#forking)) or `OpenCode Plus: Delete Conversation`. Delete Conversation closes the conversation's tabs, removes it from OpenCode, and deletes its work plan and its own folder. If another window has the conversation open, OpenCode Plus refuses to delete it.
+Right-click a row for `OpenCode Agent Plus: Rename Conversation` (OpenCode 2), `OpenCode Agent Plus: Fork Conversation` (see [Forking](#forking)) or `OpenCode Agent Plus: Delete Conversation`. Delete Conversation closes the conversation's tabs, removes it from OpenCode, and deletes its work plan and its own folder. If another window has the conversation open, OpenCode Agent Plus refuses to delete it.
 
 ## Chat Tabs and Windows
 
-Each chat tab shows the OpenCode Plus icon from the activity bar. The icon has a green dot while the conversation is working, a red dot while it waits for your permission or an answer, and no dot when it is idle. Background work has no dot of its own. If a background tab has an unread reply, an envelope appears after its title and disappears when you view the tab.
+Each chat tab shows the OpenCode Agent Plus icon from the activity bar. The icon has a green dot while the conversation is working, a red dot while it waits for your permission or an answer, and no dot when it is idle. Background work has no dot of its own. If a background tab has an unread reply, an envelope appears after its title and disappears when you view the tab.
 
-On OpenCode 2, you can choose `OpenCode Plus: Rename Conversation` from the tab's context menu or the `...` menu in the editor title bar. For `OpenCode Plus: Fork Conversation`, see [Forking](#forking).
+On OpenCode 2, you can choose `OpenCode Agent Plus: Rename Conversation` from the tab's context menu or the `...` menu in the editor title bar. For `OpenCode Agent Plus: Fork Conversation`, see [Forking](#forking).
 
 When you close a conversation's last tab, any running turn stops. Tabs you leave open return when you reload the window.
 
@@ -122,19 +122,19 @@ A conversation can be open in only one VS Code window at a time. If you open it 
 
 ## Work Plan and Plan Bar
 
-If OpenCode Plus finds [Python](setup.md#python-for-the-work-plan), it installs a work plan plugin for the OpenCode 2 process it starts. The plugin lets the model track what still needs to be done in your conversation. In Agent Plus, you can read the plan in the Work plan view and see which of your OpenCode Plus conversations are working, waiting or idle in the Conversations view.
+If OpenCode Agent Plus finds [Python](setup.md#python-for-the-work-plan), it installs a work plan plugin for the OpenCode 2 process it starts. The plugin lets the model track what still needs to be done in your conversation. In Agent Plus, you can read the plan in the Work plan view and see which of your OpenCode Agent Plus conversations are working, waiting or idle in the Conversations view.
 
-The plan bar above the input box (`opencodePlus.planBar`) shows the plan's open rows, the current row and a red count of questions waiting for your answer. Click the bar to open the Work plan view, or click the red count to go to those questions in Agent Plus's Answer view.
+The plan bar above the input box (`opencodeAgentPlus.planBar`) shows the plan's open rows, the current row and a red count of questions waiting for your answer. Click the bar to open the Work plan view, or click the red count to go to those questions in Agent Plus's Answer view.
 
 When the [Token Mode](#token-mode) enables work plans, each message includes the open rows, and the model gets tools to update the plan (`add_row`, `set_row`, `set_status`, `set_summary`). Reminders to update the plan arrive with the next message. During compaction, the work plan plugin asks the model to include the plan's location and open rows in the summary. If any rows remain open after compaction, the next message instructs the model to read the plan before continuing.
 
-OpenCode Plus stores plans in `~/.opencode-plus/plans/` on the machine where OpenCode runs. Deleting a conversation also removes its plan (see [The Conversations List](#the-conversations-list)).
+OpenCode Agent Plus stores plans in `~/.opencode-agent-plus/plans/` on the machine where OpenCode runs. Deleting a conversation also removes its plan (see [The Conversations List](#the-conversations-list)).
 
 On OpenCode 1, Agent Plus shows "Work plans need OpenCode 2" above the plan. Click the message to open the OpenCode path setting.
 
 ## Conversation Brief
 
-On OpenCode 2, the model keeps a brief in each conversation's work plan with a short summary and the current status. This happens when you set [Token Mode](#token-mode) to All features (the default), or choose Custom and turn on `opencodePlus.conversationBrief`. The brief appears when you click the conversation in Agent Plus's Conversations view.
+On OpenCode 2, the model keeps a brief in each conversation's work plan with a short summary and the current status. This happens when you set [Token Mode](#token-mode) to All features (the default), or choose Custom and turn on `opencodeAgentPlus.conversationBrief`. The brief appears when you click the conversation in Agent Plus's Conversations view.
 
 ## Token Mode
 
@@ -144,9 +144,9 @@ Choose Interface features to leave the model's context unchanged. In all modes, 
 
 | Addition | Interface features | Essential features | All features (default) | Custom |
 |---|---|---|---|---|
-| Work plan | off | on | on | `opencodePlus.workPlan` |
-| Time-zone note | off | on | on | `opencodePlus.tellOpenCodeYourTimeZone` |
+| Work plan | off | on | on | `opencodeAgentPlus.workPlan` |
+| Time-zone note | off | on | on | `opencodeAgentPlus.tellOpenCodeYourTimeZone` |
 | Note that the page shows images | off | on | on | on |
-| Conversation brief | off | off | on | `opencodePlus.conversationBrief` |
+| Conversation brief | off | off | on | `opencodeAgentPlus.conversationBrief` |
 
 When you switch away from Custom, the new mode uses its own on/off values and your Custom settings stay saved for when you switch back.

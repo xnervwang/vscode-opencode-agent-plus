@@ -17,15 +17,15 @@ fake.install(vscode);
 vscode.workspace.isTrusted = false;
 control.state.strictCommands = true;
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'na-trust-'));
-process.env.OPENCODE_PLUS_HOME = HOME;
-process.env.OPENCODE_PLUS_TEST_BACKEND = BACKEND;
-process.env.OPENCODE_PLUS_TEST_CONTROL = '1';
+process.env.OPENCODE_AGENT_PLUS_HOME = HOME;
+process.env.OPENCODE_AGENT_PLUS_TEST_BACKEND = BACKEND;
+process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL = '1';
 const extension = require('../../extension');
 const gate = require('../../src/host/trust-gate');
 
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const COMMANDS = PKG.contributes.commands.map((c) => c.command);
-const KEYS = ['opencodePlus.opencode.path', 'opencodePlus.opencode.askPermissions', 'opencodePlus.bedrock.profile', 'opencodePlus.bedrock.region'];
+const KEYS = ['opencodeAgentPlus.opencode.path', 'opencodeAgentPlus.opencode.askPermissions', 'opencodeAgentPlus.bedrock.profile', 'opencodeAgentPlus.bedrock.region'];
 const SESSION = 'ses_00000000000000restricted';
 const loaded = (part) => Object.keys(require.cache).some((k) => k.includes(part));
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
@@ -45,7 +45,7 @@ const context = {
   workspaceState: memento(new Map()),
   extension: { packageJSON: { version: '0.0.1' } },
 };
-const chatUri = (id) => vscode.Uri.from({ scheme: 'opencodeplus-session', path: `/${id}` });
+const chatUri = (id) => vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${id}` });
 
 let api;
 let panel;
@@ -60,13 +60,13 @@ test('in Restricted Mode nothing starts: no OpenCode, no conversation, no file, 
   }
   assert.deepStrictEqual(fs.readdirSync(HOME), [], 'nothing is written: no plugin, no plans, no locks, no window state');
   assert.deepStrictEqual(sources, [], 'nothing is registered with Agent Plus');
-  assert.strictEqual(control.state.context['opencodePlus.agentPlus'], undefined);
+  assert.strictEqual(control.state.context['opencodeAgentPlus.agentPlus'], undefined);
   assert.ok(control.state.log.some((l) => /Restricted Mode: nothing starts until this workspace is trusted/.test(l)));
 
   /* Every command is there, and says what to do instead of doing it. */
   for (const id of COMMANDS) assert.ok(control.state.handlers[id], `${id} answers`);
   control.state.answers.push(['does nothing in Restricted Mode', 'Manage Workspace Trust']);
-  for (const id of ['opencodePlus.newConversation', 'opencodePlus.testConnection', 'opencodePlus.findConversation', 'opencodePlus.chooseModel', 'opencodePlus.showMcpServers']) {
+  for (const id of ['opencodeAgentPlus.newConversation', 'opencodeAgentPlus.testConnection', 'opencodeAgentPlus.findConversation', 'opencodeAgentPlus.chooseModel', 'opencodeAgentPlus.showMcpServers']) {
     const before = control.state.said.length;
     assert.strictEqual(await control.state.handlers[id](), false, id);
     const said = control.state.said.slice(before);
@@ -74,7 +74,7 @@ test('in Restricted Mode nothing starts: no OpenCode, no conversation, no file, 
     assert.strictEqual(said[0].message, gate.TEXT);
     assert.deepStrictEqual(said[0].buttons, ['Manage Workspace Trust']);
   }
-  assert.strictEqual(await control.state.handlers['opencodePlus.openConversation'](SESSION), false);
+  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.openConversation'](SESSION), false);
   await settle();
   assert.ok(control.state.commands.some((c) => c[0] === 'workbench.trust.manage'), 'the button opens Manage Workspace Trust');
   assert.ok(!control.state.commands.some((c) => c[0] === 'vscode.openWith'), 'no chat tab is opened');
@@ -82,13 +82,13 @@ test('in Restricted Mode nothing starts: no OpenCode, no conversation, no file, 
   for (const part of ['fake-backend.js', 'src/opencode/index.js']) assert.strictEqual(loaded(part), false, `${part} is still not loaded`);
 
   /* The Conversations view is an empty list, so VS Code shows package.json's Restricted Mode text in it. */
-  assert.strictEqual(control.state.trees['opencodePlus.sessions'], undefined, 'the real view is not made');
-  const stub = control.state.treeProviders['opencodePlus.sessions'];
+  assert.strictEqual(control.state.trees['opencodeAgentPlus.sessions'], undefined, 'the real view is not made');
+  const stub = control.state.treeProviders['opencodeAgentPlus.sessions'];
   assert.ok(stub && !stub.disposed);
   assert.deepStrictEqual(await stub.provider.getChildren(), []);
 
   /* A chat tab VS Code restores shows the Restricted Mode page with the button, and nothing else. */
-  const editor = control.state.editors['opencodePlus.chat'];
+  const editor = control.state.editors['opencodeAgentPlus.chat'];
   assert.ok(editor, 'the chat editor is registered');
   assert.strictEqual(editor.opts.supportsMultipleEditorsPerDocument, false);
   panel = control.panel();
@@ -121,8 +121,8 @@ test('once trust is granted it starts without a reload, and the chat tab already
   assert.ok(api.test.registered, "start() ran and gave the tests' handle its members");
   for (const id of COMMANDS) assert.ok(control.state.unregistered.includes(id), `the stand-in for ${id} is gone`);
   for (const id of COMMANDS) assert.strictEqual(control.state.live.get(id), 1, `${id} is registered once`);
-  assert.ok(control.state.treeProviders['opencodePlus.sessions'].disposed, 'the empty list is gone');
-  assert.ok(control.state.trees['opencodePlus.sessions'], 'the real Conversations view is made');
+  assert.ok(control.state.treeProviders['opencodeAgentPlus.sessions'].disposed, 'the empty list is gone');
+  assert.ok(control.state.trees['opencodeAgentPlus.sessions'], 'the real Conversations view is made');
   assert.ok(fs.existsSync(path.join(HOME, 'opencode-plugin', 'agent-work-plan', 'index.js')), 'the work plan plugin is copied now');
   await api.test.registered;
   assert.strictEqual(sources.length, 1, 'registered with Agent Plus now');
@@ -142,9 +142,9 @@ test('once trust is granted it starts without a reload, and the chat tab already
   /* The commands are the real ones: a new conversation is made and opened. */
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
-  await control.state.handlers['opencodePlus.newConversation']();
+  await control.state.handlers['opencodeAgentPlus.newConversation']();
   assert.strictEqual(opened.length, 1);
-  assert.match(opened[0], /^opencodeplus-session:\/ses_[0-9a-f]+$/);
+  assert.match(opened[0], /^opencodeagentplus-session:\/ses_[0-9a-f]+$/);
   assert.ok(loaded('fake-backend.js'), 'the backend starts on first use');
 
   /* A second grant (VS Code fires it once, but) changes nothing. */
@@ -156,7 +156,7 @@ test('package.json: the four settings that pick what runs are read from user or 
   const props = PKG.contributes.configuration.properties;
   for (const k of KEYS) assert.strictEqual(props[k].scope, 'machine', k);
   for (const [k, v] of Object.entries(props)) if (!KEYS.includes(k)) assert.notStrictEqual(v.scope, 'machine', `${k} keeps its scope`);
-  assert.strictEqual(props['opencodePlus.model'].scope, undefined, 'the model may still be set per workspace');
+  assert.strictEqual(props['opencodeAgentPlus.model'].scope, undefined, 'the model may still be set per workspace');
   const ut = PKG.capabilities.untrustedWorkspaces;
   assert.strictEqual(ut.supported, 'limited');
   assert.deepStrictEqual(ut.restrictedConfigurations, KEYS);
@@ -165,7 +165,7 @@ test('package.json: the four settings that pick what runs are read from user or 
 
 test('package.json: the view says what to do in Restricted Mode, and its buttons and the commands are hidden there', () => {
   const c = PKG.contributes;
-  const welcome = c.viewsWelcome.filter((w) => w.view === 'opencodePlus.sessions');
+  const welcome = c.viewsWelcome.filter((w) => w.view === 'opencodeAgentPlus.sessions');
   const restricted = welcome.find((w) => w.when === '!isWorkspaceTrusted');
   assert.ok(restricted);
   assert.strictEqual(restricted.contents, `${gate.TEXT}\n[Manage Workspace Trust](command:workbench.trust.manage)`);
