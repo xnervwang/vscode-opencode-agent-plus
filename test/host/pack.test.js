@@ -38,6 +38,29 @@ test('build/pack-vsix.js packs the extension, its run-time packages and nothing 
   assert.match(manifest, /ExtensionDependencies" Value="xnervwang\.agent-plus"/);
 });
 
+test('rebaseLinks points relative links and images at the base URLs and leaves the others alone', () => {
+  const { rebaseLinks } = require('../../build/pack-vsix');
+  const md = '[a](docs/setup.md#x) [b](#here) [c](https://example.com/) ![i](images/i.png) [d](./LICENSE) [e](mailto:x@example.com)';
+  assert.strictEqual(rebaseLinks(md, 'https://h/o/r/blob/s', 'https://h/o/r/raw/s/'),
+    '[a](https://h/o/r/blob/s/docs/setup.md#x) [b](#here) [c](https://example.com/) ![i](https://h/o/r/raw/s/images/i.png) '
+    + '[d](https://h/o/r/blob/s/LICENSE) [e](mailto:x@example.com)');
+  assert.strictEqual(rebaseLinks(md, 'https://h/c/', ''), md.replace('(docs/', '(https://h/c/docs/').replace('(images/', '(https://h/c/images/')
+    .replace('(./LICENSE', '(https://h/c/LICENSE'), 'images fall back to the content base');
+  assert.strictEqual(rebaseLinks(md, '', ''), md);
+});
+
+test('build/pack-vsix.js with --base-content-url leaves no relative link in the packed README', { skip: !fs.existsSync(path.join(ROOT, 'node_modules')) && 'no node_modules' }, () => {
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'na-pack-')), 'x.vsix');
+  const base = 'https://github.com/o/r/blob/0123abc/';
+  const r = cp.spawnSync(process.execPath, [path.join(ROOT, 'build', 'pack-vsix.js'), ROOT, '--out', out, '--base-content-url', base], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const readme = cp.spawnSync('unzip', ['-p', out, 'extension/README.md'], { encoding: 'utf8' }).stdout;
+  const targets = [...readme.matchAll(/!?\[[^\]]*\]\(([^)\s]+)/g)].map((m) => m[1]);
+  assert.ok(targets.some((t) => t.startsWith(`${base}docs/`)), 'links into docs/ point at the repository');
+  assert.deepStrictEqual(targets.filter((t) => !t.startsWith('#') && !/^[a-z][a-z0-9+.-]*:/i.test(t)), []);
+  assert.strictEqual(fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').includes(base), false, 'the README in the repository is unchanged');
+});
+
 test('ThirdPartyNotices.txt names every image with the OpenCode mark and carries its MIT notice', () => {
   const text = fs.readFileSync(path.join(ROOT, 'ThirdPartyNotices.txt'), 'utf8');
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));

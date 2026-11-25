@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * node pack-vsix.js <repository> [--out <file>]
+ * node pack-vsix.js <repository> [--out <file>] [--base-content-url <url>] [--base-images-url <url>]
  *
  * A .vsix is a zip with the extension under extension/ and two descriptor files (make-manifest.js); VS Code needs
  * nothing else for a local install. The extension's files are the fixed list in OWN; node_modules contributes only the
@@ -97,12 +97,32 @@ function stage(root, dir) {
   return files;
 }
 
-module.exports = { runtimePackages, findPackage, stage, OWN, PAGE_ONLY };
+/*
+ * A marketplace page shows README.md without the files beside it, so a relative link there opens nothing. The packed
+ * copy points such links at the repository: an image at imagesBase, any other link at contentBase. Links with a scheme
+ * and links within the page stay as they are.
+ */
+function rebaseLinks(text, contentBase, imagesBase) {
+  const dir = (url) => (url && !url.endsWith('/') ? `${url}/` : url);
+  const [content, images] = [dir(contentBase), dir(imagesBase || contentBase)];
+  return text.replace(/(!?)(\[[^\]]*\]\()([^)\s]+)/g, (all, bang, head, target) => {
+    const base = bang ? images : content;
+    if (!base || target.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(target)) return all;
+    return `${bang}${head}${base}${target.replace(/^\.?\//, '')}`;
+  });
+}
+
+module.exports = { runtimePackages, findPackage, stage, rebaseLinks, OWN, PAGE_ONLY };
 
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const outAt = args.indexOf('--out');
-  const outArg = outAt >= 0 ? args.splice(outAt, 2)[1] : '';
+  const option = (name) => {
+    const at = args.indexOf(name);
+    return at >= 0 ? args.splice(at, 2)[1] || '' : '';
+  };
+  const outArg = option('--out');
+  const contentBase = option('--base-content-url');
+  const imagesBase = option('--base-images-url');
   /* The root with its links resolved: package folders are compared with it after their own links are resolved. */
   const root = fs.realpathSync(path.resolve(args[0] || path.join(__dirname, '..')));
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -111,6 +131,10 @@ if (require.main === module) {
   let status = 1;
   try {
     const files = stage(root, dir);
+    if (contentBase || imagesBase) {
+      const readme = path.join(dir, 'extension', 'README.md');
+      fs.writeFileSync(readme, rebaseLinks(fs.readFileSync(readme, 'utf8'), contentBase, imagesBase));
+    }
     manifest.write(dir);
     fs.rmSync(out, { force: true });
     const zip = cp.spawnSync('zip', ['-q', '-r', '-X', out, '[Content_Types].xml', 'extension.vsixmanifest', 'extension'], { cwd: dir, stdio: 'inherit' });
