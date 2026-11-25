@@ -717,7 +717,10 @@
   function placeImages(target) {
     for (const img of [...target.querySelectorAll('img')]) {
       const raw = img.getAttribute('src') || '';
-      const kind = C.imageKind(raw, caps.replyImages);
+      let src = raw;
+      try { src = decodeURI(raw); } catch (_) { /* as written */ }
+      /* Decoded first: markdown-it writes a Windows path's backslashes as %5C. */
+      const kind = C.imageKind(src, caps.replyImages);
       if (kind === 'data') continue;
       if (kind === 'link') {
         const a = el('a', 'image-link', img.alt || raw);
@@ -726,8 +729,6 @@
         img.replaceWith(a);
         continue;
       }
-      let src = raw;
-      try { src = decodeURI(raw); } catch (_) { /* as written */ }
       img.removeAttribute('src');
       img.classList.add('reply-image');
       img.dataset.src = src;

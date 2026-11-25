@@ -12,11 +12,16 @@
  * <OPENCODE_AGENT_PLUS_HOME>/fake-backend.json, so a reloaded window finds them again.
  *
  * With OPENCODE_AGENT_PLUS_FAKE_DEMO=1 each session also offers what a real OpenCode 2 does: a mode and an effort to
- * pick, three slash commands, and images, workspace files and selections in a message.
+ * pick, three slash commands, images, workspace files and selections in a message, and rewinding to before a message.
+ * A message that carries images, files or selections is answered with what it carried (an image by the colour of its
+ * first pixel, a file by its text). The prompts test/vscode/run.js sends a real model are answered the way a model
+ * answers them (PROMPTS below), which needs no model: a turn may write files in the folder, start a subagent, move a
+ * command to the background, ask a question, or start a turn of its own when its background work ends.
  */
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { createFakeConversation, demoTurns, streamText } = require(path.join(__dirname, '..', 'ui', 'fake-conversation.js'));
 
 const MODELS = [
@@ -94,6 +99,171 @@ const DEMOS = {
   ],
 };
 
+/* How long a command moved to the background runs before it ends and the agent goes on by itself. */
+const BACKGROUND_MS = 8000;
+
+/* The colour of a PNG's first pixel by name, for 8-bit RGB or RGBA; '' for anything else. Every PNG filter stores the
+   first pixel of the first row as it is. */
+function pngColour(buf) {
+  try {
+    if (!Buffer.isBuffer(buf) || buf.length < 33 || buf.readUInt32BE(0) !== 0x89504e47) return '';
+    let at = 8, depth = 0, type = -1;
+    const idat = [];
+    while (at + 8 <= buf.length) {
+      const len = buf.readUInt32BE(at);
+      const kind = buf.toString('latin1', at + 4, at + 8);
+      const data = buf.subarray(at + 8, at + 8 + len);
+      if (kind === 'IHDR') { depth = data[8]; type = data[9]; }
+      if (kind === 'IDAT') idat.push(data);
+      if (kind === 'IEND') break;
+      at += 12 + len;
+    }
+    if (depth !== 8 || (type !== 2 && type !== 6) || !idat.length) return '';
+    const raw = zlib.inflateSync(Buffer.concat(idat));
+    const [r, g, b] = [raw[1], raw[2], raw[3]];
+    const hi = Math.max(r, g, b), lo = Math.min(r, g, b);
+    if (hi < 60) return 'black';
+    if (lo > 200) return 'white';
+    if (hi - lo < 30) return 'grey';
+    return hi === r ? 'red' : hi === g ? 'green' : 'blue';
+  } catch (_) { return ''; }
+}
+
+/* What a message carried, as the real backend shows it on the message (src/opencode/index.js fileBlocks), and the lines
+   of a reply that says what each was. */
+function received(extra) {
+  const attachments = [];
+  const lines = [];
+  for (const img of (extra && Array.isArray(extra.images) ? extra.images : [])) {
+    const name = String(img.name || 'image');
+    attachments.push({ kind: 'image', name });
+    const colour = pngColour(Buffer.from(String(img.data || ''), 'base64'));
+    lines.push(`${name} (${img.mediaType}) is ${colour ? `a ${colour} image` : 'an image'}.`);
+  }
+  for (const f of (extra && Array.isArray(extra.files) ? extra.files : [])) {
+    const name = String(f.name || path.basename(String(f.path)));
+    if (typeof f.text === 'string') {
+      const from = Number(f.startLine) > 0 ? Number(f.startLine) : 0;
+      const to = Number(f.endLine) > from ? Number(f.endLine) : from;
+      const label = from ? `${name}:${from}${to > from ? `-${to}` : ''}` : name;
+      attachments.push({ kind: 'selection', name: label, path: f.path });
+      lines.push(`The selection ${label} reads: ${f.text.trim()}`);
+    } else {
+      attachments.push({ kind: 'file', name, path: f.path });
+      let text = '';
+      try { text = fs.readFileSync(f.path, 'utf8').trim().slice(0, 500); } catch (e) { text = `(it could not be read: ${e.code || e.message})`; }
+      lines.push(`${name} reads: ${text}`);
+    }
+  }
+  return { attachments, lines };
+}
+
+const allowed = (decision) => typeof decision === 'string' && decision !== 'deny';
+/* A session's history as OpenCode's record of it has it: the requests a turn made, and their answers, are not in it. */
+const ASKED = new Set(['permission', 'permissionSettled', 'question', 'questionSettled']);
+const replayed = (events) => events.filter((e) => !ASKED.has(e.type));
+const capital = (w) => (w ? w[0].toUpperCase() + w.slice(1) : w);
+const readText = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch (_) { return null; } };
+
+/*
+ * The prompts test/vscode/run.js sends, with the turn a model would answer each with. `t` gives a session's folder
+ * (cwd), its picked options (option(id)), a fresh id for a tool call or request (id(kind)), a write that rewinding can
+ * undo (write(file, text)), a subagent session (child(title)) and a turn of the agent's own after `ms` (later(ms, steps)).
+ */
+const PROMPTS = [
+  [/^列出工作目录下的文件$/, (m, t) => {
+    const names = fs.readdirSync(t.cwd).filter((n) => !n.startsWith('.')).sort();
+    const call = t.id('ls'), ask = t.id('ls');
+    return [
+      { type: 'toolCall', id: call, name: 'bash', input: { command: 'ls', description: 'List the files in the working folder' } },
+      { type: 'permission', requestId: ask, request: { kind: 'execute', tool: 'bash', summary: 'ls', command: 'ls' } },
+      (got) => (allowed(got[ask])
+        ? [{ type: 'toolResult', id: call, content: names.join('\n'), isError: false }, ...streamText(`工作目录下有：${names.join('、')}。`, 12)]
+        : [{ type: 'toolResult', id: call, content: 'The user denied the command.', isError: true }, ...streamText('没有列出文件。', 12)]),
+    ];
+  }],
+  [/^Use the write tool to create a file named (\S+) containing the word (\w+)\./, (m, t) => {
+    if (t.option('mode') === 'plan') return streamText(`No: in plan mode I may not write files, so ${m[1]} was not created.`, 12);
+    return t.writes([{ name: m[1], text: m[2] }], `Yes: ${m[1]} now holds ${m[2]}.`);
+  }],
+  [/^Use the write tool to create a file named (\S+?),? containing exactly (\S+?),? then use the edit tool to change (\S+) so that it contains exactly: (.+?) Then reply with only the word (\w+)\.$/,
+    (m, t) => t.writes([{ name: m[1], text: m[2] }, { name: m[3], text: m[4], edit: true }], m[5])],
+  [/^Use the subagent tool to start one subagent/, (m, t) => {
+    const title = 'Sleep and say finished';
+    const task = t.id('task'), step = t.id('sub'), ask = t.id('sub');
+    const child = t.child(title);
+    const sub = { childId: child, title };
+    return [
+      { type: 'toolCall', id: task, name: 'task', input: { description: title, prompt: 'Use the shell tool to run the command sleep 8, then reply finished.', subagent_type: 'general' } },
+      { type: 'subagent', childId: child, title, status: 'running', toolId: task, event: { type: 'toolCall', id: step, name: 'bash', input: { command: 'sleep 8', description: 'Wait eight seconds' } } },
+      { type: 'toolResult', id: task, content: `Started the subagent ${child} in the background.`, isError: false },
+      ...streamText('Started one subagent; it runs in the background.', 12),
+      () => t.later(800, [
+        { wait: 1500 },
+        { type: 'permission', requestId: ask, request: { kind: 'execute', tool: 'bash', summary: 'sleep 8', command: 'sleep 8' }, subagent: sub },
+        { wait: 1500 },
+        { type: 'subagent', childId: child, status: 'running', event: { type: 'toolResult', id: step, content: '', isError: false } },
+        { type: 'subagent', childId: child, status: 'running', event: { type: 'text', delta: 'finished' } },
+        { type: 'subagent', childId: child, status: 'done' },
+        ...streamText('The subagent has finished.', 12),
+      ]),
+    ];
+  }],
+  [/^Use the question tool to ask me whether I prefer (\w+) or (\w+)/, (m, t) => {
+    const [a, b] = [m[1], m[2]];
+    const call = t.id('question'), ask = t.id('question');
+    const q = `Do you prefer ${a} or ${b}?`;
+    return [
+      { type: 'toolCall', id: call, name: 'question', input: { questions: [{ question: q, header: 'Colour' }] } },
+      { type: 'question', requestId: ask, toolId: call, message: q, schema: { type: 'object', required: ['colour'], properties: {
+        colour: { type: 'string', title: 'Colour', description: q, oneOf: [{ const: a, title: capital(a) }, { const: b, title: capital(b) }] },
+        colour_custom: { type: 'string', description: 'Other' } } } },
+      (got) => {
+        const answer = got[ask];
+        const c = answer && answer.action === 'accept' && answer.content ? answer.content : null;
+        const pick = c ? String(c.colour_custom || (c.colour === a ? capital(a) : c.colour === b ? capital(b) : c.colour || '')) : '';
+        return pick
+          ? [{ type: 'toolResult', id: call, content: `Colour: ${pick}`, isError: false }, ...streamText(pick, 12)]
+          : [{ type: 'toolResult', id: call, content: 'The question was dismissed.', isError: true }, ...streamText('You did not pick a colour.', 12)];
+      },
+    ];
+  }],
+  [/^Run the command `([^`]+)` with the shell tool, then reply with only the word (\w+)\.$/, (m, t) => {
+    const call = t.id('bash'), ask = t.id('bash');
+    return [
+      { type: 'toolCall', id: call, name: 'bash', input: { command: m[1], description: 'Run the command' } },
+      { type: 'permission', requestId: ask, request: { kind: 'execute', tool: 'bash', summary: m[1], command: m[1] } },
+      (got) => (allowed(got[ask])
+        ? [{ type: 'toolResult', id: call, content: m[1].replace(/^echo\s+/, ''), isError: false }, ...streamText(m[2], 12)]
+        : [{ type: 'toolResult', id: call, content: 'The user denied the command.', isError: true }, ...streamText('The command was not run.', 12)]),
+    ];
+  }],
+  [/^Use the shell tool to start the command "([^"]+)" in the background/, (m, t) => {
+    const call = t.id('bg');
+    const pid = 4000 + Number(call.split('-').pop());
+    const bg = { type: 'background', id: call, kind: 'shell', title: m[1], pid };
+    return [
+      { type: 'toolCall', id: call, name: 'bash', input: { command: m[1], description: 'Start the command in the background', run_in_background: true } },
+      { type: 'toolResult', id: call, content: `Started in the background (process ${pid}).`, isError: false },
+      { ...bg, status: 'running' },
+      ...streamText('started', 12),
+      () => t.later(BACKGROUND_MS, [{ ...bg, status: 'done' }, ...streamText(`The background command has ended: ${m[1].split(/;\s*echo\s+/).pop()}`, 12)]),
+    ];
+  }],
+  [/^Use the shell tool to run the command "([^"]+)" in the foreground/, (m, t) => [
+    { type: 'toolCall', id: t.id('bash'), name: 'bash', input: { command: m[1], description: 'Run the command and wait for it' } },
+    { wait: 600000 },
+    ...streamText('slept', 12),
+  ]],
+  [/^Reply with exactly (?:the following line and nothing else, and do not use any tool|this line and nothing else): ([\s\S]+)$/, (m) => streamText(m[1], 24)],
+  [/^Reply with only the word (\w+)\.$/, (m) => streamText(m[1], 12)],
+  [/^\/compact$/, () => [
+    { type: 'compaction', status: 'running' },
+    { wait: 300 },
+    { type: 'compaction', status: 'completed', summary: '## Objective\n\nCheck the chat page against the window test.\n\n## Progress\n\n- The files were listed, a subagent ran, and a turn was rewound.\n' },
+  ]],
+];
+
 /* Windows refuses a read or a rename for a moment while another process, such as a virus scanner, has the file open. */
 const BUSY = new Set(['EBUSY', 'EPERM', 'EACCES']);
 function retried(fn) {
@@ -113,15 +283,80 @@ function createOpenCode() {
   const changed = (sessionId) => { for (const fn of [...listeners]) { try { fn({ sessionId }); } catch (_) { /* the others still run */ } } };
   const live = new Map();
 
+  /* A file written by a turn of `sessionId` whose user message is `msg`, kept so that rewinding to before it can put
+     the file back. */
+  function writeFile(sessionId, msg, file, text) {
+    const db = read();
+    const s = db.sessions[sessionId];
+    if (s) { (s.writes = s.writes || []).push({ msg, file, before: readText(file) }); write(db); }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  }
+
+  /* A subagent's session, which the list leaves out as OpenCode's does. */
+  function addChild(parent, title) {
+    const db = read();
+    const id = `ses_${crypto.randomBytes(8).toString('hex')}`;
+    db.sessions[id] = { id, title, cwd: parent.cwd, parent: parent.id, lastActiveAt: Date.now(), lastUserAt: 0, lastReplyAt: 0, model: parent.model, events: [] };
+    write(db);
+    changed(id);
+    return id;
+  }
+
+  const putBack = (file, text) => { if (text === null) fs.rmSync(file, { force: true }); else fs.writeFileSync(file, text); };
+
   function handle(saved) {
-    const c = createFakeConversation({ turns: saved.events.length ? [] : demoTurns(), stepMs: 60 });
+    const picked = { mode: 'build', effort: 'default' };
+    const messageId = () => `msg_${crypto.randomBytes(8).toString('hex')}`;
+    const c = createFakeConversation({ turns: saved.events.length ? [] : demoTurns(), stepMs: 60, messageId,
+      turnStart: () => (picked.effort !== 'default' ? { effort: picked.effort } : {}) });
     let model = saved.model || MODELS[0].id;
     let asking = 0;
+    /* The user message of the turn playing: what a file that turn writes is put back to before. */
+    let current = '';
+    let seq = 0;
+    const t = {
+      cwd: saved.cwd,
+      option: (id) => picked[id] || '',
+      id: (kind) => `ci-${kind}-${++seq}`,
+      write: (file, text) => writeFile(saved.id, current, file, text),
+      child: (title) => addChild(saved, title),
+      later: (ms, steps) => { setTimeout(() => { if (!c.disposed) c.start(steps); }, ms); },
+      /* Writes (or, with `edit`, edits) each file in the folder once its permission request is allowed, then says `reply`. */
+      writes(list, reply) {
+        const steps = [];
+        for (const w of list) {
+          const file = path.join(saved.cwd, w.name);
+          const before = readText(file);
+          const tool = w.edit ? 'edit' : 'write';
+          const call = t.id(tool), ask = t.id(tool);
+          steps.push(
+            { type: 'toolCall', id: call, name: tool, input: w.edit ? { filePath: file, oldString: before || '', newString: w.text } : { filePath: file, content: w.text } },
+            { type: 'permission', requestId: ask, request: { kind: 'edit', tool, summary: `${w.edit ? 'Edit' : 'Write'} ${w.name}`, path: w.name, diff: { path: w.name, before: before || '', after: w.text } } },
+            (got) => {
+              if (!allowed(got[ask])) return { type: 'toolResult', id: call, content: 'The user denied the change.', isError: true };
+              t.write(file, w.text);
+              return { type: 'toolResult', id: call, content: `${w.edit ? 'Edited' : 'Wrote'} ${w.name}.`, isError: false };
+            });
+        }
+        return [...steps, ...streamText(reply, 12)];
+      },
+    };
+    /* The turn a message gets: what it carried, or the answer PROMPTS has for it; null for the script's next turn. */
+    const answer = (text, extra) => {
+      const got = received(extra);
+      if (got.attachments.length) return [{ type: 'userMessage', text, attachments: got.attachments, messageId: messageId() }, ...streamText(got.lines.join('\n'), 16)];
+      for (const [re, make] of PROMPTS) {
+        const m = re.exec(text.trim());
+        if (m) return make(m, t);
+      }
+      return null;
+    };
     Object.assign(c, {
       id: saved.id, cwd: saved.cwd, title: saved.title, status: 'idle', waitingTool: '', lastUserAt: saved.lastUserAt, lastReplyAt: saved.lastReplyAt,
       respondPermission: (rid, d) => c.respond(rid, d),
-      history: async () => saved.events,
-      reload: async () => (read().sessions[saved.id] || saved).events,
+      history: async () => replayed(saved.events),
+      reload: async () => replayed((read().sessions[saved.id] || saved).events),
       checkBackground: () => {},
       getModel: () => model,
       setModel: (m) => { model = typeof m === 'string' ? m : m.id; const db = read(); if (db.sessions[saved.id]) { db.sessions[saved.id].model = model; write(db); } },
@@ -132,18 +367,21 @@ function createOpenCode() {
       if (!s) return;
       s.events.push(ev);
       s.lastActiveAt = Date.now();
-      if (ev.type === 'turnStart') c.status = 'working';
-      if (ev.type === 'permission') { asking++; c.status = 'waiting'; c.waitingTool = ev.request.tool; }
-      if (ev.type === 'question') { asking++; c.status = 'waiting'; c.waitingTool = 'question'; }
-      if ((ev.type === 'permissionSettled' || ev.type === 'questionSettled') && --asking <= 0) { c.status = 'working'; c.waitingTool = ''; }
-      if (ev.type === 'userMessage') { s.lastUserAt = c.lastUserAt = ev.at || Date.now(); if (!s.title) s.title = c.title = String(ev.text).slice(0, 60); }
+      if (ev.type === 'turnStart') { c.status = 'working'; s.agent = picked.mode; s.variant = picked.effort === 'default' ? '' : picked.effort; }
+      if (ev.type === 'permission') { asking++; c.status = 'waiting'; c.waitingTool = ev.request.tool; c.waitingKind = 'permission'; }
+      if (ev.type === 'question') { asking++; c.status = 'waiting'; c.waitingTool = 'question'; c.waitingKind = 'question'; }
+      if ((ev.type === 'permissionSettled' || ev.type === 'questionSettled') && --asking <= 0) { c.status = 'working'; c.waitingTool = ''; c.waitingKind = ''; }
+      if (ev.type === 'userMessage') {
+        s.lastUserAt = c.lastUserAt = ev.at || Date.now();
+        if (!s.title) s.title = c.title = String(ev.text).slice(0, 60);
+        if (ev.messageId) current = ev.messageId;
+      }
       if (ev.type === 'turnEnd') { s.lastReplyAt = c.lastReplyAt = ev.at || Date.now(); c.status = 'idle'; }
       if (ev.type === 'title') s.title = ev.title;
       write(db);
       if (['turnStart', 'turnEnd', 'permission', 'permissionSettled', 'userMessage'].includes(ev.type)) changed(saved.id);
     });
     if (DEMO) {
-      const picked = { mode: 'build', effort: 'default' };
       Object.assign(c, {
         commands: () => COMMANDS,
         attachments: () => ({ images: true, files: true, selection: true }),
@@ -157,11 +395,15 @@ function createOpenCode() {
       const demo = /^Demo: (\w+)/.exec(String(text));
       if (demo && DEMOS[demo[1]]) c.script(DEMOS[demo[1]]());
       const m = /^Say: ([\s\S]+)$/.exec(String(text));
-      if (!m) return send.call(c, text, extra);
+      if (!m) {
+        const steps = !demo && answer(String(text), extra);
+        if (steps) c.script(steps);
+        return send.call(c, text, extra);
+      }
       const turnId = `say-${++said}`;
       setTimeout(() => {
         c.emit({ type: 'turnStart', turnId });
-        c.emit({ type: 'userMessage', text: String(text) });
+        c.emit({ type: 'userMessage', text: String(text), messageId: messageId() });
         for (let i = 0; i < m[1].length; i += 24) c.emit({ type: 'text', delta: m[1].slice(i, i + 24) });
         c.emit({ type: 'turnEnd', turnId, reason: 'endTurn' });
       }, 60);
@@ -176,14 +418,21 @@ function createOpenCode() {
   const row = (s) => {
     const c = live.get(s.id);
     const out = { id: s.id, title: s.title, cwd: s.cwd, lastActiveAt: s.lastActiveAt, status: c ? c.status : 'idle', lastUserAt: s.lastUserAt, lastReplyAt: s.lastReplyAt, open: !!c };
-    if (c && c.status === 'waiting') out.waitingFor = { kind: 'permission', tool: c.waitingTool };
+    if (c && c.status === 'waiting') out.waitingFor = c.waitingKind === 'question' ? { kind: 'question', tool: '' } : { kind: 'permission', tool: c.waitingTool };
     return out;
+  };
+  const session = (id) => {
+    const db = read();
+    const s = db.sessions[id];
+    if (!s) throw new Error(`no session ${id}`);
+    return { db, s };
   };
 
   return {
     /* Reports an OpenCode 2, so the extension does not say the work plan needs a newer one. */
     detect: () => ({ path: '/fake/opencode', version: { major: 2, minor: 0, patch: 0, text: '2.0.0-fake' }, line: 2 }),
-    listSessions: async () => Object.values(read().sessions).map(row).sort((a, b) => b.lastActiveAt - a.lastActiveAt),
+    listSessions: async () => Object.values(read().sessions).filter((s) => !s.parent).map(row).sort((a, b) => b.lastActiveAt - a.lastActiveAt),
+    isChild: (id) => !!(read().sessions[id] || {}).parent,
     onDidChangeSessions(fn) { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },
     async createSession(cwd, { model } = {}) {
       const db = read();
@@ -222,7 +471,53 @@ function createOpenCode() {
       changed(s.id);
       return { id: s.id, cwd: s.cwd };
     },
-    canRewind: () => false,
+    canRewind: () => DEMO,
+    /* Puts back each file the turns from `messageId` on wrote, as it was before the first of them, and keeps what they
+       left, for rewindClear. */
+    async rewindStage(id, messageId) {
+      const { db, s } = session(id);
+      const order = s.events.filter((e) => e.type === 'userMessage' && e.messageId).map((e) => e.messageId);
+      const at = order.indexOf(messageId);
+      if (at < 0) throw new Error(`no message ${messageId} in ${id}`);
+      const later = new Set(order.slice(at));
+      const first = new Map();
+      for (const w of s.writes || []) if (later.has(w.msg) && !first.has(w.file)) first.set(w.file, w.before);
+      const left = {};
+      const files = [];
+      for (const [file, before] of first) {
+        const now = readText(file);
+        left[file] = now;
+        putBack(file, before);
+        files.push({ file: path.relative(s.cwd, file), status: before === null ? 'deleted' : now === null ? 'added' : 'modified', additions: 0, deletions: 0 });
+      }
+      s.staged = { messageId, left };
+      write(db);
+      return { messageId, tracked: true, files };
+    },
+    async rewindClear(id) {
+      const { db, s } = session(id);
+      if (!s.staged) return;
+      for (const [file, text] of Object.entries(s.staged.left)) putBack(file, text);
+      delete s.staged;
+      write(db);
+    },
+    /* Drops the message rewindStage named, with its turn and everything after it. */
+    async rewindCommit(id) {
+      const { db, s } = session(id);
+      if (!s.staged) throw new Error(`nothing staged for ${id}`);
+      const at = s.events.findIndex((e) => e.type === 'userMessage' && e.messageId === s.staged.messageId);
+      let from = at;
+      for (let i = at; i >= 0; i--) if (s.events[i].type === 'turnStart') { from = i; break; }
+      const gone = new Set(s.events.slice(from).filter((e) => e.type === 'userMessage').map((e) => e.messageId));
+      s.events = s.events.slice(0, from);
+      s.writes = (s.writes || []).filter((w) => !gone.has(w.msg));
+      delete s.staged;
+      write(db);
+      changed(id);
+    },
+    async userMessages(id) {
+      return session(id).s.events.filter((e) => e.type === 'userMessage' && e.messageId).map((e) => ({ id: e.messageId, text: String(e.text || ''), at: e.at || 0 }));
+    },
     info: () => ({ path: '/fake/opencode', version: { major: 2, minor: 0, patch: 0, text: '2.0.0-fake' }, pid: process.pid, agent: { name: 'fake' } }),
     dataPaths: async () => ({ db: file }),
     mcpList: async () => 'No MCP servers configured (the fake backend has none)',
@@ -235,4 +530,4 @@ function createOpenCode() {
   };
 }
 
-module.exports = { createOpenCode, MODELS };
+module.exports = { createOpenCode, MODELS, PROMPTS, pngColour, received };

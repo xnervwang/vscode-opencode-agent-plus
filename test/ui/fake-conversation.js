@@ -12,9 +12,13 @@
  *   { wait: ms }             pauses
  *   a 'permission' event     pauses until respond(requestId, decision), then emits permissionSettled
  *   a 'question' event       pauses until respondQuestion(requestId, answer), then emits questionSettled
- * turnStart, userMessage and turnEnd ('endTurn') are added around each turn unless the turn emits them itself.
+ *   a function               called with what each request of this conversation was answered, by request id (a
+ *                            permission's decision, a question's answer, null when the turn was stopped); the step or
+ *                            array of steps it returns, if any, plays in its place
+ * turnStart, userMessage and turnEnd ('endTurn') are added around each turn unless the turn emits them itself. The
+ * turnStart added gets the fields opts.turnStart() returns at that moment, the userMessage an id from opts.messageId().
  * When the script runs out, a send plays `fallback` (by default one short text reply); script(steps) puts a turn of
- * its own first.
+ * its own first. start(steps) plays a turn the agent begins by itself, with no user message, once nothing else plays.
  */
 
 const TIMED = new Set(['turnStart', 'userMessage', 'toolCall', 'toolResult', 'turnEnd']);
@@ -58,8 +62,12 @@ function createFakeConversation(opts = {}) {
   const fallback = opts.fallback || [...streamText('OK.')];
   const stepMs = opts.stepMs || 0;
   const now = opts.now || Date.now;
+  const startFields = typeof opts.turnStart === 'function' ? opts.turnStart : () => ({});
+  const messageId = typeof opts.messageId === 'function' ? opts.messageId : null;
   const listeners = new Set();
   const waiting = new Map();
+  /* requestId -> the decision or answer it got */
+  const answered = {};
   const queue = [];
   let playing = null;
   let turnNo = 0;
@@ -87,12 +95,12 @@ function createFakeConversation(opts = {}) {
 
     send(text) {
       fake.sent.push(text);
-      if (playing) {
-        queue.push(text);
-        return Promise.resolve();
-      }
-      playing = play(text);
-      return Promise.resolve();
+      return enqueue({ text });
+    },
+
+    /* A turn the agent begins by itself, as OpenCode does when a background task ends. */
+    start(steps) {
+      return enqueue({ steps: Array.isArray(steps) ? steps : [], own: true });
     },
 
     abort() {
@@ -148,15 +156,28 @@ function createFakeConversation(opts = {}) {
 
   const pause = (ms) => new Promise((r) => (ms > 0 ? setTimeout(r, ms) : setImmediate(r)));
 
-  async function play(text) {
-    const steps = turns.length ? turns.shift() : fallback;
+  function enqueue(job) {
+    if (playing) queue.push(job);
+    else playing = play(job);
+    return Promise.resolve();
+  }
+
+  async function play(job) {
+    const steps = job.steps || (turns.length ? turns.shift() : fallback);
     const turnId = `turn-${++turnNo}`;
     aborted = false;
-    if (!steps.some((s) => s.type === 'turnStart')) fake.emit({ type: 'turnStart', turnId });
-    if (!steps.some((s) => s.type === 'userMessage')) fake.emit({ type: 'userMessage', text });
+    if (!steps.some((s) => s && s.type === 'turnStart')) fake.emit({ type: 'turnStart', turnId, ...startFields(), ...(job.own ? { unsolicited: true } : {}) });
+    if (!job.own && !steps.some((s) => s && s.type === 'userMessage')) fake.emit({ type: 'userMessage', text: job.text, ...(messageId ? { messageId: messageId() } : {}) });
     let ended = false;
-    for (const step of steps) {
-      if (aborted || fake.disposed) break;
+    const todo = steps.slice();
+    while (todo.length && !aborted && !fake.disposed) {
+      const step = todo.shift();
+      if (!step) continue;
+      if (typeof step === 'function') {
+        const more = step(answered);
+        if (more) todo.unshift(...(Array.isArray(more) ? more : [more]));
+        continue;
+      }
       await pause(stepMs);
       if (aborted || fake.disposed) break;
       if (typeof step.wait === 'number') {
@@ -169,13 +190,15 @@ function createFakeConversation(opts = {}) {
         const decided = new Promise((resolve) => waiting.set(step.requestId, resolve));
         fake.emit(step);
         const decision = await decided;
+        answered[step.requestId] = decision;
         if (decision) fake.emit({ type: 'permissionSettled', requestId: step.requestId, decision });
         continue;
       }
       if (step.type === 'question') {
-        const answered = new Promise((resolve) => waiting.set(step.requestId, resolve));
+        const asked = new Promise((resolve) => waiting.set(step.requestId, resolve));
         fake.emit(step);
-        const answer = await answered;
+        const answer = await asked;
+        answered[step.requestId] = answer;
         if (answer) fake.emit({ type: 'questionSettled', requestId: step.requestId, action: answer.action === 'accept' ? 'accept' : 'cancel' });
         continue;
       }

@@ -73,3 +73,50 @@ test('a scripted question waits for respondQuestion, and abort ends a long wait 
   assert.ok(Date.now() - started < 2000, 'the wait ended with the abort');
   assert.equal(c.events[c.events.length - 1].reason, 'aborted');
 });
+
+test('a function step sees what each request was answered and plays the steps it returns', async () => {
+  const c = createFakeConversation({ turns: [] });
+  c.script([
+    { type: 'permission', requestId: 'p-1', request: { kind: 'execute', tool: 'bash', summary: 'ls' } },
+    { type: 'question', requestId: 'q-1', message: 'Which?', schema: { type: 'object', properties: { a: { type: 'string' } } } },
+    (got) => [{ type: 'text', delta: `${got['p-1']} ${got['q-1'].content.a}` }],
+    () => undefined,
+    null,
+  ]);
+  await c.send('go');
+  await new Promise((r) => setTimeout(r, 20));
+  c.respond('p-1', 'allowOnce');
+  await new Promise((r) => setTimeout(r, 20));
+  c.respondQuestion('q-1', { action: 'accept', content: { a: 'blue' } });
+  await c.idle();
+  assert.equal(c.events.filter((e) => e.type === 'text').map((e) => e.delta).join(''), 'allowOnce blue');
+  assert.equal(c.events[c.events.length - 1].reason, 'endTurn');
+});
+
+test('start plays a turn of the agent\'s own after the one playing, with no user message', async () => {
+  const c = createFakeConversation({ turns: [[{ wait: 30 }, ...streamText('first')]] });
+  await c.send('hi');
+  await c.start([...streamText('on my own')]);
+  await c.idle();
+  const starts = c.events.filter((e) => e.type === 'turnStart');
+  assert.equal(starts.length, 2);
+  assert.equal(starts[0].unsolicited, undefined);
+  assert.equal(starts[1].unsolicited, true);
+  assert.equal(c.events.filter((e) => e.type === 'userMessage').length, 1, 'only the sent message');
+  assert.deepEqual(c.sent, ['hi']);
+  const last = c.events.slice(c.events.lastIndexOf(starts[1]));
+  assert.deepEqual(last.map((e) => e.type), ['turnStart', 'text', 'turnEnd']);
+});
+
+test('turnStart takes the fields turnStart() gives at that moment, and the user message an id', async () => {
+  let effort = 'low';
+  let n = 0;
+  const c = createFakeConversation({ turns: [], turnStart: () => ({ effort }), messageId: () => `msg_${++n}` });
+  await c.send('one');
+  await c.idle();
+  effort = 'high';
+  await c.send('two');
+  await c.idle();
+  assert.deepEqual(c.events.filter((e) => e.type === 'turnStart').map((e) => e.effort), ['low', 'high']);
+  assert.deepEqual(c.events.filter((e) => e.type === 'userMessage').map((e) => [e.text, e.messageId]), [['one', 'msg_1'], ['two', 'msg_2']]);
+});
