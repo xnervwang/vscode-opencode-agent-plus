@@ -5,6 +5,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+const path = require('path');
 const fake = require('./fake-vscode');
 
 const { vscode, control } = fake.create();
@@ -49,7 +50,7 @@ test('identity members', () => {
   assert.deepStrictEqual(source.features, ['shows', 'openHere']);
   assert.strictEqual(source.logo.light.fsPath, '/ext/l.svg');
   assert.strictEqual(source.planDir(), '/home/u/.opencode-agent-plus/plans');
-  assert.strictEqual(source.planPath(A), `/home/u/.opencode-agent-plus/plans/${A}.json`);
+  assert.strictEqual(source.planPath(A), path.join('/home/u/.opencode-agent-plus/plans', `${A}.json`));
   assert.strictEqual(source.planPath('../x'), null);
   assert.strictEqual(source.planPath(undefined), null);
   const broken = make(fakeManager(), { logo: () => { throw new Error('no file'); } }).source;

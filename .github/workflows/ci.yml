@@ -2,8 +2,9 @@
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
 
-# The offline tests on each system, and a real download of the pinned OpenCode on each platform its archive table
-# covers, found by the extension's own lookup and run with --version.
+# The offline tests on each system; a real download of the pinned OpenCode on each platform its archive table covers,
+# found by the extension's own lookup and run with --version; and the same version installed with npm, as the install
+# hint says, on each system, found the same way (on Windows through npm's opencode.cmd) and started with `acp`.
 name: ci
 
 on:
@@ -46,3 +47,17 @@ jobs:
           node-version: '22'
       - name: Download OpenCode and run it
         run: node build/download-check.js
+
+  npm:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Install OpenCode with npm and start it as the extension does
+        run: node build/npm-check.js

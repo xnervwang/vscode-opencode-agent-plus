@@ -140,7 +140,7 @@ if (require.main === module) {
     if (zip.status === 0) {
       console.log(`${out} (${files.length} files, ${(fs.statSync(out).size / 1048576).toFixed(1)} MB)`);
       status = 0;
-    } else console.error('pack.sh: zip failed');
+    } else console.error(zip.error ? `pack.sh: the zip command could not run (${zip.error.code || zip.error.message}); install zip` : 'pack.sh: zip failed');
   } catch (e) {
     console.error(`pack.sh: ${e.message}`);
   } finally {

@@ -13,12 +13,16 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { createOpenCode, fileBlocks } = require('../../src/opencode');
 const server = require('../../src/opencode/server');
-const { fakeStarter } = require('./fake-agent');
+const { fakeStarter, loadScript } = require('./fake-agent');
 
 const V2 = { major: 2, minor: 4, patch: 1, text: '2.4.1' };
 const CWD = '/work/project';
+/* An absolute path on this system: on Windows the rooted paths below take the current drive. */
+const abs = (p) => path.resolve(p);
+const fileUrl = (p) => pathToFileURL(abs(p)).href;
 const GROK = 'amazon-bedrock/us.xai.grok-4.7';
 const HAIKU = 'amazon-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0';
 const CMDS = 'ses_df2f99704ffebYXxf2fpaBiDAi';
@@ -113,39 +117,44 @@ test('2.x: images and files go with a message as image, resource_link and resour
   await s.send('What colour is this image? Answer with one word, no tools.', { images: [{ mediaType: 'image/png', data: png }] });
   assert.equal(text(), 'Blue');
   events.length = 0;
-  await s.send('What is the code word in @notes.txt?', { files: [{ path: '/work/project/notes.txt' }] });
+  await s.send('What is the code word in @notes.txt?', { files: [{ path: abs('/work/project/notes.txt') }] });
   assert.equal(text(), 'KIWI-93');
   events.length = 0;
-  await s.send('What colour of the day does the attached selection name?', { files: [{ path: '/work/project/colors.js', text: '// The colour of the day is MAGENTA.', startLine: 2, endLine: 2 }] });
+  await s.send('What colour of the day does the attached selection name?', { files: [{ path: abs('/work/project/colors.js'), text: '// The colour of the day is MAGENTA.', startLine: 2, endLine: 2 }] });
   assert.equal(text(), 'Magenta');
   const [img, link, sel] = prompts(agents[0]);
   assert.deepEqual(img[1], { type: 'image', mimeType: 'image/png', data: png });
-  assert.deepEqual(link[1], { type: 'resource_link', uri: 'file:///work/project/notes.txt', name: 'notes.txt' });
-  assert.deepEqual(sel[1], { type: 'resource', resource: { uri: 'file:///work/project/colors.js#L2', mimeType: 'text/plain', text: '// The colour of the day is MAGENTA.' } });
+  assert.deepEqual(link[1], { type: 'resource_link', uri: fileUrl('/work/project/notes.txt'), name: 'notes.txt' });
+  assert.deepEqual(sel[1], { type: 'resource', resource: { uri: `${fileUrl('/work/project/colors.js')}#L2`, mimeType: 'text/plain', text: '// The colour of the day is MAGENTA.' } });
   const user = events.find((e) => e.type === 'userMessage');
-  assert.deepEqual(user.attachments, [{ kind: 'selection', name: 'colors.js:2', path: '/work/project/colors.js' }]);
+  assert.deepEqual(user.attachments, [{ kind: 'selection', name: 'colors.js:2', path: abs('/work/project/colors.js') }]);
   s.send('old form', [{ mediaType: 'image/png', data: 'AAAA' }]);
   await until(() => prompts(agents[0]).length === 4);
   assert.equal(prompts(agents[0])[3][1].type, 'image', 'an array is still taken as the images');
 });
 
 test('a selection goes as text when OpenCode takes no embedded context; a file link names its type', () => {
-  const inline = fileBlocks([{ path: '/w/a.js', text: 'x = 1', startLine: 3, endLine: 5 }], false);
-  assert.deepEqual(inline.prompt, [{ type: 'text', text: '[/w/a.js:3]\nx = 1' }]);
-  assert.deepEqual(inline.shown, [{ kind: 'selection', name: 'a.js:3-5', path: '/w/a.js' }]);
-  const embedded = fileBlocks([{ path: '/w/a.js', text: 'x = 1', startLine: 3, endLine: 5 }], true);
-  assert.equal(embedded.prompt[0].resource.uri, 'file:///w/a.js#L3-L5');
-  assert.deepEqual(fileBlocks([{ path: '/w/shot.PNG' }, { path: 'relative.txt' }, null], true).prompt, [{ type: 'resource_link', uri: 'file:///w/shot.PNG', name: 'shot.PNG', mimeType: 'image/png' }]);
-  assert.equal(fileBlocks([{ path: '/w/a b#c.txt' }], true).prompt[0].uri, 'file:///w/a%20b%23c.txt');
+  const a = abs('/w/a.js');
+  const w = fileUrl('/w');
+  const inline = fileBlocks([{ path: a, text: 'x = 1', startLine: 3, endLine: 5 }], false);
+  assert.deepEqual(inline.prompt, [{ type: 'text', text: `[${a}:3]\nx = 1` }]);
+  assert.deepEqual(inline.shown, [{ kind: 'selection', name: 'a.js:3-5', path: a }]);
+  const embedded = fileBlocks([{ path: a, text: 'x = 1', startLine: 3, endLine: 5 }], true);
+  assert.equal(embedded.prompt[0].resource.uri, `${w}/a.js#L3-L5`);
+  assert.deepEqual(fileBlocks([{ path: abs('/w/shot.PNG') }, { path: 'relative.txt' }, null], true).prompt, [{ type: 'resource_link', uri: `${w}/shot.PNG`, name: 'shot.PNG', mimeType: 'image/png' }]);
+  assert.equal(fileBlocks([{ path: abs('/w/a b#c.txt') }], true).prompt[0].uri, `${w}/a%20b%23c.txt`);
 });
 
 test('2.x: a replayed message keeps its image and file, and the selection OpenCode wrote into its text becomes a selection attachment again', async (t) => {
-  const { oc } = setup(t, 'v2-attach-load.jsonl');
+  /* The recording was made on Linux. On Windows its file URL takes a drive, as OpenCode there writes it. */
+  const project = fileUrl('/work/project');
+  const script = loadScript('v2-attach-load.jsonl').map((l) => JSON.parse(JSON.stringify(l).split('file:///work/project/').join(`${project}/`)));
+  const { oc } = setup(t, script);
   const s = await oc.openSession(ATTACH, { cwd: CWD });
   const users = (await s.history()).filter((e) => e.type === 'userMessage');
   assert.equal(users.length, 3);
   assert.deepEqual(users[0].attachments, [{ kind: 'image', name: 'image' }]);
-  assert.deepEqual(users[1].attachments, [{ kind: 'file', name: 'notes.txt', path: '/work/project/notes.txt' }]);
+  assert.deepEqual(users[1].attachments, [{ kind: 'file', name: 'notes.txt', path: abs('/work/project/notes.txt') }]);
   assert.equal(users[2].text, 'What colour of the day does the attached selection name? One word, no tools.');
   assert.deepEqual(users[2].attachments, [{ kind: 'selection', name: 'colors.js:2', path: '/work/project/colors.js' }]);
 });

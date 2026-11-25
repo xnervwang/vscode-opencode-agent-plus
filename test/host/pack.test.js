@@ -11,8 +11,13 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..', '..');
+/* pack-vsix.js packs with the zip command and these tests read the result with unzip. The .vsix is built on Linux (the
+   vscode and release workflows); Windows runners have neither command. */
+const runs = (cmd) => !cp.spawnSync(cmd, ['-v'], { stdio: 'ignore' }).error;
+const NO_PACK = !fs.existsSync(path.join(ROOT, 'node_modules')) ? 'no node_modules'
+  : !(runs('zip') && runs('unzip')) ? 'no zip and unzip commands to pack and read a .vsix with' : false;
 
-test('build/pack-vsix.js packs the extension, its run-time packages and nothing else', { skip: !fs.existsSync(path.join(ROOT, 'node_modules')) && 'no node_modules' }, () => {
+test('build/pack-vsix.js packs the extension, its run-time packages and nothing else', { skip: NO_PACK }, () => {
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'na-pack-')), 'x.vsix');
   const r = cp.spawnSync(process.execPath, [path.join(ROOT, 'build', 'pack-vsix.js'), ROOT, '--out', out], { encoding: 'utf8' });
   assert.strictEqual(r.status, 0, r.stderr);
@@ -49,7 +54,7 @@ test('rebaseLinks points relative links and images at the base URLs', () => {
   assert.strictEqual(rebaseLinks(md, '', ''), md);
 });
 
-test('build/pack-vsix.js with --base-content-url leaves no relative link in the packed README', { skip: !fs.existsSync(path.join(ROOT, 'node_modules')) && 'no node_modules' }, () => {
+test('build/pack-vsix.js with --base-content-url leaves no relative link in the packed README', { skip: NO_PACK }, () => {
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'na-pack-')), 'x.vsix');
   const base = 'https://github.com/o/r/blob/0123abc/';
   const r = cp.spawnSync(process.execPath, [path.join(ROOT, 'build', 'pack-vsix.js'), ROOT, '--out', out, '--base-content-url', base], { encoding: 'utf8' });

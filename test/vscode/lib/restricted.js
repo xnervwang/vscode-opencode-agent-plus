@@ -23,7 +23,7 @@ const PROBE = 'ses_restrictedprobe000000001';
 /* Writes the folder's own settings and the program they name; returns the marker file, the program and those settings. */
 function prepareFolder(folder, root) {
   const marker = path.join(root, 'workspace-opencode-ran.txt');
-  /* On Windows a .cmd, the form an npm install of OpenCode takes there. */
+  /* On Windows a .cmd, the name an npm install of OpenCode has there, though not npm's launcher for an opencode.exe. */
   const windows = process.platform === 'win32';
   const program = path.join(folder, 'tools', windows ? 'opencode.cmd' : 'opencode');
   fs.mkdirSync(path.dirname(program), { recursive: true });
@@ -160,7 +160,7 @@ async function run(t) {
   await sleep(5000);
   const before = procs();
   check(before.length === 0, 'no OpenCode process has started', before);
-  if (process.platform === 'win32') console.log("  note  the folder's program is a .cmd, which a program started without a shell (as the extension starts OpenCode) cannot run, so on Windows the check below holds even if the extension tried; the settings and process checks are the ones that tell");
+  if (process.platform === 'win32') console.log("  note  the folder's program is a .cmd that is not npm's launcher for an opencode.exe, which the extension refuses to start in any mode, so on Windows the check below holds even if the extension read the folder's path; the settings and process checks are the ones that tell");
   check(!ran(), "the folder's opencode program was never run", ran() ? fs.readFileSync(prepared.marker, 'utf8') : '');
   const written = fs.existsSync(t.home) ? fs.readdirSync(t.home) : [];
   check(written.length === 0, "nothing was written to the extension's folder (no plugin, plans, locks or window state)", written);

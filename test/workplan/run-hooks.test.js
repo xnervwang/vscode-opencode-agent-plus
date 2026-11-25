@@ -5,7 +5,8 @@
 'use strict';
 /*
  * run-hooks.py, with this machine's Python and the real shared scripts: one process answers for several of them, each
- * as it would answer started on its own. Skipped where there is no python3.
+ * as it would answer started on its own. Python is looked for under the names the extension tries (python-runtime.js
+ * PYTHONS: `py -3` first on Windows); skipped where none is Python 3.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -14,20 +15,28 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const workplan = require('../../src/workplan');
+const { PYTHONS } = require('../../src/shared/python-runtime');
 
 const HOOKS = path.join(__dirname, '..', '..', 'opencode-plugin', 'agent-work-plan', 'hooks');
 const SID = 'ses_df3c28ab2ffe0TYFbXAnoBpqy6';
-const python = (() => { const r = cp.spawnSync('python3', ['--version'], { encoding: 'utf8' }); return r.status === 0 ? 'python3' : ''; })();
+const python = PYTHONS.find(([cmd, ...pre]) => {
+  const r = cp.spawnSync(cmd, [...pre, '-c', 'import sys; print(sys.version_info[0])'], { encoding: 'utf8', windowsHide: true });
+  return r.status === 0 && String(r.stdout).trim() === '3';
+}) || null;
+const py = (script, args, opts) => cp.spawnSync(python[0], [...python.slice(1), script, ...args], opts);
+/* tell-time-zone.py asks the C library for the time in the user's zone through TZ and time.tzset(), which Python has
+   only on Unix; on Windows it says nothing rather than a time it cannot check. */
+const TELLS_ZONE = process.platform !== 'win32';
 
 function run(plans, names, payload, env = {}) {
-  const r = cp.spawnSync(python, [path.join(HOOKS, 'run-hooks.py'), plans, ...names], {
+  const r = py(path.join(HOOKS, 'run-hooks.py'), [plans, ...names], {
     input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, TZ: 'UTC', PYTHONDONTWRITEBYTECODE: '1', ...env },
   });
   assert.equal(r.status, 0, r.stderr);
   return JSON.parse(r.stdout).texts;
 }
 
-test('one Python process answers for the plan, the time zone and the reply images', { skip: !python && 'no python3' }, (t) => {
+test('one Python process answers for the plan, the time zone and the reply images', { skip: !python && 'no Python 3' }, (t) => {
   const plans = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-runhooks-'));
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-runhooks-home-'));
   t.after(() => { fs.rmSync(plans, { recursive: true, force: true }); fs.rmSync(home, { recursive: true, force: true }); });
@@ -37,31 +46,36 @@ test('one Python process answers for the plan, the time zone and the reply image
   const texts = run(plans, ['inject-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py', 'no-such.py', '../plan-row.py'], payload,
     { OPENCODE_AGENT_PLUS_HOME: home });
   assert.deepEqual(Object.keys(texts), ['inject-work-plan.py', 'tell-time-zone.py', 'tell-reply-images.py', 'no-such.py', '../plan-row.py']);
-  assert.match(texts['tell-time-zone.py'], /^The user is in America\/Los_Angeles \(P[DS]T, UTC-0[78]:00\)/);
+  if (TELLS_ZONE) assert.match(texts['tell-time-zone.py'], /^The user is in America\/Los_Angeles \(P[DS]T, UTC-0[78]:00\)/);
+  else assert.equal(texts['tell-time-zone.py'], '');
   assert.equal(texts['inject-work-plan.py'], '', 'no plan yet');
   /* In the panel the image note names the conversation's own folder under OPENCODE_AGENT_PLUS_HOME, the one deleting the
      conversation removes. */
   assert.ok(texts['tell-reply-images.py'].startsWith('This panel shows images'), texts['tell-reply-images.py']);
   assert.equal(workplan.scratchDir(SID, home), path.join(home, 'scratch', SID));
-  assert.ok(texts['tell-reply-images.py'].includes(` ${workplan.scratchDir(SID, home)} `), texts['tell-reply-images.py']);
+  /* The note writes the folder with forward slashes on every system. */
+  assert.ok(texts['tell-reply-images.py'].includes(` ${workplan.scratchDir(SID, home).split(path.sep).join('/')} `), texts['tell-reply-images.py']);
   assert.equal(texts['no-such.py'], '');
   assert.equal(texts['../plan-row.py'], '', 'only the hook scripts are run');
   /* The hook records beside the plan that it has given the note, so the next message does not get it again. */
-  assert.ok(fs.existsSync(path.join(plans, `${SID}.tz`)));
+  assert.equal(fs.existsSync(path.join(plans, `${SID}.tz`)), TELLS_ZONE);
   assert.equal(run(plans, ['tell-time-zone.py'], payload)['tell-time-zone.py'], '');
   /* Off in config.json says nothing. */
   fs.writeFileSync(path.join(plans, 'config.json'), JSON.stringify({ enabled: true, tellTimeZone: false }));
   assert.equal(run(plans, ['tell-time-zone.py'], { ...payload, session_id: 'ses_aaaaaaaaaaaaaaaaaaaaaaaaaa' })['tell-time-zone.py'], '');
 });
 
-test('the same answers as each script started alone', { skip: !python && 'no python3' }, (t) => {
+test('the same answers as each script started alone', { skip: !python && 'no Python 3' }, (t) => {
   const plans = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-runhooks-'));
   t.after(() => fs.rmSync(plans, { recursive: true, force: true }));
   fs.writeFileSync(path.join(plans, 'client-time-zone.json'), JSON.stringify({ timeZone: 'Asia/Kolkata' }));
   const payload = { hook_event_name: 'UserPromptSubmit', session_id: SID, turn_id: 'msg_1', prompt: 'hi', cwd: '/w' };
-  const alone = cp.spawnSync(python, [path.join(HOOKS, 'tell-time-zone.py'), plans], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, TZ: 'UTC' } });
-  const said = JSON.parse(alone.stdout).hookSpecificOutput.additionalContext;
-  fs.rmSync(path.join(plans, `${SID}.tz`));
+  const alone = py(path.join(HOOKS, 'tell-time-zone.py'), [plans], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, TZ: 'UTC' } });
+  assert.equal(alone.status, 0, alone.stderr);
+  /* A hook with nothing to say prints nothing. */
+  const said = alone.stdout.trim() ? JSON.parse(alone.stdout).hookSpecificOutput.additionalContext : '';
+  assert.equal(!!said, TELLS_ZONE, said);
+  fs.rmSync(path.join(plans, `${SID}.tz`), { force: true });
   const texts = run(plans, ['tell-time-zone.py'], payload);
   assert.equal(texts['tell-time-zone.py'].replace(/\d\d:\d\d/, 'HH:MM'), said.replace(/\d\d:\d\d/, 'HH:MM'));
 });

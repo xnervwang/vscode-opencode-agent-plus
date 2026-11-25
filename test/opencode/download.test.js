@@ -92,9 +92,11 @@ test('findOpenCode tries the downloaded OpenCode last', () => {
   const version = (p) => ({ major: 2, minor: 4, patch: 1, text: p === downloaded ? '2.4.1' : '2.9.0' });
   const has = (set) => (p) => set.includes(p);
   const find = (set, more = {}) => findOpenCode({ env, home, platform: 'linux', arch: 'x64', downloaded, isExecutable: has(set), readVersion: version, ...more });
-  assert.equal(find([downloaded, '/opt/tools/opencode']).path, '/opt/tools/opencode', 'PATH first');
-  assert.equal(find([downloaded, '/home/u/.opencode/bin/opencode']).path, '/home/u/.opencode/bin/opencode', 'the installer folders next');
-  assert.equal(find([downloaded, '/home/u/x/opencode'], { configured: '~/x/opencode' }).path, '/home/u/x/opencode', 'the setting comes first');
+  /* The paths are joined with this system's separator, so the expected ones are too. */
+  const [tools, installer, mine] = [path.join('/opt/tools', 'opencode'), path.join(home, '.opencode', 'bin', 'opencode'), path.join(home, 'x', 'opencode')];
+  assert.equal(find([downloaded, tools]).path, tools, 'PATH first');
+  assert.equal(find([downloaded, installer]).path, installer, 'the installer folders next');
+  assert.equal(find([downloaded, mine], { configured: '~/x/opencode' }).path, mine, 'the setting comes first');
   const r = find([downloaded]);
   assert.equal(r.path, downloaded);
   assert.equal(r.version.text, '2.4.1');

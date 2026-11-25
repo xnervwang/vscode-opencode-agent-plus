@@ -610,6 +610,10 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   await stop();
 });
 
+/* Windows keeps no owner, group and other bits: the mode a file is written with only sets its read-only flag, so it
+   reads back 0o666. The folders these files live in are the user's own there. */
+const POSIX_MODES = process.platform !== 'win32';
+
 /* Stands in for the extension: takes the next request in the plans folder and writes `result` as its answer, or no
    answer when `result` is null. */
 async function answerNext(env, result) {
@@ -639,7 +643,7 @@ test('steward_handoff writes a request beside the plan, waits for the result, an
     assert.equal(handed, 'Handed off to the steward, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the steward.');
     assert.match(taken.name, new RegExp(`^${SID}\\.handoff-[0-9a-z]{8,64}\\.json$`));
     assert.equal(taken.body.format, 1);
-    assert.equal(taken.mode, 0o600);
+    if (POSIX_MODES) assert.equal(taken.mode, 0o600);
     assert.equal(taken.body.text, said);
     assert.ok(Math.abs(Date.now() - taken.body.at) < 5000);
     assert.deepEqual(handoffFiles(env), [], 'the result is removed once read');

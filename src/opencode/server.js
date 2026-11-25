@@ -45,8 +45,9 @@ function expandHome(p, home) {
   return p;
 }
 
+/* On Windows npm puts opencode.cmd beside a POSIX shell script named opencode, which only a shell can start. */
 function candidates({ env, platform, home }) {
-  const names = platform === 'win32' ? ['opencode.exe', 'opencode.cmd', 'opencode'] : ['opencode'];
+  const names = platform === 'win32' ? ['opencode.exe', 'opencode.cmd'] : ['opencode'];
   const dirs = String(env.PATH || env.Path || '').split(path.delimiter).filter(Boolean);
   dirs.push(
     path.join(home, '.opencode', 'bin'),
@@ -78,6 +79,27 @@ function isExecutable(p, platform) {
   }
 }
 
+/* The line of npm's .cmd launcher (cmd-shim) that runs the package's program, `"%dp0%\<path from the launcher's
+   folder>" %*`, read the way npm's read-cmd-shim reads it. */
+const CMD_SHIM_TARGET = /"%(?:~dp0|dp0%)\\([^"]+?)"\s+%[*]/;
+
+function isScript(p, platform) {
+  return platform === 'win32' && /\.(cmd|bat)$/i.test(p);
+}
+
+/*
+ * The opencode.exe that npm's opencode.cmd runs, or '' when `file` is not such a launcher. Node starts a .cmd or .bat
+ * only through cmd.exe (CVE-2024-27980: EINVAL without the shell option), and the arguments this extension passes
+ * carry the user's own text, such as a conversation's title in `session.update`; so a script is never started, the
+ * program behind npm's launcher is. Both npm packages (@opencode/cli, opencode-ai) name their binary bin/opencode.exe.
+ */
+function shimTarget(file, readFile = fs.readFileSync) {
+  let text;
+  try { text = String(readFile(file)); } catch (_) { return ''; }
+  const m = CMD_SHIM_TARGET.exec(text);
+  return m && /\.exe$/i.test(m[1]) ? path.join(path.dirname(file), ...m[1].split('\\')) : '';
+}
+
 function parseVersion(text) {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(String(text || ''));
   return m ? { major: +m[1], minor: +m[2], patch: +m[3], text: m[0] } : null;
@@ -99,6 +121,8 @@ function readVersion(bin) {
  * The configured path when one is set, else the first match in PATH and then in the places the installers use, and
  * only then the copy the extension downloaded (`downloaded`, download.js executable()), so that the user's own
  * installation always wins. A configured path that is not there is an error, not a reason to use the download.
+ * On Windows a .cmd or .bat found or configured stands for the opencode.exe it runs (shimTarget); one that runs no
+ * opencode.exe is passed over, or is an error when configured.
  * Returns { path, version } (version may be null when `--version` printed nothing usable) or throws an OpenCodeError
  * whose message tells the user what to do.
  */
@@ -109,19 +133,32 @@ function findOpenCode(opts = {}) {
   const home = opts.home || os.homedir();
   const executable = opts.isExecutable || ((p) => isExecutable(p, platform));
   const version = opts.readVersion || readVersion;
+  /* The program to run for `p`, or '' for a script that runs none. */
+  const program = (p) => {
+    if (!isScript(p, platform)) return p;
+    const exe = shimTarget(p);
+    return exe && executable(exe) ? exe : '';
+  };
   const configured = typeof opts.configured === 'string' ? opts.configured.trim() : '';
   if (configured) {
     const p = expandHome(configured, home);
     if (!executable(p)) throw new OpenCodeError('configuredNotFound', `The OpenCode path in the settings (${p}) is not an executable file. ${INSTALL_HINT}`);
-    return { path: p, version: version(p) };
+    const run = program(p);
+    if (!run) throw new OpenCodeError('configuredNotFound', `The OpenCode path in the settings (${p}) is a script that does not start an opencode.exe; set the path of opencode.exe itself. ${INSTALL_HINT}`);
+    return { path: run, version: version(run) };
   }
+  let script = '';
   for (const p of candidates({ env, platform, home })) {
-    if (executable(p)) return { path: p, version: version(p) };
+    if (!executable(p)) continue;
+    const run = program(p);
+    if (run) return { path: run, version: version(run) };
+    if (!script) script = p;
   }
   const downloaded = opts.downloaded !== undefined ? opts.downloaded : download.executable(undefined, platform);
   if (downloaded && executable(downloaded)) return { path: downloaded, version: version(downloaded) };
   const more = download.available(platform, arch) ? ` ${DOWNLOAD_HINT}` : '';
-  throw new OpenCodeError('notFound', `OpenCode was not found. ${INSTALL_HINT}${more}`);
+  const passed = script ? ` ${script} was passed over: it is a script that does not start an opencode.exe, and the path of opencode.exe can be set in the settings.` : '';
+  throw new OpenCodeError('notFound', `OpenCode was not found.${passed} ${INSTALL_HINT}${more}`);
 }
 
 /* The first OpenCode its question tool's forms were seen to work with: 2.4.1 asks them as elicitation/create once the
@@ -255,6 +292,7 @@ module.exports = {
   startAcp,
   stopAcp,
   candidates,
+  shimTarget,
   subcommandArgs,
   subcommandEnv,
   LOCAL_SUBCOMMANDS,

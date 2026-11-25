@@ -5,8 +5,10 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { findOpenCode, acpLaunch, parseVersion, mergeConfigContent, OpenCodeError } = require('../../src/opencode/server');
+const { findOpenCode, acpLaunch, parseVersion, mergeConfigContent, OpenCodeError, candidates, shimTarget } = require('../../src/opencode/server');
 
 const v1 = { major: 1, minor: 19, patch: 6, text: '1.19.6' };
 const v2 = { major: 2, minor: 4, patch: 1, text: '2.4.1' };
@@ -16,11 +18,69 @@ test('the configured path wins, then PATH, then the installers\' locations', () 
   const env = { PATH: ['/usr/bin', '/opt/tools'].join(path.delimiter) };
   const version = () => v1;
   const has = (set) => (p) => set.includes(p);
-  assert.equal(findOpenCode({ configured: '~/bin/oc', env, home, platform: 'linux', isExecutable: has(['/home/u/bin/oc', '/opt/tools/opencode']), readVersion: version }).path, '/home/u/bin/oc');
-  assert.equal(findOpenCode({ env, home, platform: 'linux', isExecutable: has(['/opt/tools/opencode', '/home/u/.opencode/bin/opencode']), readVersion: version }).path, '/opt/tools/opencode');
-  const r = findOpenCode({ env, home, platform: 'linux', isExecutable: has(['/home/u/.opencode/bin/opencode']), readVersion: version });
-  assert.equal(r.path, '/home/u/.opencode/bin/opencode');
+  /* The paths are joined with this system's separator, so the expected ones are too. */
+  const [mine, tools, installer] = [path.join(home, 'bin', 'oc'), path.join('/opt/tools', 'opencode'), path.join(home, '.opencode', 'bin', 'opencode')];
+  assert.equal(findOpenCode({ configured: '~/bin/oc', env, home, platform: 'linux', isExecutable: has([mine, tools]), readVersion: version }).path, mine);
+  assert.equal(findOpenCode({ env, home, platform: 'linux', isExecutable: has([tools, installer]), readVersion: version }).path, tools);
+  const r = findOpenCode({ env, home, platform: 'linux', isExecutable: has([installer]), readVersion: version });
+  assert.equal(r.path, installer);
   assert.deepEqual(r.version, v1);
+});
+
+/* What npm 10's cmd-shim 7.0.0 writes as <prefix>\\opencode.cmd for `npm install -g @opencode/cli` on Windows. */
+const NPM_SHIM = '@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n'
+  + '"%dp0%\\node_modules\\@opencode\\cli\\bin\\opencode.exe"   %*\r\n';
+
+/* A folder laid out as npm's global prefix on Windows: the launchers beside node_modules. */
+function npmPrefix(t, shim = NPM_SHIM, exe = true) {
+  const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-npm-'));
+  t.after(() => fs.rmSync(prefix, { recursive: true, force: true }));
+  const bin = path.join(prefix, 'node_modules', '@opencode', 'cli', 'bin');
+  fs.mkdirSync(bin, { recursive: true });
+  if (exe) fs.writeFileSync(path.join(bin, 'opencode.exe'), 'MZ');
+  fs.writeFileSync(path.join(prefix, 'opencode.cmd'), shim);
+  fs.writeFileSync(path.join(prefix, 'opencode'), '#!/bin/sh\n');
+  return { prefix, cmd: path.join(prefix, 'opencode.cmd'), exe: path.join(bin, 'opencode.exe') };
+}
+
+test('on Windows npm\'s opencode.cmd stands for the opencode.exe it runs, which is started without a shell', (t) => {
+  const { prefix, cmd, exe } = npmPrefix(t);
+  const read = [];
+  const version = (p) => { read.push(p); return v2; };
+  const win = { env: { Path: prefix }, home: prefix, platform: 'win32', arch: 'x64', downloaded: '', readVersion: version };
+  assert.equal(shimTarget(cmd), exe);
+  const r = findOpenCode(win);
+  assert.equal(r.path, exe, 'found in PATH');
+  assert.deepEqual(read, [exe], 'its version is read from the program, not the script');
+  assert.equal(findOpenCode({ ...win, env: { Path: '' }, configured: cmd }).path, exe, 'a configured .cmd too');
+  const upper = path.join(prefix, 'OpenCode.CMD');
+  fs.copyFileSync(cmd, upper);
+  assert.equal(findOpenCode({ ...win, env: { Path: '' }, configured: upper }).path, exe, 'whatever the case of its extension');
+  /* The other form npm's read-cmd-shim reads, %~dp0, with a path that climbs out of the launcher's folder. */
+  fs.writeFileSync(cmd, '@"%~dp0\\..\\' + path.basename(prefix) + '\\node_modules\\@opencode\\cli\\bin\\opencode.exe"   %*\r\n');
+  assert.equal(shimTarget(cmd), exe);
+  /* Away from Windows a .cmd is not a launcher, and opencode.cmd is not looked for. */
+  assert.ok(!candidates({ env: { PATH: prefix }, platform: 'linux', home: prefix }).some((p) => p.endsWith('.cmd')));
+});
+
+test('on Windows a script that starts no opencode.exe is passed over, and is an error when configured', (t) => {
+  /* What a folder of the user's own might carry: a .cmd that runs whatever it likes. */
+  const odd = npmPrefix(t, '@echo %~f0 %*>> "C:\\marker.txt"\r\n');
+  const missing = npmPrefix(t, NPM_SHIM, false);
+  const node = npmPrefix(t, '@ECHO off\r\n"%_prog%"  "%dp0%\\node_modules\\x\\cli.js" %*\r\n');
+  const real = npmPrefix(t);
+  const win = { home: real.prefix, platform: 'win32', arch: 'x64', readVersion: () => v2 };
+  for (const p of [odd, missing, node]) assert.equal(shimTarget(p.cmd), p === missing ? missing.exe : '');
+  const r = findOpenCode({ ...win, env: { Path: [odd.prefix, missing.prefix, node.prefix, real.prefix].join(path.delimiter) }, downloaded: '' });
+  assert.equal(r.path, real.exe, 'the first launcher that runs an opencode.exe there is, past the others and the shell script beside them');
+  const downloaded = path.join(real.prefix, 'node_modules', '@opencode', 'cli', 'bin', 'opencode.exe');
+  assert.equal(findOpenCode({ ...win, env: { Path: odd.prefix }, downloaded }).path, downloaded, 'the download comes after a script passed over');
+  assert.throws(() => findOpenCode({ ...win, env: { Path: odd.prefix }, downloaded: '' }),
+    (e) => e instanceof OpenCodeError && e.code === 'notFound' && e.message.includes(`${odd.cmd} was passed over`));
+  assert.throws(() => findOpenCode({ ...win, env: { Path: real.prefix }, configured: odd.cmd }),
+    (e) => e.code === 'configuredNotFound' && e.message.includes(odd.cmd) && /set the path of opencode\.exe itself/.test(e.message));
+  assert.throws(() => findOpenCode({ ...win, env: { Path: '' }, configured: missing.cmd }), (e) => e.code === 'configuredNotFound', 'its opencode.exe is not there');
+  assert.equal(shimTarget(path.join(real.prefix, 'none.cmd')), '', 'an unreadable file is no launcher');
 });
 
 test('not found, or a configured path that is not there, says how to install', () => {

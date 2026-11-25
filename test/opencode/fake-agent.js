@@ -124,11 +124,12 @@ function fakeAgent(script, opts = {}) {
   return { child, received, playedAfter, methods: () => received.filter((m) => m.method).map((m) => m.method) };
 }
 
-/* A startAcp replacement for createOpenCode that hands out fake agents and keeps them for the test to inspect. */
-function fakeStarter(scriptName, extra = [], agentOpts = {}) {
+/* A startAcp replacement for createOpenCode that hands out fake agents and keeps them for the test to inspect.
+   `script` is a fixture's name, or its lines already loaded. */
+function fakeStarter(script, extra = [], agentOpts = {}) {
   const agents = [];
   const start = (launchOpts) => {
-    const a = fakeAgent([...loadScript(scriptName), ...extra], agentOpts);
+    const a = fakeAgent([...(Array.isArray(script) ? script : loadScript(script)), ...extra], agentOpts);
     a.launch = launchOpts;
     agents.push(a);
     return { child: a.child, stderrTail: () => '', args: ['acp'] };

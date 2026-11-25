@@ -22,6 +22,9 @@ process.env.OPENCODE_AGENT_PLUS_TEST_BACKEND = path.join(ROOT, 'test', 'vscode',
 process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL = '1';
 const { createStewards, handoffText, STALE_MS, ORPHAN_MS } = require('../../src/host/steward');
 const workplan = require('../../src/workplan');
+/* Windows keeps no owner, group and other bits: the mode a file is written with only sets its read-only flag, so it
+   reads back 0o666. The folders these files live in are the user's own there. */
+const POSIX_MODES = process.platform !== 'win32';
 
 const A = 'ses_stewardhandoff0000000a';
 const B = 'ses_stewardhandoff0000000b';
@@ -75,7 +78,7 @@ test('the steward file follows stewardOf() as conversations open and the steward
     const file = path.join(dir, `${A}.steward.json`);
     assert.strictEqual(s.fileOf(A), file);
     assert.deepStrictEqual(read(file), { format: 1, ...STEWARD });
-    assert.strictEqual(fs.statSync(file).mode & 0o777, 0o600);
+    if (POSIX_MODES) assert.strictEqual(fs.statSync(file).mode & 0o777, 0o600);
     assert.deepStrictEqual(core.asked, [['opencode-plus', A]]);
     assert.strictEqual(s.watching(), true, 'a conversation open here has a steward, so the folder is watched');
 
@@ -151,7 +154,7 @@ test('two takers race for one request: it is sent once and the result is written
     assert.deepStrictEqual(sent[0], { ...STEWARD, text: TITLED(A, 'The user wrote: "update the README". It belongs to ses_x.') });
     const result = path.join(dir, `${A}.handoff-k1000000.result.json`);
     assert.deepStrictEqual(read(result), { format: 1, outcome: 'submitted', reason: '' });
-    assert.strictEqual(fs.statSync(result).mode & 0o777, 0o600);
+    if (POSIX_MODES) assert.strictEqual(fs.statSync(result).mode & 0o777, 0o600);
     assert.deepStrictEqual(fs.readdirSync(dir).sort(), [`${A}.handoff-k1000000.result.json`, `${A}.steward.json`], 'the request is gone, nothing taken is left');
   } finally { a.dispose(); b.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
