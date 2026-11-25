@@ -20,10 +20,10 @@
  *   compaction   the same, plus the plan file, in the summary request
  *   tools        set_row, add_row, set_summary, set_status, each one run of plan-row.py; steward_handoff too while a session
  *                this instance has seen has a steward
- *   steward      while <plans>/<session id>.steward.json exists (the extension writes it when a steward in Claude Code
- *                Plus looks after the conversation), each turn's text also says so; steward_handoff writes <session id>.handoff-<key>.json
- *                there, which the extension sends to the steward with Agent Plus's deliver(), and reads the
- *                .result.json it writes back (src/host/steward.js in the extension)
+ *   steward      while <plans>/<session id>.steward.json exists (the extension writes it, with every steward in Claude Code
+ *                Plus that looks after the conversation), each turn's text also names them; steward_handoff writes
+ *                <session id>.handoff-<key>.json there, which the extension sends to one of them with Agent Plus's
+ *                deliver(), and reads the .result.json it writes back (src/host/steward.js in the extension)
  *   events       session.compaction.ended runs resume-work-plan.py and the two notes again; session.usage.updated is recorded;
  *                session.execution.succeeded runs nudge-work-plan.py and keeps what it says as a synthetic message
  *
@@ -227,19 +227,40 @@ const TOOLS = [
 ];
 const TOOL_NAMES = TOOLS.map((t) => t.name);
 
-/* Claude Code Plus's steward.py watched(), with steward_handoff in place of the relay command it names. */
-const WATCHED = 'A steward conversation watches this one for the user through Claude Code Plus: it reads your work plan and '
-  + 'latest reply, and speaks for the user by typing messages here, which come as the user\'s own. Do not send it status '
-  + 'messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly '
-  + 'belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not '
-  + 'start background work for it here: call the steward_handoff tool with the user\'s words, where it should go (a session '
-  + 'id, or a folder for a new conversation) and why, and say in one sentence what it answered.';
+/* The same limits as the extension's src/host/steward.js. */
+const MAX_STEWARDS = 20;
+const MAX_TITLE = 200;
+const MAX_TO = 200;
+/* In the steward line whatever the number of stewards; the plugin's log counts the messages that carry it. */
+const WATCHED_MARK = 'this one for the user through Claude Code Plus:';
+/* How Claude Code Plus's steward_table.py name_of() names a steward. */
+const nameOf = (s) => (s.title && s.title !== s.sessionId ? `"${s.title}" (${s.sessionId})` : s.sessionId);
+
+/* Claude Code Plus's steward.py watched(), with the steward_handoff tool and its `to` in place of the relay command and
+   its --to. `list` is the conversation's stewards, the one the user spoke with last first. */
+function watchedText(list) {
+  const names = list.map(nameOf);
+  const several = names.length > 1;
+  const who = several ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  return `${several ? 'Stewards' : 'A steward,'} ${who}${several ? ' watch' : ', watches'} this one for the user through Claude Code Plus: `
+    + `${several ? 'they read' : 'it reads'} your work plan and latest reply, and ${several ? 'speak' : 'speaks'} for the user by typing `
+    + 'messages here, which come as the user\'s own. Each such message starts with the line '
+    + '`Sent by the steward "<title>" (<session id>) for the user:`, which names the steward that sent it. '
+    + `Do not send ${several ? 'them' : 'it'} status messages; put questions for the user in your plan as rows waiting on the user, `
+    + `where ${several ? 'they see' : 'it sees'} them. If a message plainly belongs elsewhere (meant for another conversation, `
+    + 'unrelated to the work here, or better done by another one), do not start background work for it here: call the '
+    + 'steward_handoff tool with the user\'s words, where it should go (a session id, or a folder for a new conversation) '
+    + 'and why, and say in one sentence what it answered.'
+    + (several ? ' It goes to the steward whose message started this turn, or else to the one the user last typed to; to hand '
+      + 'it to another of them, set the tool\'s `to` to that steward\'s session id.' : '');
+}
 const STEWARD_TOOL = {
   name: 'steward_handoff',
-  description: 'Hand a message that belongs elsewhere to the steward watching this conversation. '
+  description: 'Hand a message that belongs elsewhere to a steward watching this conversation. '
     + 'It returns whether the steward got it; do not call it again for the same message.',
   input: { type: 'object', required: ['text'], additionalProperties: false, properties: {
-    text: { type: 'string', description: "The user's words, where it should go (a session id, or a folder for a new conversation) and why." } } },
+    text: { type: 'string', description: "The user's words, where it should go (a session id, or a folder for a new conversation) and why." },
+    to: { type: 'string', description: 'The session id of the steward to give it to; leave it out for the usual one.' } } },
 };
 /* deliver() settles within about 40 seconds once a window has the request. */
 const HANDOFF_WAIT_MS = 45000;
@@ -251,19 +272,33 @@ const HANDOFF_POLL_MS = 250;
 const NO_STEWARD = 'This conversation has no steward.';
 const LEAVE_IT = ' Say in your reply where it seems to belong, so the user decides.';
 
-function hasSteward(sessionID) {
-  try {
-    const s = JSON.parse(fs.readFileSync(stewardPath(sessionID), 'utf8'));
-    return !!s && s.format === 1 && typeof s.sourceId === 'string' && !!s.sourceId && typeof s.sessionId === 'string' && !!s.sessionId;
-  } catch (_) { return false; }
+const usable = (s) => !!s && typeof s === 'object' && typeof s.sourceId === 'string' && !!s.sourceId && typeof s.sessionId === 'string' && !!s.sessionId;
+const titleOf = (t) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE) : '');
+
+/* The stewards in the conversation's steward file, first first, as the extension's readStewards() reads them. */
+function stewardsOf(sessionID) {
+  let s;
+  try { s = JSON.parse(fs.readFileSync(stewardPath(sessionID), 'utf8')); } catch (_) { return []; }
+  if (!s || s.format !== 1) return [];
+  const list = (Array.isArray(s.stewards) ? s.stewards.slice(0, MAX_STEWARDS) : []).filter(usable)
+    .map((e) => ({ sourceId: e.sourceId, sessionId: e.sessionId, title: titleOf(e.title) }));
+  if (list.length) return list;
+  return usable(s) ? [{ sourceId: s.sourceId, sessionId: s.sessionId, title: '' }] : [];
 }
+
+const hasSteward = (sessionID) => stewardsOf(sessionID).length > 0;
 
 function handedSaid(r) {
   const reason = r && typeof r.reason === 'string' && r.reason ? r.reason : '';
   const outcome = r && typeof r.outcome === 'string' ? r.outcome : '';
   if (outcome === 'submitted') {
-    return 'Handed off to the steward, as a notice that says it is not from the user. Say so in one sentence in your reply '
+    const who = r && typeof r.steward === 'string' && r.steward ? ` ${nameOf({ sessionId: r.steward, title: titleOf(r.title) })}` : '';
+    return `Handed off to the steward${who}, as a notice that says it is not from the user. Say so in one sentence in your reply `
       + 'and leave it to the steward.';
+  }
+  if (outcome === 'refused') {
+    return `Not done: ${reason || 'that steward cannot take it'}. To hand it on, call steward_handoff again with \`to\` set to one of `
+      + 'those session ids, or leave `to` out.';
   }
   if (outcome === 'uncertain') return `Unclear whether the steward was told: ${reason || 'no outcome came in time'}.`;
   if (outcome === 'drafted') return `Not done: it was put into the steward's message input, and not sent.${LEAVE_IT}`;
@@ -277,11 +312,12 @@ async function handoff(sessionID, input, context) {
   if (!SESSION.test(String(sessionID || '')) || !hasSteward(sessionID)) return NO_STEWARD;
   const text = input && typeof input.text === 'string' ? input.text.trim() : '';
   if (!text) return "Not done: the text was empty. Give the user's words, where the message should go and why.";
+  const to = input && typeof input.to === 'string' ? input.to.trim().slice(0, MAX_TO) : '';
   const key = `${process.pid.toString(36)}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.replace(/[^0-9a-z]/g, '');
   const base = path.join(plansDir(), `${sessionID}.handoff-${key}`);
   const request = `${base}.json`, result = `${base}.result.json`;
   try {
-    fs.writeFileSync(`${base}.tmp`, JSON.stringify({ format: 1, text, at: Date.now() }), { mode: 0o600 });
+    fs.writeFileSync(`${base}.tmp`, JSON.stringify({ format: 1, text, at: Date.now(), ...(to ? { to } : {}) }), { mode: 0o600 });
     fs.renameSync(`${base}.tmp`, request);
   } catch (e) {
     try { fs.unlinkSync(`${base}.tmp`); } catch (_) { /* never written */ }
@@ -295,14 +331,14 @@ async function handoff(sessionID, input, context) {
     try { r = JSON.parse(fs.readFileSync(result, 'utf8')); } catch (_) { /* not yet */ }
     if (r) {
       try { fs.unlinkSync(result); } catch (_) { /* gone */ }
-      log('handoff', { sessionID, outcome: r.outcome, reason: r.reason });
+      log('handoff', { sessionID, to, outcome: r.outcome, reason: r.reason, steward: r.steward });
       return handedSaid(r);
     }
     await sleepMs(HANDOFF_POLL_MS);
   }
   let untaken = false;
   try { fs.unlinkSync(request); untaken = true; } catch (_) { /* taken */ }
-  log('handoff', { sessionID, outcome: untaken ? 'untaken' : 'unanswered', aborted: !!(signal && signal.aborted) });
+  log('handoff', { sessionID, to, outcome: untaken ? 'untaken' : 'unanswered', aborted: !!(signal && signal.aborted) });
   if (signal && signal.aborted && untaken) return 'Not done: the turn was stopped before a window took the handoff.';
   if (untaken) return `Not done: no VS Code window took the handoff within ${wait / 1000} seconds.${LEAVE_IT}`;
   return 'Unclear whether the steward was told: a window took the handoff, but no result came back in time.';
@@ -500,10 +536,11 @@ async function setup(ctx) {
     const texts = await withRecord(usageLines(s), (file) => hookTexts(scripts, {
       hook_event_name: 'UserPromptSubmit', session_id: sessionID, turn_id: s.turnId, prompt: said,
       cwd: (ctx.location && ctx.location.directory) || '', transcript_path: file, in_panel: true, ...usageFields(s) }));
-    const watched = on && hasSteward(sessionID);
-    const all = [on ? pending : '', notesAfter, ...scripts.map((n) => texts[n]), watched ? WATCHED : ''].filter(Boolean).join('\n\n');
+    const stewards = on ? stewardsOf(sessionID) : [];
+    const watched = stewards.length ? watchedText(stewards) : '';
+    const all = [on ? pending : '', notesAfter, ...scripts.map((n) => texts[n]), watched].filter(Boolean).join('\n\n');
     if (all) ev.metadata = { ...(ev.metadata || {}), [META_KEY]: wrap(all) };
-    log('prompt', { sessionID, turnId: s.turnId, chars: all.length, resumed: !!pending, plan: on, steward: watched });
+    log('prompt', { sessionID, turnId: s.turnId, chars: all.length, resumed: !!pending, plan: on, steward: !!watched, stewards: stewards.length, watchedText: watched });
   }));
 
   registrations.push(await ctx.session.hook('context', (ev) => {
@@ -516,7 +553,7 @@ async function setup(ctx) {
       const tools = (ev && ev.tools) || {};
       const shell = tools.shell && tools.shell.input && tools.shell.input.properties;
       const watched = ((ev && ev.messages) || []).filter((m) => m && m.role === 'user' && Array.isArray(m.content)
-        && m.content.some((c) => c && typeof c.text === 'string' && c.text.includes(WATCHED))).length;
+        && m.content.some((c) => c && typeof c.text === 'string' && c.text.includes(WATCHED_MARK))).length;
       log('context', { sessionID: ev && ev.sessionID, messages: ((ev && ev.messages) || []).length, kept, watched,
         tools: Object.keys(tools), shellInput: shell ? Object.keys(shell) : null });
     }

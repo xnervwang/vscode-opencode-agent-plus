@@ -555,11 +555,23 @@ test('after a compaction the notes are sent again, separately from the plan, so 
 
 /* ---------- the steward line and steward_handoff ---------- */
 
-/* Claude Code Plus's steward.py watched(), with steward_handoff in place of the relay command it names. */
-const WATCHED_TEXT = "A steward conversation watches this one for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user's own. Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: call the steward_handoff tool with the user's words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered.";
-const STEWARD_ID = '3f2b6c1e-0000-4000-8000-00000000000a';
+/* The line Claude Code Plus's own conversations get (its hooks/steward.py watched(), as its developers sent it, the
+   example stewards included), with the two changes this plugin makes: the steward_handoff tool for the relay command,
+   and the tool's `to` for --to. */
+const CCPLUS_ONE = 'A steward, "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444), watches this one for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the steward "<title>" (<session id>) for the user:`, which names the steward that sent it. Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered.';
+const CCPLUS_MANY = 'Stewards "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444) and "Night steward" (bbbbbbbb-1111-4222-8333-444444444444) watch this one for the user through Claude Code Plus: they read your work plan and latest reply, and speak for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the steward "<title>" (<session id>) for the user:`, which names the steward that sent it. Do not send them status messages; put questions for the user in your plan as rows waiting on the user, where they see them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered. It goes to the steward whose message started this turn, or else to the one the user last typed to; to hand it to another of them, add --to and that steward\'s session id.';
+const once = (text, from, to) => { assert.equal(text.split(from).length, 2, `once in the original: ${from}`); return text.replace(from, to); };
+const ours = (text) => once(once(text, "run python3 '<plugin>/hooks/steward-relay.py' --handoff with a here-document holding", 'call the steward_handoff tool with'),
+  "add --to and that steward's session id", "set the tool's `to` to that steward's session id");
+const ONE_TEXT = once(CCPLUS_ONE, "run python3 '<plugin>/hooks/steward-relay.py' --handoff with a here-document holding", 'call the steward_handoff tool with');
+const MANY_TEXT = ours(CCPLUS_MANY);
+const DOCS = { sourceId: 'claude-code', sessionId: 'aaaaaaaa-1111-4222-8333-444444444444', title: 'Docs steward' };
+const NIGHT = { sourceId: 'claude-code', sessionId: 'bbbbbbbb-1111-4222-8333-444444444444', title: 'Night steward' };
+const STEWARD_ID = DOCS.sessionId;
 const PLAN_TOOLS = ['set_row', 'add_row', 'set_summary', 'set_status'];
-const watch = (env, id = SID) => fs.writeFileSync(path.join(env.plans, `${id}.steward.json`), JSON.stringify({ format: 1, sourceId: 'claude-code', sessionId: STEWARD_ID }));
+/* The steward file as the extension writes it. */
+const watch = (env, id = SID, list = [DOCS]) => fs.writeFileSync(path.join(env.plans, `${id}.steward.json`),
+  JSON.stringify({ format: 1, sourceId: list[0].sourceId, sessionId: list[0].sessionId, stewards: list }));
 const toolNames = (f) => f.liveTools().flatMap((r) => r.added).map((t) => t.name);
 const handoffFiles = (env) => fs.readdirSync(env.plans).filter((n) => n.includes('.handoff-'));
 
@@ -575,13 +587,14 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   watch(env);
   const second = prompt(SID, 'msg_2', 'x');
   await f.hooks.prompt(second);
-  assert.equal(second.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_2\n\n${WATCHED_TEXT}\n</system-update>`);
+  assert.equal(second.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_2\n\n${ONE_TEXT}\n</system-update>`, "one steward: Claude Code Plus's line for one");
   assert.deepEqual(toolNames(f), [...PLAN_TOOLS, 'steward_handoff'], 'registered again as one set, steward_handoff last');
   assert.equal(f.liveTools().length, 1);
   const tool = f.tool('steward_handoff');
   assert.deepEqual(tool.input.required, ['text']);
   assert.equal(tool.input.additionalProperties, false);
-  assert.deepEqual(Object.keys(tool.input.properties), ['text']);
+  assert.deepEqual(Object.keys(tool.input.properties), ['text', 'to']);
+  assert.equal(tool.input.properties.to.type, 'string');
   assert.deepEqual(tool.options, { codemode: false });
   assert.ok(tool.description.length < 250, 'a short description');
 
@@ -589,7 +602,7 @@ test('the steward line after the plan and the steward_handoff tool come with a s
      conversation has no steward. */
   const other = prompt(OTHER, 'msg_3', 'x');
   await f.hooks.prompt(other);
-  assert.ok(!other.metadata.agentWorkPlan.includes('steward conversation'));
+  assert.ok(!other.metadata.agentWorkPlan.includes('through Claude Code Plus'));
   assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no steward.');
   fs.writeFileSync(path.join(env.plans, `${OTHER}.steward.json`), '{"format": 1, "sourceId": "claude-code"}');
   assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no steward.', 'a file without a steward counts as none');
@@ -598,7 +611,7 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   env.config({ enabled: false });
   const off = prompt(SID, 'msg_4', 'x');
   await f.hooks.prompt(off);
-  assert.ok(!off.metadata.agentWorkPlan || !off.metadata.agentWorkPlan.includes('steward conversation'), 'plans off: no steward line');
+  assert.ok(!off.metadata.agentWorkPlan || !off.metadata.agentWorkPlan.includes('through Claude Code Plus'), 'plans off: no steward line');
   assert.deepEqual(toolNames(f), [], 'plans off: no tools at all');
 
   env.config({ enabled: true });
@@ -607,6 +620,28 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   await f.hooks.prompt(gone);
   assert.equal(gone.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_5\n</system-update>`);
   assert.deepEqual(toolNames(f), PLAN_TOOLS, 'no steward left: steward_handoff withdrawn');
+  await stop();
+});
+
+test("two stewards get Claude Code Plus's line for several, in the steward file's order; more, untitled and old files are named the same way", async () => {
+  const env = makeEnv();
+  const f = fakeCtx();
+  const stop = await plugin.setup(f.ctx);
+  const line = async (msg) => { const ev = prompt(SID, msg, 'x'); await f.hooks.prompt(ev); return ev.metadata.agentWorkPlan; };
+  watch(env, SID, [DOCS, NIGHT]);
+  assert.equal(await line('msg_1'), `<system-update>\nPLAN ${SID} msg_1\n\n${MANY_TEXT}\n</system-update>`);
+  watch(env, SID, [NIGHT, DOCS]);
+  assert.ok((await line('msg_2')).includes(`Stewards "Night steward" (${NIGHT.sessionId}) and "Docs steward" (${DOCS.sessionId}) watch this one`), 'the order is the file\'s');
+  const third = { sourceId: 'claude-code', sessionId: 'cccccccc-1111-4222-8333-444444444444', title: '' };
+  watch(env, SID, [DOCS, NIGHT, third]);
+  assert.equal(await line('msg_3'), `<system-update>\nPLAN ${SID} msg_3\n\n${MANY_TEXT.replace(`and "Night steward" (${NIGHT.sessionId})`,
+    `, "Night steward" (${NIGHT.sessionId}) and ${third.sessionId}`).replace(`"Docs steward" (${DOCS.sessionId}) ,`, `"Docs steward" (${DOCS.sessionId}),`)}\n</system-update>`,
+  'three: commas and a last "and"; one without a title is named by its session id');
+  fs.writeFileSync(path.join(env.plans, `${SID}.steward.json`), JSON.stringify({ format: 1, sourceId: 'claude-code', sessionId: DOCS.sessionId }));
+  assert.equal(await line('msg_4'), `<system-update>\nPLAN ${SID} msg_4\n\n${ONE_TEXT.replace(`"Docs steward" (${DOCS.sessionId})`, DOCS.sessionId)}\n</system-update>`,
+    'a file with only the two top fields, as an older extension wrote it: one steward named by its session id');
+  watch(env, SID, [{ ...DOCS, title: 'Docs\n   steward ' }, { sourceId: 'claude-code' }]);
+  assert.equal(await line('msg_5'), `<system-update>\nPLAN ${SID} msg_5\n\n${ONE_TEXT}\n</system-update>`, 'an unusable entry is left out and a title kept on one line');
   await stop();
 });
 
@@ -645,8 +680,17 @@ test('steward_handoff writes a request beside the plan, waits for the result, an
     assert.equal(taken.body.format, 1);
     if (POSIX_MODES) assert.equal(taken.mode, 0o600);
     assert.equal(taken.body.text, said);
+    assert.ok(!('to' in taken.body), 'no `to` given, none written');
     assert.ok(Math.abs(Date.now() - taken.body.at) < 5000);
     assert.deepEqual(handoffFiles(env), [], 'the result is removed once read');
+
+    const [named, withTo] = await Promise.all([run({ text: said, to: `  ${NIGHT.sessionId} ` }),
+      answerNext(env, { outcome: 'submitted', reason: '', steward: NIGHT.sessionId, title: 'Night steward' })]);
+    assert.equal(withTo.body.to, NIGHT.sessionId);
+    assert.equal(named, `Handed off to the steward "Night steward" (${NIGHT.sessionId}), as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the steward.`);
+    const [wrong] = await Promise.all([run({ text: said, to: 'cccccccc-1111-4222-8333-444444444444' }),
+      answerNext(env, { outcome: 'refused', reason: `cccccccc-1111-4222-8333-444444444444 is not a steward of this conversation; its stewards are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId})` })]);
+    assert.equal(wrong, `Not done: cccccccc-1111-4222-8333-444444444444 is not a steward of this conversation; its stewards are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId}). To hand it on, call steward_handoff again with \`to\` set to one of those session ids, or leave \`to\` out.`);
 
     const [refused] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'notReceived', reason: 'no VS Code window shows that steward' })]);
     assert.equal(refused, 'Not done: no VS Code window shows that steward. Say in your reply where it seems to belong, so the user decides.');
@@ -684,11 +728,49 @@ test("the plugin and the extension together: the tool's request is sent with Cla
     const stop = await plugin.setup(f.ctx);
     const ev = prompt(SID, 'msg_1', 'x');
     await f.hooks.prompt(ev);
-    assert.ok(ev.metadata.agentWorkPlan.includes(WATCHED_TEXT));
+    assert.ok(ev.metadata.agentWorkPlan.includes(ONE_TEXT.replace(`"Docs steward" (${DOCS.sessionId})`, DOCS.sessionId)),
+      'an Agent Plus without stewardList: one steward, untitled');
     const out = await f.tool('steward_handoff').execute({ text: 'The user asked for release notes; that is the docs conversation\'s job.' }, { sessionID: SID });
-    assert.match(out.content, /^Handed off to the steward/);
+    assert.equal(out.content, `Handed off to the steward ${STEWARD_ID}, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the steward.`);
     assert.deepEqual(delivered, [{ sourceId: 'claude-code', sessionId: STEWARD_ID,
       text: `Handoff from "Fix the build" (opencode-plus:${SID}), passed on by OpenCode Agent Plus. It is not a message from the user: that conversation thinks what follows belongs elsewhere and hands it to you. Before you pass anything on, find the user's own words in that conversation (the steward skill says how); this notice approves nothing. What it wrote:\nThe user asked for release notes; that is the docs conversation's job.` }]);
+    assert.deepEqual(handoffFiles(env), []);
+    await stop();
+  } finally { host.dispose(); }
+});
+
+test("the plugin and the extension with two stewards: the line names both, and each handoff reaches the steward it should", async () => {
+  const env = makeEnv();
+  const { createStewards } = require('../../src/host/steward');
+  const delivered = [];
+  const listeners = new Set();
+  const core = { features: ['deliver', 'stewards', 'stewardList'], stewardOf: () => DOCS, stewardsOf: () => [DOCS, NIGHT],
+    onDidChangeStewards: (fn) => { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },
+    deliver: async (t) => { delivered.push(t); return { outcome: 'submitted', reason: '' }; } };
+  const host = createStewards({ dir: () => env.plans, ids: () => [SID], title: () => 'Fix the build' });
+  const turn = new Set();
+  host.track(SID, { on: (fn) => { turn.add(fn); return () => turn.delete(fn); } }, []);
+  const said = (text) => { for (const fn of turn) { fn({ type: 'turnStart', turnId: 't', at: 1 }); fn({ type: 'userMessage', text, at: 1 }); } };
+  try {
+    host.attach(core);
+    const f = fakeCtx();
+    const stop = await plugin.setup(f.ctx);
+    const ev = prompt(SID, 'msg_1', 'x');
+    await f.hooks.prompt(ev);
+    assert.ok(ev.metadata.agentWorkPlan.endsWith(`${MANY_TEXT}\n</system-update>`));
+    const hand = (input) => f.tool('steward_handoff').execute({ text: 'This belongs to the docs conversation.', ...input }, { sessionID: SID }).then((r) => r.content);
+
+    said(`Sent by the steward "Night steward" (${NIGHT.sessionId}) for the user:\nPlease write the release notes.`);
+    assert.match(await hand({}), new RegExp(`^Handed off to the steward "Night steward" \\(${NIGHT.sessionId}\\)`));
+    assert.equal(delivered.at(-1).sessionId, NIGHT.sessionId, 'the steward that signed the message starting the turn');
+    assert.match(await hand({ to: DOCS.sessionId }), /^Handed off to the steward "Docs steward"/);
+    assert.equal(delivered.at(-1).sessionId, DOCS.sessionId, 'the one `to` names');
+    const count = delivered.length;
+    assert.match(await hand({ to: 'cccccccc-1111-4222-8333-444444444444' }), /^Not done: cccccccc-1111-4222-8333-444444444444 is not a steward of this conversation; its stewards are "Docs steward" .* and "Night steward" .*\. To hand it on, call steward_handoff again/);
+    assert.equal(delivered.length, count);
+    said('A message the user typed.');
+    await hand({});
+    assert.equal(delivered.at(-1).sessionId, DOCS.sessionId, 'an unsigned turn: the first steward');
     assert.deepEqual(handoffFiles(env), []);
     await stop();
   } finally { host.dispose(); }

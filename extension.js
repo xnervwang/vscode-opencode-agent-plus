@@ -21,7 +21,7 @@
  *   src/host/plan-bar.js          the plan bar above each chat page's input box, from Agent Plus's summary
  *   src/host/window-states.js     every window's open conversations, for Agent Plus's listAllConversations()
  *   src/host/reply-file.js        each conversation's latest reply beside its plan, for a steward to read
- *   src/host/steward.js           which steward looks after each conversation, and the handoffs to it
+ *   src/host/steward.js           which stewards look after each conversation, and the handoffs to them
  *   src/host/rewind.js            rewinding a conversation to before one of the user's messages (OpenCode 2)
  *   src/host/reply-images.js      reads the local image files a reply shows
  *   src/host/conversation-links.js   links to the conversations a reply names
@@ -233,6 +233,7 @@ function start(context, log, gate, channel) {
       conv.saved = historyFor(events);
       conv.on(onAuth);
       replies.track(id, conv, events);
+      stewards.track(id, conv, events);
       return conv;
     },
     isLooking: (id) => {

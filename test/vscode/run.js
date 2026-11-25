@@ -39,8 +39,8 @@
  * right; after it each is back in its group with its own conversation.
  * --restricted runs test/vscode/lib/restricted.js instead: the folder untrusted, then trusted.
  * --steward runs test/vscode/lib/steward.js instead, with the real backend and OpenCode 2: a stand-in for Claude Code Plus's
- * source names a steward for the conversation, the model hands a message to that steward, and then the stand-in names
- * no steward.
+ * source names two stewards for the conversation, the model hands messages to the one each turn calls for, and then the
+ * stand-in names none.
  * --download runs test/vscode/lib/download.js instead, with the real backend and no OpenCode to find (no --opencode, no
  * setting, PATH without a folder holding one): the notification's button downloads OpenCode from GitHub.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a

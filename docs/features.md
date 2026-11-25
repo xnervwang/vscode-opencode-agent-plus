@@ -144,6 +144,8 @@ To assign a steward, bring a Claude Code conversation to the front in Claude Cod
 
 While an OpenCode Agent Plus conversation has a steward and [Token Mode](#token-mode) has work plans turned on, its model can use `steward_handoff` to pass the steward a request that belongs in another conversation. Under those same conditions, each message the conversation sends to the model includes a note that a steward is watching. The note and the tool need Agent Plus 1.6.0 or later and a Claude Code Plus release later than 1.5.0.
 
+A conversation can have more than one steward. The note then names each of them, and a handoff goes to the steward whose message started the turn, or else to the steward you last talked to. The model can also name one of the stewards to hand it to. More than one steward needs an Agent Plus release later than 1.6.0.
+
 ## Conversation Brief
 
 On OpenCode 2, the model keeps a brief in each conversation's work plan with a short summary and the current status. This happens when you set [Token Mode](#token-mode) to All features (the default), or choose Custom and turn on `opencodeAgentPlus.conversationBrief`. The brief appears when you click the conversation in Agent Plus's Conversations view.
