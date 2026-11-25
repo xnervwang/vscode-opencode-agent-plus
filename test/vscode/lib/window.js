@@ -7,15 +7,17 @@
  * One VS Code window for test/vscode/run.js, under xvfb-run on Linux: started with its own user data and extensions
  * folders, driven through Playwright over the DevTools protocol to read and click what is drawn, and through helper/ to
  * call the vscode API. The DevTools port is 0, so two runs on one machine do not collide; Chromium writes the port it took to
- * DevToolsActivePort in the user data folder.
+ * DevToolsActivePort in the user data folder. On Linux and macOS the window is the leader of a process group of its own,
+ * which close() ends as a whole; Windows has no such group, so there close() ends the window's process tree.
  */
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const HELPER = path.join(__dirname, '..', 'helper');
 const FLAGS = ['--no-sandbox', '--disable-gpu-sandbox', '--disable-updates', '--skip-welcome', '--skip-release-notes',
-  '--disable-workspace-trust', '--use-inmemory-secretstorage', '--password-store=basic'];
+  '--disable-workspace-trust', '--use-inmemory-secretstorage', ...(process.platform === 'linux' ? ['--password-store=basic'] : [])];
+const WINDOWS = process.platform === 'win32';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function until(test, ms, every = 250) {
@@ -39,7 +41,7 @@ async function open({ exe, profile, env, playwright, log, size = '1600x1000', tr
   const [prog, argv] = process.platform === 'linux' && !env.DISPLAY
     ? ['xvfb-run', ['-a', `--server-args=-screen 0 ${size}x24`, exe, ...args]]
     : [exe, args];
-  const proc = spawn(prog, argv, { env: { ...env, OPENCODE_AGENT_PLUS_UI_CONTROL: profile.control }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const proc = spawn(prog, argv, { env: { ...env, OPENCODE_AGENT_PLUS_UI_CONTROL: profile.control }, stdio: ['ignore', 'pipe', 'pipe'], detached: !WINDOWS });
   const out = fs.createWriteStream(log);
   proc.stdout.pipe(out);
   proc.stderr.pipe(out);
@@ -87,11 +89,15 @@ async function open({ exe, profile, env, playwright, log, size = '1600x1000', tr
     await page.waitForSelector('.monaco-workbench', { timeout: 90000 });
     return hostUp(before);
   };
+  const stop = (signal) => {
+    if (WINDOWS) spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { windowsHide: true });
+    else { try { process.kill(-proc.pid, signal); } catch (_) { /* gone */ } }
+  };
   const close = async () => {
     try { await browser.close(); } catch (_) { /* gone */ }
-    try { process.kill(-proc.pid, 'SIGTERM'); } catch (_) { /* gone */ }
+    stop('SIGTERM');
     await until(() => exited !== null, 10000);
-    if (exited === null) { try { process.kill(-proc.pid, 'SIGKILL'); } catch (_) { /* gone */ } }
+    if (exited === null) stop('SIGKILL');
     out.end();
   };
   return { browser, page, call, reload, hostUp, close, proc };

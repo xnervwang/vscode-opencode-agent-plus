@@ -6,10 +6,12 @@
 /*
  * node test/vscode/run.js --local --vscode <executable> --out <dir> [--agent-plus <.vsix>] [--backend fake|opencode]
  *   [--opencode <executable>] [--model <provider/model>] [--deps <folder with node_modules>] [--fonts <fonts.conf>]
- *   [--restricted | --download | --steward]
+ *   [--vsix <.vsix>] [--restricted | --download | --steward]
+ * CI=true node test/vscode/run.js --out <dir> --agent-plus <.vsix> [--vsix <.vsix>] [--cache <folder>] [--restricted]
  *
- * Packs this extension (build/pack-vsix.js), installs it and Agent Plus into a profile of its own, starts that VS Code
- * under xvfb-run and goes through the steps below, saving a screenshot of each to <out>/shots with a look.json that
+ * Packs this extension (build/pack-vsix.js), or takes the package --vsix names, installs it and Agent Plus into a profile
+ * of its own, starts that VS Code (under xvfb-run on Linux) and goes through the steps below, saving a screenshot of
+ * each to <out>/shots with a look.json that
  * test/vscode/LOOK.md explains. `fake` (the default) puts test/vscode/fake-backend.js behind the chat; `opencode` uses
  * the real backend with the OpenCode at --opencode and the user's AWS profile `self`, for a run against a real model.
  * With OpenCode 2 the page's mode and effort pickers are switched and the next turns checked against what OpenCode
@@ -32,11 +34,15 @@
  * (OPENCODE_AGENT_PLUS_PLAN_LOG).
  * --restricted runs test/vscode/lib/restricted.js instead: the folder untrusted, then trusted.
  * --steward runs test/vscode/lib/steward.js instead, with the real backend and OpenCode 2: a stand-in for Claude Code Plus's
- * source names a steward for the conversation, the model hands a message to it, and then it names none.
+ * source names a steward for the conversation, the model hands a message to that steward, and then the stand-in names
+ * no steward.
  * --download runs test/vscode/lib/download.js instead, with the real backend and no OpenCode to find (no --opencode, no
  * setting, PATH without a folder holding one): the notification's button downloads OpenCode from GitHub.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a
  * fontconfig file of its own, for a machine with no CJK font, where Chinese text would be drawn as boxes.
+ * With CI=true and no --vscode, the VS Code of VSCODE_VERSION is downloaded with @vscode/test-electron (found the same
+ * way) into --cache, by default a folder under RUNNER_TEMP or the system's temporary folder. The fake and the Restricted Mode runs
+ * work on Linux, macOS and Windows; on the last two the window opens without xvfb-run.
  *
  * Under `node --test` this file does nothing: the default test patterns pick up every .js under test/.
  */
@@ -55,6 +61,10 @@ const has = (name) => { const i = args.indexOf(name); if (i < 0) return false; a
 
 const LOCAL = has('--local');
 const EXE = flag('--vscode');
+const VSIX = flag('--vsix');
+const CACHE = flag('--cache');
+/* The VS Code a run without --vscode downloads: the one the local runs use. */
+const VSCODE_VERSION = '1.147.0';
 const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-agent-plus-ui-${Date.now()}`)));
 /* 1.4.0 or later: the plan bar needs Agent Plus's planSummary. Without --agent-plus, the newest package built in a
    vscode-agent-plus checkout beside this repository. */
@@ -118,18 +128,28 @@ const restricted = require('./lib/restricted');
 const downloading = require('./lib/download');
 const stewarding = require('./lib/steward');
 
-/* VS Code's environment: none of the variables that would send the install to the VS Code running this script. */
+/* VS Code's environment: none of the variables that would send the install to the VS Code running this script. A home
+   given stands on Windows for the profile folders too, which Node's os.homedir() and the AppData lookups read there. */
 function cleanEnv(home, extra) {
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (/^(VSCODE_|ELECTRON_)/.test(k) || k === 'LD_LIBRARY_PATH') delete env[k];
-  return { ...env, ...(home ? { HOME: home } : {}), ...extra };
+  const homes = !home ? {} : process.platform === 'win32'
+    ? { HOME: home, USERPROFILE: home, APPDATA: path.join(home, 'AppData', 'Roaming'), LOCALAPPDATA: path.join(home, 'AppData', 'Local') }
+    : { HOME: home };
+  return { ...env, ...homes, ...extra };
 }
 
+/* VS Code's command line tool for `exe`, where @vscode/test-electron's resolveCliPathFromVSCodeExecutablePath finds it;
+   on Windows a .cmd, which only a shell runs. */
 function cliOf(exe) {
-  const cli = path.join(path.dirname(exe), 'bin', 'code');
+  const windows = process.platform === 'win32';
+  const cli = windows ? path.join(path.dirname(exe), 'bin', 'code.cmd')
+    : process.platform === 'darwin' ? path.resolve(exe, '..', '..', 'Resources', 'app', 'bin', 'code') : path.join(path.dirname(exe), 'bin', 'code');
   if (!fs.existsSync(cli)) throw new Error(`no VS Code command line tool at ${cli}`);
   return (argv, env) => {
-    const r = cp.spawnSync(cli, argv, { env, encoding: 'utf8', maxBuffer: 64 << 20 });
+    const r = windows
+      ? cp.spawnSync(`"${cli}"`, argv.map((a) => `"${a}"`), { env, encoding: 'utf8', maxBuffer: 64 << 20, shell: true, windowsHide: true })
+      : cp.spawnSync(cli, argv, { env, encoding: 'utf8', maxBuffer: 64 << 20 });
     return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}`.trim() };
   };
 }
@@ -142,6 +162,9 @@ function writeSettings(user, extra) {
     'workbench.colorTheme': 'Default Dark Modern', 'chat.disableAIFeatures': true, 'git.enabled': false,
     'window.dialogStyle': 'custom', 'workbench.editor.wrapTabs': true, 'agentPlus.webviewRequestLimit': 'leave',
     'workbench.secondarySideBar.defaultVisibility': 'hidden',
+    /* Context menus drawn in the page, as Linux and Windows draw them already, so that a tab's menu can be read and
+       clicked on macOS too. */
+    'window.menuStyle': 'custom',
     ...extra,
   }, null, 2));
 }
@@ -167,13 +190,18 @@ function stopLeftovers(stateDir) {
 
 async function main() {
   if (!LOCAL && process.env.CI !== 'true') throw new Error('runs only where CI=true, or with --local: it starts VS Code and installs extensions');
-  if (!EXE || !fs.existsSync(EXE)) throw new Error('--vscode <executable> is needed');
+  if (!EXE && process.env.CI !== 'true') throw new Error('--vscode <executable> is needed: only a CI=true run downloads VS Code');
+  if (EXE && !fs.existsSync(EXE)) throw new Error(`no VS Code at ${EXE}`);
+  if (VSIX && !fs.existsSync(VSIX)) throw new Error(`no .vsix at ${VSIX}`);
   if (DOWNLOAD && (OPENCODE || RESTRICTED)) throw new Error('--download finds no OpenCode: it takes neither --opencode nor --restricted');
   if (STEWARD_RUN && (DOWNLOAD || RESTRICTED || BACKEND === 'fake')) throw new Error('--steward needs --backend opencode, and neither --download nor --restricted');
   if (!AGENT_PLUS || !fs.existsSync(AGENT_PLUS)) throw new Error(`no Agent Plus .vsix${AGENT_PLUS ? ` at ${AGENT_PLUS}` : ' beside this repository'}; pass --agent-plus <.vsix>`);
   const playwright = need('playwright-core');
+  const exe = EXE || await need('@vscode/test-electron').downloadAndUnzipVSCode({ version: VSCODE_VERSION,
+    cachePath: path.resolve(CACHE || path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'opencode-agent-plus-vscode')) });
 
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-ui-')));
+  /* The real path: macOS's temporary folder is a link, and Windows's can be given in its short 8.3 form. */
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'opencode-agent-plus-ui-')));
   const shots = path.join(OUT, 'shots');
   fs.mkdirSync(shots, { recursive: true });
   const p = { exts: path.join(root, 'exts'), user: path.join(root, 'user'), folder: path.join(root, 'ws'), control: path.join(root, 'ctl'),
@@ -188,10 +216,13 @@ async function main() {
   const prepared = RESTRICTED ? restricted.prepareFolder(p.folder, root) : null;
   console.log(`temporary root ${root}; results in ${OUT}`);
 
-  const vsix = path.join(root, 'opencode-agent-plus.vsix');
-  const pack = cp.spawnSync(process.execPath, [path.join(ROOT, 'build', 'pack-vsix.js'), ROOT, '--out', vsix], { encoding: 'utf8' });
-  if (pack.status !== 0) throw new Error(`packing failed: ${pack.stderr}`);
-  console.log(pack.stdout.trim());
+  const vsix = VSIX ? path.resolve(VSIX) : path.join(root, 'opencode-agent-plus.vsix');
+  if (VSIX) console.log(`this extension from ${vsix}`);
+  else {
+    const pack = cp.spawnSync(process.execPath, [path.join(ROOT, 'build', 'pack-vsix.js'), ROOT, '--out', vsix], { encoding: 'utf8' });
+    if (pack.status !== 0) throw new Error(`packing failed: ${pack.stderr}`);
+    console.log(pack.stdout.trim());
+  }
 
   /*
    * The real backend signs in with the AWS profile `self` given through the extension's own settings, so that run keeps
@@ -220,12 +251,13 @@ async function main() {
     ...(real ? {} : { OPENCODE_AGENT_PLUS_TEST_BACKEND: path.join(HERE, 'fake-backend.js') }),
   });
   if (real) for (const k of Object.keys(env)) if (/^AWS_/.test(k)) delete env[k];
+  if (!real && process.platform === 'win32') for (const k of ['APPDATA', 'LOCALAPPDATA']) fs.mkdirSync(env[k], { recursive: true });
   if (DOWNLOAD) {
     const { env: bare, dropped } = downloading.withoutOpenCode(env);
     Object.assign(env, bare);
     if (dropped.length) console.log(`  note  left out of PATH, since they hold an opencode: ${dropped.join(', ')}`);
   }
-  const code = cliOf(EXE);
+  const code = cliOf(exe);
   for (const ext of [AGENT_PLUS, vsix]) {
     const r = code(['--install-extension', ext, `--extensions-dir=${p.exts}`, `--user-data-dir=${p.user}`, '--force'], env);
     if (r.status !== 0) throw new Error(`installing ${ext} failed: ${r.out}`);
@@ -243,8 +275,11 @@ async function main() {
     return false;
   };
 
-  const w = await open({ exe: EXE, profile: p, env, playwright, log: path.join(OUT, 'vscode.log'), trust: RESTRICTED });
+  const w = await open({ exe, profile: p, env, playwright, log: path.join(OUT, 'vscode.log'), trust: RESTRICTED });
   const { page, call } = w;
+  const drawn = await page.evaluate(() => ({ size: `${window.innerWidth} by ${window.innerHeight}`, version: (/Code\/([\d.]+)/.exec(navigator.userAgent) || [])[1] }))
+    .catch(() => ({ size: 'of unknown size' }));
+  console.log(`  note  VS Code ${drawn.version || 'of unknown version'} on ${process.platform}-${process.arch}, its window ${drawn.size}`);
   let previous = null;
   /* A screenshot of the window and of one part of it, recorded in look.json. `settle` is the wait before it, for a state
      that lasts only a moment. */
@@ -450,7 +485,8 @@ async function main() {
     try {
       await w.hostUp();
       await until(() => ext('return !!(api && api.test);'), 60000);
-      await restricted.run({ page, call, ext, check, shot, until, sleep, frameWith, control: p.control, home: p.agentHome, real, opencode: OPENCODE, prepared });
+      await restricted.run({ page, call, ext, check, shot, until, sleep, frameWith, control: p.control, home: p.agentHome, real, opencode: OPENCODE, prepared,
+        windowPid: w.proc.pid });
     } catch (e) {
       check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
       try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }
@@ -1175,7 +1211,7 @@ async function main() {
           check(!!secondId && !!delivered && delivered.outcome === 'submitted' && !!unread && !unread.active && !!apUnseen && apUnseen.unseen === true,
             'a reply in a tab not in front puts an envelope after its title, and Agent Plus hears it is unseen', { secondId, delivered, unread, apUnseen });
           await shot('15-unread-envelope', { features: ['unread envelope', 'tab state dot'],
-            expect: `Two chat tabs, each with the OpenCode Agent Plus icon of the activity bar (the OpenCode mark) and no dot (neither conversation is working or waiting): the one in front is a new, empty conversation; the other reads "${NEW_TITLE} 📩", the envelope after its title.`,
+            expect: `Two chat tabs, each with the OpenCode mark of the activity bar icon and no dot (neither conversation is working or waiting): the one in front is a new, empty conversation; the other reads "${NEW_TITLE} 📩", the envelope after its title.`,
             part: '#workbench\\.parts\\.editor' });
           const all = (await ext('return api.test.source.listAllConversations();')) || [];
           let windowFile = null;
@@ -1540,19 +1576,19 @@ async function main() {
     await shot('07b-editor-title-mark-dark', { features: ['new conversation from the editor title bar'],
       expect: 'At the right end of the chat tab\'s title bar, beside the split editor and "..." buttons, is a small light grey OpenCode mark (an upright rectangular frame whose lower inner half is fainter), the same size and tone as the buttons next to it.',
       part: '#workbench\\.parts\\.editor' });
-    check(await setTheme('Default Light Modern', 'vs'), 'the window switches to the light theme for the title bar mark');
+    check(await setTheme('Default Light Modern', 'vs'), 'the window switches to the light theme for the title bar shots');
     await page.mouse.move(800, 600);
     await shot('07c-editor-title-mark-light', { features: ['new conversation from the editor title bar'],
       expect: 'The same title bar in the light theme: the OpenCode mark is dark grey like the buttons beside it and readable on the light bar.',
       unchanged: 'The buttons and their order, apart from the colours of the theme.',
       part: '#workbench\\.parts\\.editor' });
-    check(await setTheme('Default Dark Modern', 'vs-dark'), 'the window switches back to the dark theme after the title bar mark');
+    check(await setTheme('Default Dark Modern', 'vs-dark'), 'the window switches back to the dark theme after the title bar shots');
     if (mark) {
       await page.locator(markAt).first().click();
       const other = await until(() => call(`const t = vscode.window.tabGroups.activeTabGroup.activeTab;
         return t && t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat" ? t.input.uri.toString() : null;`)
         .then((u) => (u && u !== `opencodeagentplus-session:/${sessionId}` ? u : null)), 30000);
-      check(!!other, 'clicking the OpenCode mark in the title bar opens a new conversation in a tab of its own', other);
+      check(!!other, 'clicking the mark opens a new conversation in its own tab', other);
     }
   } catch (e) {
     check(false, 'the window steps ran to their end', (e && e.stack) || String(e));

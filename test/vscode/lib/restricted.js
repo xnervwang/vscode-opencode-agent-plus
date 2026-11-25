@@ -14,6 +14,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const TEXT = 'OpenCode Agent Plus does nothing in Restricted Mode. It starts when you trust this workspace.';
 const KEYS = ['opencode.path', 'opencode.askPermissions', 'bedrock.profile', 'bedrock.region'];
@@ -22,9 +23,12 @@ const PROBE = 'ses_restrictedprobe000000001';
 /* Writes the folder's own settings and the program they name; returns the marker file, the program and those settings. */
 function prepareFolder(folder, root) {
   const marker = path.join(root, 'workspace-opencode-ran.txt');
-  const program = path.join(folder, 'tools', 'opencode');
+  /* On Windows a .cmd, the form an npm install of OpenCode takes there. */
+  const windows = process.platform === 'win32';
+  const program = path.join(folder, 'tools', windows ? 'opencode.cmd' : 'opencode');
   fs.mkdirSync(path.dirname(program), { recursive: true });
-  fs.writeFileSync(program, `#!/bin/sh\necho "$$ $0 $*" >> ${JSON.stringify(marker)}\nexit 1\n`, { mode: 0o755 });
+  fs.writeFileSync(program, windows ? `@echo %~f0 %*>> "${marker}"\r\n@exit /b 1\r\n`
+    : `#!/bin/sh\necho "$$ $0 $*" >> ${JSON.stringify(marker)}\nexit 1\n`, { mode: 0o755 });
   const workspace = { 'opencodeAgentPlus.opencode.path': program, 'opencodeAgentPlus.opencode.askPermissions': false,
     'opencodeAgentPlus.bedrock.profile': 'workspace-profile', 'opencodeAgentPlus.bedrock.region': 'eu-west-3' };
   fs.mkdirSync(path.join(folder, '.vscode'), { recursive: true });
@@ -35,11 +39,46 @@ function prepareFolder(folder, root) {
 /* The user settings of the run: Workspace Trust on, and no prompt at startup, so the folder opens in Restricted Mode. */
 const TRUST_SETTINGS = { 'security.workspace.trust.enabled': true, 'security.workspace.trust.startupPrompt': 'never' };
 
+/* Every process, as { pid, ppid, name, command }, on macOS from ps and on Windows from Win32_Process. Throws when the
+   table cannot be read, so that an empty one is never taken for "no process". */
+function processTable() {
+  if (process.platform === 'win32') {
+    const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress'],
+    { encoding: 'utf8', windowsHide: true, maxBuffer: 64 << 20 });
+    if (r.status !== 0) throw new Error(`the process table could not be read: ${(r.error && r.error.message) || r.stderr}`);
+    const rows = JSON.parse(r.stdout);
+    return (Array.isArray(rows) ? rows : [rows]).map((x) => ({ pid: x.ProcessId, ppid: x.ParentProcessId, name: x.Name || '', command: x.CommandLine || '' }));
+  }
+  const r = spawnSync('ps', ['-A', '-ww', '-o', 'pid=,ppid=,args='], { encoding: 'utf8', maxBuffer: 64 << 20 });
+  if (r.status !== 0) throw new Error(`the process table could not be read: ${(r.error && r.error.message) || r.stderr}`);
+  return r.stdout.split('\n').map((l) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l)).filter(Boolean)
+    .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), name: path.basename(m[3].split(' ')[0]), command: m[3] }));
+}
+
+/* A Windows or ps command line as words: the program without its quotes, then the rest split at spaces. */
+function words(command) {
+  const m = /^(?:"([^"]*)"|(\S*))\s*([\s\S]*)$/.exec(command);
+  return [m[1] === undefined ? m[2] : m[1], ...m[3].split(/\s+/).filter(Boolean)];
+}
+
 /*
- * The OpenCode processes this run's window started (and any run of the folder's program): those whose environment has
- * the run's control folder, which window.js gives VS Code, and whose program is an opencode. Linux only.
+ * The OpenCode processes this run's window started (and any run of the folder's program). On Linux, those whose
+ * environment has the run's control folder, which window.js gives VS Code, and whose program is an opencode. macOS and
+ * Windows do not show another process's environment: there, the descendants of the window's process `windowPid` whose
+ * program is an opencode or whose command line names the folder's program, with `env` null.
  */
-function openCodeProcesses(control, program) {
+function openCodeProcesses(control, program, windowPid) {
+  if (process.platform !== 'linux') {
+    const table = processTable();
+    const tree = new Set([windowPid]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const x of table) if (!tree.has(x.pid) && tree.has(x.ppid)) { tree.add(x.pid); grew = true; }
+    }
+    return table.filter((x) => x.pid !== windowPid && tree.has(x.pid) && (/^opencode(\.exe|\.cmd)?$/i.test(x.name) || x.command.includes(program)))
+      .map((x) => ({ pid: x.pid, argv: words(x.command).slice(0, 4), exe: '', env: null }));
+  }
   const found = [];
   for (const pid of fs.readdirSync('/proc').filter((n) => /^\d+$/.test(n))) {
     let environ = '', argv = [];
@@ -54,11 +93,12 @@ function openCodeProcesses(control, program) {
   return found;
 }
 
-/* t: { page, call, ext, check, shot, until, sleep, frameWith, folder, control, home, real, opencode, prepared } */
+/* t: { page, call, ext, check, shot, until, sleep, frameWith, folder, control, home, real, opencode, prepared, windowPid } */
 async function run(t) {
   const { page, call, ext, check, shot, until, sleep, frameWith, real, prepared } = t;
   const userPath = real ? t.opencode : '';
-  const procs = () => openCodeProcesses(t.control, prepared.program);
+  const procs = () => openCodeProcesses(t.control, prepared.program, t.windowPid);
+  if (process.platform !== 'linux') console.log(`  note  ${process.platform} does not show another process's environment: OpenCode processes are looked for among the window's descendants only`);
   const ran = () => fs.existsSync(prepared.marker);
   const textOf = (sel) => page.evaluate((s) => { const e = document.querySelector(s); return e ? e.textContent : ''; }, sel);
   const sidebar = '#workbench\\.parts\\.sidebar';
@@ -120,6 +160,7 @@ async function run(t) {
   await sleep(5000);
   const before = procs();
   check(before.length === 0, 'no OpenCode process has started', before);
+  if (process.platform === 'win32') console.log("  note  the folder's program is a .cmd, which a program started without a shell (as the extension starts OpenCode) cannot run, so on Windows the check below holds even if the extension tried; the settings and process checks are the ones that tell");
   check(!ran(), "the folder's opencode program was never run", ran() ? fs.readFileSync(prepared.marker, 'utf8') : '');
   const written = fs.existsSync(t.home) ? fs.readdirSync(t.home) : [];
   check(written.length === 0, "nothing was written to the extension's folder (no plugin, plans, locks or window state)", written);
@@ -212,7 +253,8 @@ async function run(t) {
     const acp = after.find((x) => info && x.pid === info.pid);
     check(!!info && info.path === userPath && !!acp && realPath(acp.argv[0]) === realPath(userPath) && acp.argv.includes('acp'),
       "the OpenCode running is the one in the user settings, started as `opencode acp`", { info: info && { path: info.path, pid: info.pid }, acp });
-    check(after.length > 0 && after.every((x) => realPath(x.argv[0]) === realPath(userPath) && x.env.AWS_PROFILE === 'self' && x.env.AWS_REGION === 'us-east-1'),
+    if (after.some((x) => !x.env)) console.log(`  note  ${process.platform} does not show another process's environment: the AWS profile and Region of these processes are not checked`);
+    check(after.length > 0 && after.every((x) => realPath(x.argv[0]) === realPath(userPath) && (!x.env || (x.env.AWS_PROFILE === 'self' && x.env.AWS_REGION === 'us-east-1'))),
       "every OpenCode process of this run is the user's, with the user's AWS profile and Region", after);
   } else {
     check(after.length === 0, 'with the fake backend no OpenCode process runs', after);

@@ -20,10 +20,22 @@ const MODELS = [
   { id: 'fake/fake-large', invokeId: 'fake-large', providerId: 'fake', name: 'Fake Large', vendor: 'Test', contextWindow: 200000, maxOutputTokens: 8192, known: false },
 ];
 
+/* Windows refuses a read or a rename for a moment while another process, such as a virus scanner, has the file open;
+   there the call is tried again for up to a second. Anywhere else it runs once. */
+const BUSY = new Set(['EBUSY', 'EPERM', 'EACCES']);
+function retried(fn) {
+  for (let i = 0; ; i++) {
+    try { return fn(); } catch (e) {
+      if (process.platform !== 'win32' || !BUSY.has(e && e.code) || i >= 20) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+}
+
 function createOpenCode() {
   const file = path.join(process.env.OPENCODE_AGENT_PLUS_HOME || '/tmp', 'fake-backend.json');
-  const read = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return { sessions: {} }; } };
-  const write = (db) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(`${file}.tmp`, JSON.stringify(db)); fs.renameSync(`${file}.tmp`, file); };
+  const read = () => { try { return JSON.parse(retried(() => fs.readFileSync(file, 'utf8'))); } catch (_) { return { sessions: {} }; } };
+  const write = (db) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(`${file}.tmp`, JSON.stringify(db)); retried(() => fs.renameSync(`${file}.tmp`, file)); };
   const listeners = new Set();
   const changed = (sessionId) => { for (const fn of [...listeners]) { try { fn({ sessionId }); } catch (_) { /* the others still run */ } } };
   const live = new Map();

@@ -1,0 +1,94 @@
+# BSD 3-Clause License
+# Copyright (c) 2026, Xnerv Wang
+# All rights reserved.
+
+# The window tests of test/vscode/run.js with the fake backend, on Linux, macOS and Windows. Each system downloads the
+# VS Code that run.js pins, installs this extension and Agent Plus from .vsix files built once on Linux, and runs the
+# default round and the Restricted Mode round. The rounds against a real model need credentials and stay on a
+# developer's machine. The results folder of each system (the screenshots with look.json, and VS Code's output) is kept
+# as an artifact whether the rounds passed or not.
+name: vscode
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Install the run-time packages
+        run: npm ci --ignore-scripts
+      - name: Build the .vsix
+        run: node build/pack-vsix.js . --out extension.vsix
+      # This extension depends on Agent Plus, so the run installs it too.
+      - uses: actions/checkout@v7
+        with:
+          repository: xnervwang/vscode-agent-plus
+          path: agent-plus
+      - name: Build Agent Plus's .vsix
+        shell: bash
+        run: |
+          core=$(cd agent-plus && bash build/pack.sh | tail -n 1)
+          mv "$core" core.vsix
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vsix
+          path: |
+            extension.vsix
+            core.vsix
+
+  run:
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v8
+        with:
+          name: vsix
+      # playwright-core rather than playwright: the run connects to VS Code's own Electron and needs no browser of its own.
+      - name: Install the test runner
+        shell: bash
+        run: npm install --no-save --no-package-lock --ignore-scripts @vscode/test-electron@3 playwright-core@1
+      # Without a CJK font the 「」 of one step's reply are drawn as boxes in the screenshots.
+      - name: Install a CJK font
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends fonts-noto-cjk
+      # The runner's screen is 1024 by 768, smaller than the 1440 by 900 window VS Code opens on a folder. run.js prints
+      # the size the window got.
+      - name: Make the screen larger
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
+      - name: Run with the fake backend
+        shell: bash
+        run: node test/vscode/run.js --vsix extension.vsix --agent-plus core.vsix --out vscode-results/fake
+      - name: Run in Restricted Mode
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: node test/vscode/run.js --restricted --vsix extension.vsix --agent-plus core.vsix --out vscode-results/restricted
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: vscode-${{ runner.os }}
+          path: vscode-results
+          if-no-files-found: warn
