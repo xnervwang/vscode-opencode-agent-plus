@@ -182,7 +182,7 @@ A conversation can be open in only one VS Code window at a time. If you open it 
 
 If OpenCode Agent Plus finds [Python](setup.md#python-for-the-work-plan), it installs a work plan plugin for the OpenCode 2 process it starts. The plugin lets the model track what still needs to be done in your conversation. In Agent Plus, you can read the plan in the Work plan view and see which of your OpenCode Agent Plus conversations are working, waiting or idle in the Conversations view.
 
-The plan bar above the input box (`opencodeAgentPlus.planBar`) shows the plan's open rows, the current row and a red count of questions waiting for your answer. Click the bar to open the Work plan view, or click the red count to go to those questions in Agent Plus's Answer view.
+The plan bar above the input box (`opencodeAgentPlus.planBar`) shows the plan's open rows, the row in progress when there is one, and a yellow count of this conversation's questions waiting for your answer. Click the bar to open the Work plan view, or click the yellow count to go to those questions in Agent Plus's Answer view.
 
 When the [Token Mode](#token-mode) enables work plans, each message includes the open rows, and the model gets tools to update the plan (`add_row`, `set_row`, `set_status`, `set_summary`). Reminders to update the plan arrive with the next message. During compaction, the work plan plugin asks the model to include the plan's location and open rows in the summary. If any rows remain open after compaction, the next message instructs the model to read the plan before continuing.
 
