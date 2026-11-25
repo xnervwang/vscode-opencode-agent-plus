@@ -24,7 +24,7 @@ OpenCode Agent Plus uses the model providers you set up in OpenCode. For Amazon 
 - [Through OpenCode Agent Plus Settings](docs/setup.md#through-opencode-agent-plus-settings): Set your AWS profile and Region in the extension's settings, or use its command to store a Bedrock API key.
 - [Through OpenCode's Own Configuration](docs/setup.md#through-opencodes-own-configuration): Set your AWS profile and Region in `~/.config/opencode/opencode.json`, or set AWS environment variables in the environment VS Code starts with.
 
-For [other model providers](docs/setup.md#other-model-providers), run `opencode auth login` on the machine where OpenCode runs.
+You can also select Connect a provider… in the model list under the message box. It opens OpenCode's sign-in, `opencode auth login`, in a VS Code terminal, and works for Amazon Bedrock as well: on OpenCode 2, the Bedrock entry takes an AWS profile or a Bedrock API key. For [other model providers](docs/setup.md#other-model-providers), use the same entry, or run `opencode auth login` yourself on the machine where OpenCode runs.
 
 ## Remote-SSH
 
