@@ -64,7 +64,7 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   await control.state.handlers['opencodeAgentPlus.newConversation']();
   assert.strictEqual(opened.length, 1);
   assert.match(opened[0][0], /^opencodeagentplus-session:\/ses_[0-9a-f]+$/);
-  assert.deepStrictEqual(opened[0].slice(1), ['opencodeAgentPlus.chat', { preview: false }]);
+  assert.deepStrictEqual(opened[0].slice(1), ['opencodeAgentPlus.chat', { preview: false, viewColumn: 1 }]);
 
   const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
   const uri = vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: opened[0][0].slice('opencodeagentplus-session:'.length) });

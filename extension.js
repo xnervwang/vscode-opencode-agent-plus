@@ -10,6 +10,7 @@
  * workspace is trusted (src/host/trust-gate.js).
  *
  *   src/host/chat-editor.js       a chat tab is the custom editor opencodeAgentPlus.chat of opencodeagentplus-session:/<session id>
+ *   src/host/chat-group.js        the editor group a conversation opens in: where its chat tabs are, else the main area
  *   src/host/session-manager.js   the conversations open in this window, one window each (src/host/locks.js)
  *   src/host/provider-config.js   the settings OpenCode starts with, the Bedrock API key
  *   src/host/models.js            the models OpenCode offers, and the picker
@@ -39,6 +40,7 @@ const brand = require('./src/brand');
 const paths = require('./src/paths');
 const { createLocks, windowToken } = require('./src/host/locks');
 const { createSessionManager } = require('./src/host/session-manager');
+const { chatColumn } = require('./src/host/chat-group');
 const { createBackend } = require('./src/host/backend');
 const { createModels } = require('./src/host/models');
 const { withModelChoice } = require('./src/host/model-choice');
@@ -424,7 +426,8 @@ function start(context, log, gate) {
     const panel = manager.panelOf(id);
     if (panel) { panel.reveal(panel.viewColumn); return true; }
     if (locks.holder(id) && !(await takeOver(id))) return false;
-    await vscode.commands.executeCommand('vscode.openWith', ap.uriOf(id), ap.VIEW_TYPE, { preview: false });
+    await vscode.commands.executeCommand('vscode.openWith', ap.uriOf(id), ap.VIEW_TYPE,
+      { preview: false, viewColumn: chatColumn(vscode, ap.isChatTab) });
     return true;
   }
 

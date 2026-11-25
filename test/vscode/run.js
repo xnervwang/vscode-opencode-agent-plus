@@ -1592,6 +1592,32 @@ async function main() {
         .then((u) => (u && u !== `opencodeagentplus-session:/${sessionId}` ? u : null)), 30000);
       check(!!other, 'clicking the mark opens a new conversation in its own tab', other);
     }
+
+    // 8. With a split to the right in front, a new conversation still opens in the main editor area.
+    await call(`const chats = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat");
+      if (chats.length) await vscode.window.tabGroups.close(chats);
+      global.__splitLeft = await vscode.workspace.openTextDocument({ content: "" });
+      await vscode.window.showTextDocument(global.__splitLeft, { viewColumn: vscode.ViewColumn.One, preview: false });
+      global.__splitRight = await vscode.workspace.openTextDocument({ content: "" });
+      await vscode.window.showTextDocument(global.__splitRight, { viewColumn: vscode.ViewColumn.Two, preview: false });
+      return true;`);
+    const layout = () => call(`return { groups: vscode.window.tabGroups.all.length, active: vscode.window.tabGroups.activeTabGroup.viewColumn,
+      chat: vscode.window.tabGroups.all.flatMap((g) => g.tabs.filter((t) => t.isActive && t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map(() => g.viewColumn)) };`);
+    const before8 = await layout();
+    check(before8.groups === 2 && before8.active === 2, 'the window has a split to the right, and it is the active group', before8);
+    await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
+    const first8 = await until(async () => { const l = await layout(); return l.chat.length ? l : null; }, 30000);
+    check(!!first8 && first8.groups === 2 && first8.chat[0] === 1, 'a new conversation opens in the main editor area, not in the active split, and no split is added', first8);
+    await call('await vscode.window.showTextDocument(global.__splitRight, { viewColumn: vscode.ViewColumn.Two, preview: false }); return true;');
+    await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
+    const chatsLeft = () => call(`return vscode.window.tabGroups.all.find((g) => g.viewColumn === 1).tabs.filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").length;`);
+    const second8 = await until(async () => { const n = await chatsLeft(); return n === 2 ? n : null; }, 30000);
+    const after8 = await layout();
+    check(second8 === 2 && after8.groups === 2, 'with the split in front again, the next conversation joins the first one in the main editor area', { second8, after8 });
+    await page.mouse.move(800, 600);
+    await shot('08-main-editor-area', { features: ['conversations open in the main editor area'],
+      expect: 'Two editor groups side by side. The left one, the main editor area, has two chat tabs, the one in front showing an empty conversation, and an untitled text tab; the right split has only an untitled text tab.',
+      part: '#workbench\\.parts\\.editor' });
   } catch (e) {
     check(false, 'the window steps ran to their end', (e && e.stack) || String(e));
     try { await shot('99-failure', { expect: 'The window as it was when the run failed.', note: String(e && e.message) }); } catch (_) { /* no window */ }
