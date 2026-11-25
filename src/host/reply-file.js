@@ -89,8 +89,8 @@ function createReplyFiles(deps) {
 
   return {
     fileOf,
-    /* Replays `history`, writing the file once if a turn in it ended, then rewrites it at the end of each turn of
-       `conversation`; call the returned function to stop. */
+    /* Replays `history`, then rewrites the file at the end of each turn of `conversation`; call the returned function
+       to stop. */
     track(id, conversation, history) {
       const r = createReplyState();
       let ended = false;

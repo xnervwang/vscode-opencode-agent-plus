@@ -14,7 +14,7 @@ At the time of writing, `@opencode/cli` provides OpenCode 2.4.1. The installer `
 
 OpenCode Agent Plus was tested only with OpenCode 1.19.6 and 2.4.1.
 
-If OpenCode Agent Plus can't find OpenCode, it offers to download OpenCode 2.4.1 from OpenCode's GitHub releases into `~/.opencode-agent-plus/opencode/2.4.1/` (110 to 126 MB, depending on the platform). Select Download OpenCode in the notification, or run `OpenCode Agent Plus: Download OpenCode 2.4.1`. The download is available for macOS, Linux and Windows on x64 and arm64, and an OpenCode you install yourself is used first.
+If the extension can't find OpenCode, it offers to download version 2.4.1 from OpenCode's GitHub releases into `~/.opencode-agent-plus/opencode/2.4.1/` (110 to 126 MB, depending on your platform). Select Download OpenCode in the notification, or run `OpenCode Agent Plus: Download OpenCode 2.4.1`. The download is available only for macOS, Linux and Windows on x64 or arm64.
 
 ### What Needs OpenCode 2
 
@@ -44,7 +44,7 @@ With the setting empty, OpenCode Agent Plus searches for `opencode` in the follo
    - Windows: `%APPDATA%\npm`, `%LOCALAPPDATA%\opencode\bin`.
 4. The OpenCode it downloaded, in `~/.opencode-agent-plus/opencode/2.4.1/`.
 
-If the setting points to a file that isn't executable, OpenCode Agent Plus reports an error and doesn't use the downloaded OpenCode.
+A path in the setting that doesn't point to an executable file causes the extension to report an error without falling back to the downloaded copy.
 
 When OpenCode Agent Plus shows installation instructions because it can't find OpenCode, follow them and reload the VS Code window as prompted. After a download from the notification or the command, you don't need to reload.
 
@@ -52,7 +52,7 @@ When OpenCode Agent Plus shows installation instructions because it can't find O
 
 When a conversation or the Conversations view first needs OpenCode, the VS Code window starts one process and shares it across its conversations. The window runs `opencode acp`, OpenCode's editor mode, which uses the Agent Client Protocol to communicate with the extension. The process stops after the window has had no conversations open for 10 minutes.
 
-OpenCode Agent Plus turns off automatic updates for the OpenCode process it starts. Otherwise, OpenCode 1 could update itself in the background to OpenCode 2, which uses a different configuration format. To update OpenCode 2, run `npm install -g @opencode/cli@latest`; for OpenCode 1, run `npm install -g opencode-ai@latest`. Then reload the VS Code window. The downloaded OpenCode stays at 2.4.1; for a later version, install OpenCode yourself.
+OpenCode Agent Plus turns off automatic updates for the OpenCode process it starts. Otherwise, OpenCode 1 could update itself in the background to OpenCode 2, which uses a different configuration format. To update OpenCode 2, run `npm install -g @opencode/cli@latest`; for OpenCode 1, run `npm install -g opencode-ai@latest`. Then reload the VS Code window. The downloaded copy stays at 2.4.1, so you'll need to install OpenCode yourself to use a later version.
 
 ## Installing OpenCode Agent Plus
 
@@ -66,7 +66,7 @@ On Windows, OpenCode Agent Plus offers to download python.org's embeddable Pytho
 
 ### Your First Conversation
 
-Click the OpenCode Agent Plus icon in the activity bar to open the Conversations view. Select the New Conversation button (`+`), or use the New Conversation link when the list is empty. You can also select the OpenCode mark in any editor's title bar. The conversation opens in an editor tab and starts in the window's first workspace folder. If no folder is open, it starts in your home folder.
+Click the OpenCode Agent Plus icon in the activity bar to open the Conversations view. Start a conversation with the New Conversation button (`+`) or the OpenCode Agent Plus icon in any editor's title bar. When the list is empty, the view also has a New Conversation link. The conversation opens in an editor tab and starts in the window's first workspace folder. If no folder is open, it starts in your home folder.
 
 Send your first message. If you haven't set a model for new conversations, OpenCode Agent Plus asks you to pick one and saves your choice for later conversations. To change the default, run `OpenCode Agent Plus: Choose Model for New Conversations`.
 

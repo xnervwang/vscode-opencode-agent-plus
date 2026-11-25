@@ -6,9 +6,7 @@
 /*
  * node build/download-check.js
  *
- * Downloads OpenCode as the Download OpenCode command does, into a temporary folder, then has findOpenCode find it with
- * nothing on PATH and runs its --version, with OpenCode's own folders in that temporary folder too. CI runs it on each
- * platform the archive table covers; it exits 1 when any step fails.
+ * Downloads OpenCode into a temporary folder. CI runs this on each platform in the archive table.
  */
 const childProcess = require('child_process');
 const fs = require('fs');

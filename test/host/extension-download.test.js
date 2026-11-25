@@ -3,9 +3,8 @@
 // All rights reserved.
 
 'use strict';
-/* A window with no OpenCode: the list says how to get one, the offer comes once, its button downloads (a stand-in for
-   download.js's download(), so nothing goes to the network), and without a reload the list is drawn again and a new
-   conversation starts. */
+/* extension.js in a window with no OpenCode, with download.js's download() replaced so that nothing goes to the
+   network. */
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -57,7 +56,7 @@ test('no OpenCode: the list says how to get one and the offer comes once', async
   await tree.opts.treeDataProvider.getChildren();
   await settle();
   const offers = control.state.said.filter((s) => s.message.startsWith(OFFER));
-  assert.strictEqual(offers.length, 1, 'once in a window, however often OpenCode is missed');
+  assert.strictEqual(offers.length, 1);
   assert.deepStrictEqual(offers[0].buttons, ['Download OpenCode']);
   assert.ok(control.state.said.some((s) => s.kind === 'error' && s.message.startsWith('OpenCode was not found.') && s.message.endsWith(DOWNLOAD_HINT)));
   assert.strictEqual(api.test.downloadOffered(), true);
@@ -65,7 +64,7 @@ test('no OpenCode: the list says how to get one and the offer comes once', async
   assert.notStrictEqual(control.state.context['opencodeAgentPlus.canRename'], true, 'no Rename entries without OpenCode');
 });
 
-test('the command downloads it; the list is drawn again and a new conversation starts, without a reload', async () => {
+test('the command downloads OpenCode, and the list and a new conversation work without a reload', async () => {
   const tree = control.state.trees['opencodeAgentPlus.sessions'];
   let redrawn = 0;
   tree.opts.treeDataProvider.onDidChangeTreeData(() => { redrawn++; });
@@ -73,11 +72,11 @@ test('the command downloads it; the list is drawn again and a new conversation s
   assert.strictEqual(fetched.length, 1);
   assert.strictEqual(fetched[0].userAgent, 'opencode-agent-plus');
   assert.ok(control.state.progress.some((p) => p.cancellable === true && /^Downloading OpenCode 2\.4\.1 from GitHub \(\d+ MB\)$/.test(p.title)), JSON.stringify(control.state.progress));
-  assert.ok(await until(() => redrawn > 0), 'the Conversations view is drawn again');
+  assert.ok(await until(() => redrawn > 0));
   assert.deepStrictEqual(await tree.opts.treeDataProvider.getChildren(), []);
   assert.strictEqual(tree.message, undefined, 'no error left in the list');
-  assert.ok(control.state.said.some((s) => s.message === 'OpenCode 2.4.1 is ready. New conversations use it.'));
-  assert.ok(await until(() => control.state.context['opencodeAgentPlus.canRename'] === true), 'Rename is learned again');
+  assert.ok(control.state.said.some((s) => s.message === 'OpenCode 2.4.1 is ready for new conversations.'));
+  assert.ok(await until(() => control.state.context['opencodeAgentPlus.canRename'] === true), 'the Rename entries come back');
   assert.strictEqual(await control.state.handlers['opencodeAgentPlus.newConversation'](), true);
   assert.ok(control.state.commands.some((c) => c[0] === 'vscode.openWith'), 'its chat tab opens');
   assert.strictEqual(control.state.said.filter((s) => s.message.startsWith(OFFER)).length, 1, 'no second offer');

@@ -13,7 +13,8 @@ const { createBackend } = require('../../src/host/backend');
 const notFound = () => Object.assign(new Error('OpenCode was not found.'), { name: 'OpenCodeError', code: 'notFound' });
 const settle = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 
-/* A fake vscode.window recording what is shown; `pick` answers the offer, `cancel()` presses the progress's Cancel. */
+/* A fake vscode.window that records what is shown. `pick` is the button the offer resolves with; `cancel()` presses
+   Cancel on the progress notification. */
 function fakeVscode({ pick } = {}) {
   const state = { asked: [], errors: [], progress: [], reports: [] };
   const cancelled = new EventEmitter();
@@ -33,7 +34,7 @@ function fakeVscode({ pick } = {}) {
   return { vscode, state, cancel: () => cancelled.emit('cancel') };
 }
 
-/* A fake src/opencode/download.js; `result` is what download() resolves to, `hold` keeps it waiting until released. */
+/* A fake src/opencode/download.js whose download() resolves to `result`; with `hold` it waits for release() or a cancel. */
 function fakeLib({ result = { ok: true, path: '/r/opencode/2.4.1/opencode', said: 'in place' }, available = true, hold = false } = {}) {
   const calls = [];
   let release = () => {};
@@ -68,13 +69,13 @@ test('the first notFound in a window offers the download once; other errors and 
   assert.equal(await d.offer(notFound()), false, 'dismissed');
   assert.equal(await d.offer(notFound()), false);
   assert.equal(state.asked.length, 1);
-  assert.deepEqual(state.asked[0], { text: 'OpenCode was not found. Download OpenCode 2.4.1 from GitHub (125 MB)? An OpenCode you install yourself is used first.', buttons: [BUTTON] });
+  assert.deepEqual(state.asked[0], { text: 'OpenCode was not found. Download OpenCode 2.4.1 from GitHub (125 MB)? If you install OpenCode yourself, that one is used instead.', buttons: [BUTTON] });
   assert.equal(BUTTON, 'Download OpenCode');
   assert.equal(calls.length, 0, 'nothing is fetched without the click');
   assert.equal(d.offered, true);
 });
 
-test('where nothing is published for the machine, no offer, and the command says so', async () => {
+test('with no archive for the machine there is no offer, and the command says so', async () => {
   const { vscode, state } = fakeVscode({ pick: BUTTON });
   const { lib, calls } = fakeLib({ available: false });
   const told = [];
@@ -86,7 +87,7 @@ test('where nothing is published for the machine, no offer, and the command says
   assert.equal(calls.length, 0);
 });
 
-test('the button downloads with the percentage shown, and done() hears the result', async () => {
+test('the button downloads with the percentage shown, and done() gets the result', async () => {
   const { vscode, state } = fakeVscode({ pick: BUTTON });
   const { lib, calls } = fakeLib();
   const done = [];
@@ -115,11 +116,11 @@ test('one download at a time in a window: a second click gets the first one', as
   const c = d.run();
   await settle();
   f.release();
-  assert.equal(await c, true, 'and once it is over, another can start');
+  assert.equal(await c, true, 'a second download can start after the first ends');
   assert.equal(f.calls.length, 2);
 });
 
-test('Cancel aborts the download; nothing is used and the user hears it', async () => {
+test('Cancel aborts the download; nothing is used and the user is told', async () => {
   const { vscode, cancel, state } = fakeVscode();
   const f = fakeLib({ hold: true });
   const told = [];
@@ -135,13 +136,13 @@ test('Cancel aborts the download; nothing is used and the user hears it', async 
   assert.deepEqual(state.errors, []);
 });
 
-test('a failed download is an error message, and nothing is used', async () => {
+test('a failed download shows an error and nothing is used', async () => {
   const { vscode, state } = fakeVscode();
-  const { lib } = fakeLib({ result: { ok: false, said: 'opencode-linux-x64-baseline.tar.gz did not match its recorded size and SHA-256, so it was thrown away.' } });
+  const { lib } = fakeLib({ result: { ok: false, said: 'opencode-linux-x64-baseline.tar.gz did not match its recorded size and SHA-256 and was deleted.' } });
   const done = [];
   const d = createOpenCodeDownload({ vscode, lib, done: (r) => done.push(r) });
   assert.equal(await d.run(), false);
-  assert.deepEqual(state.errors, ['OpenCode Agent Plus: downloading OpenCode failed. opencode-linux-x64-baseline.tar.gz did not match its recorded size and SHA-256, so it was thrown away.']);
+  assert.deepEqual(state.errors, ['OpenCode Agent Plus: downloading OpenCode failed. opencode-linux-x64-baseline.tar.gz did not match its recorded size and SHA-256 and was deleted.']);
   assert.deepEqual(done, []);
 });
 

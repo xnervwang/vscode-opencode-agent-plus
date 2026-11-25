@@ -553,9 +553,9 @@ test('after a compaction the notes are sent again, separately from the plan, so 
   await stop();
 });
 
-/* ---------- a steward in Claude Code Plus looks after the conversation ---------- */
+/* ---------- the steward line and steward_handoff ---------- */
 
-/* What a watched conversation is told each turn, as agreed with Claude Code Plus (its steward.py watched()). */
+/* Claude Code Plus's steward.py watched(), with steward_handoff in place of the relay command it names. */
 const WATCHED_TEXT = "A steward conversation watches this one for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user's own. Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: call the steward_handoff tool with the user's words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered.";
 const STEWARD_ID = '3f2b6c1e-0000-4000-8000-00000000000a';
 const PLAN_TOOLS = ['set_row', 'add_row', 'set_summary', 'set_status'];
@@ -563,7 +563,7 @@ const watch = (env, id = SID) => fs.writeFileSync(path.join(env.plans, `${id}.st
 const toolNames = (f) => f.liveTools().flatMap((r) => r.added).map((t) => t.name);
 const handoffFiles = (env) => fs.readdirSync(env.plans).filter((n) => n.includes('.handoff-'));
 
-test('a session with a steward file gets the steward line after the plan each turn, and steward_handoff joins the tools; without it, or with plans off, neither', async () => {
+test('the steward line after the plan and the steward_handoff tool come with a steward file, and go without one or with plans off', async () => {
   const env = makeEnv();
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
@@ -585,7 +585,8 @@ test('a session with a steward file gets the steward line after the plan each tu
   assert.deepEqual(tool.options, { codemode: false });
   assert.ok(tool.description.length < 250, 'a short description');
 
-  /* The tools belong to the whole OpenCode process, so another session sees the tool, and is told it has no steward. */
+  /* Tools are per OpenCode process, so the other session gets steward_handoff as well; there it answers that the
+     conversation has no steward. */
   const other = prompt(OTHER, 'msg_3', 'x');
   await f.hooks.prompt(other);
   assert.ok(!other.metadata.agentWorkPlan.includes('steward conversation'));
@@ -609,7 +610,8 @@ test('a session with a steward file gets the steward line after the plan each tu
   await stop();
 });
 
-/* Stands in for the extension: takes the next request in the plans folder and answers it with `result`, or with none. */
+/* Stands in for the extension: takes the next request in the plans folder and writes `result` as its answer, or no
+   answer when `result` is null. */
 async function answerNext(env, result) {
   const name = await until(() => fs.readdirSync(env.plans).find((n) => /^ses_\w+\.handoff-[0-9a-z]+\.json$/.test(n)));
   const file = path.join(env.plans, name);
@@ -621,7 +623,7 @@ async function answerNext(env, result) {
   return { name, body, mode };
 }
 
-test('steward_handoff writes a request beside the plan, waits for the result, and says what came of it; with no taker it withdraws the request', async () => {
+test('steward_handoff writes a request beside the plan, waits for the result, and says what came of it', async () => {
   const env = makeEnv();
   process.env.OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS = '800';
   try {
@@ -634,7 +636,7 @@ test('steward_handoff writes a request beside the plan, waits for the result, an
     const run = (input, context = { sessionID: SID }) => tool.execute(input, context).then((r) => r.content);
 
     const [handed, taken] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'submitted', reason: '' })]);
-    assert.equal(handed, "Handed off to the steward: it was told, in a notice that is not the user's message. Say so in one sentence in your reply and leave it to the steward.");
+    assert.equal(handed, 'Handed off to the steward, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the steward.');
     assert.match(taken.name, new RegExp(`^${SID}\\.handoff-[0-9a-z]{8,64}\\.json$`));
     assert.equal(taken.body.format, 1);
     assert.equal(taken.mode, 0o600);
@@ -651,12 +653,12 @@ test('steward_handoff writes a request beside the plan, waits for the result, an
     assert.equal(lonely, 'Not done: no VS Code window took the handoff within 0.8 seconds. Say in your reply where it seems to belong, so the user decides.');
     assert.deepEqual(handoffFiles(env), [], 'a request nobody took is withdrawn, so no window sends it late');
     const [silent] = await Promise.all([run({ text: said }), answerNext(env, null)]);
-    assert.equal(silent, 'Unclear whether the steward was told: a window took the handoff but gave no answer in time.');
+    assert.equal(silent, 'Unclear whether the steward was told: a window took the handoff, but no result came back in time.');
 
     const stopped = new AbortController();
     stopped.abort();
     assert.equal(await run({ text: said }, { sessionID: SID, abort: stopped.signal }), 'Not done: the turn was stopped before a window took the handoff.');
-    assert.match(await run({ text: '  ' }), /^Not done: the handoff needs text/);
+    assert.match(await run({ text: '  ' }), /^Not done: the text was empty/);
     assert.deepEqual(handoffFiles(env), []);
     await stop();
   } finally { delete process.env.OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS; }

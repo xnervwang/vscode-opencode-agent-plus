@@ -26,10 +26,10 @@ const NEEDS_V2 = 'The work plan needs OpenCode 2';
    files of plan_common.py. */
 const SIDE_SUFFIXES = Object.freeze(['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz', '.images-told',
   '.compacted', '.briefed', '.injected']);
-/* Beside a plan this extension also keeps the latest reply, for a steward (src/host/reply-file.js), and the steward that
-   looks after the conversation (src/host/steward.js). */
+/* Beside a plan this extension also keeps the latest reply (src/host/reply-file.js) and the conversation's steward
+   (src/host/steward.js). */
 const OWN_SUFFIXES = Object.freeze(['.reply.json', '.steward.json']);
-/* A handoff to the steward on its way, and its result (src/host/steward.js): <session id>.handoff-<key>.json and so on. */
+/* The handoffs to the steward, their results and their temporary files: <session id>.handoff-<key>.json and so on. */
 const HANDOFF = /^\.handoff-[0-9A-Za-z]{8,64}(\.result\.json|\.json|\.taken-\d+|\.\d+\.tmp|\.tmp)$/;
 
 /* The plugin as it ships in this extension. */

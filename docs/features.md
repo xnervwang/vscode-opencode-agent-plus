@@ -106,7 +106,7 @@ The view groups conversations under Recently closed, Open in this window, and Ot
 
 Each row shows the conversation's state and how long ago it was active. Hover over a row for the same details plus the folder, session ID and exact time of the last activity, such as "5m ago (11/24/2026, 8:08:35 AM UTC)". The timestamp includes the time zone name and uses the zone of the machine running OpenCode, which can differ from yours over Remote-SSH.
 
-The view's title bar has `OpenCode Agent Plus: New Conversation` and `OpenCode Agent Plus: Find Conversation…`. Every editor's title bar also has the OpenCode mark, which starts a new conversation. Use Find Conversation to search all OpenCode conversations across folders, most recent first. You can enter part of a title, session ID or folder.
+The view's title bar has `OpenCode Agent Plus: New Conversation` and `OpenCode Agent Plus: Find Conversation…`. Use Find Conversation to search all OpenCode conversations across folders, most recent first. You can enter part of a title, session ID or folder. You can also start a new conversation by clicking the OpenCode Agent Plus icon in any editor's title bar.
 
 Right-click a row for `OpenCode Agent Plus: Rename Conversation` (OpenCode 2), `OpenCode Agent Plus: Fork Conversation` (see [Forking](#forking)) or `OpenCode Agent Plus: Delete Conversation`. Delete Conversation closes the conversation's tabs, removes it from OpenCode, and deletes its work plan and its own folder. If another window has the conversation open, OpenCode Agent Plus refuses to delete it.
 
@@ -128,11 +128,15 @@ The plan bar above the input box (`opencodeAgentPlus.planBar`) shows the plan's 
 
 When the [Token Mode](#token-mode) enables work plans, each message includes the open rows, and the model gets tools to update the plan (`add_row`, `set_row`, `set_status`, `set_summary`). Reminders to update the plan arrive with the next message. During compaction, the work plan plugin asks the model to include the plan's location and open rows in the summary. If any rows remain open after compaction, the next message instructs the model to read the plan before continuing.
 
-If a Claude Code Plus steward looks after the conversation, each message also tells the model that the steward is watching. The model then gets a `steward_handoff` tool for passing the steward a request that belongs in another conversation. This needs Agent Plus 1.6.0 or later and Claude Code Plus.
-
 OpenCode Agent Plus stores plans in `~/.opencode-agent-plus/plans/` on the machine where OpenCode runs. Deleting a conversation also removes its plan (see [The Conversations List](#the-conversations-list)).
 
 On OpenCode 1, Agent Plus shows "Work plans need OpenCode 2" above the plan. Click the message to open the OpenCode path setting.
+
+### Claude Code Plus Stewards
+
+To assign a steward, bring a Claude Code conversation to the front in Claude Code Plus. In the Steward panel at the bottom of the VS Code window, beside Problems, Output and Terminal, tick the conversations you want that conversation to look after. You can tick an OpenCode Agent Plus conversation there. The conversation in front becomes their steward.
+
+While an OpenCode Agent Plus conversation has a steward and [Token Mode](#token-mode) has work plans turned on, its model can use `steward_handoff` to pass the steward a request that belongs in another conversation. Under those same conditions, each message the conversation sends to the model includes a note that a steward is watching. The note and the tool need Agent Plus 1.6.0 or later and a Claude Code Plus release later than 1.5.0.
 
 ## Conversation Brief
 

@@ -133,7 +133,7 @@ test('1.x: opening a saved conversation replays its history as turns', async (t)
   assert.equal(await oc.openSession(s.id), s, 'a second open returns the same object');
 });
 
-test('opening a conversation OpenCode does not have fails with noConversation, not the notFound of a missing OpenCode', async (t) => {
+test('opening a conversation OpenCode does not have fails with noConversation', async (t) => {
   const { oc } = setup(t, 'v1-load.jsonl', V1);
   await assert.rejects(oc.openSession('ses_df3c71e7dffeqHMoF0MwSdAou9'),
     (e) => e instanceof require('../../src/opencode/server').OpenCodeError && e.code === 'noConversation' && /has no conversation/.test(e.message));

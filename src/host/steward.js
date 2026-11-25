@@ -6,13 +6,13 @@
 /*
  * A steward in Claude Code Plus may look after a conversation open here: Agent Plus's optional 'stewards' says which.
  * OpenCode's plugin cannot ask Agent Plus, so the answer for each conversation open in this window is kept beside its
- * plan, and a handoff the plugin's steward_handoff tool asks for is sent from here with deliver():
+ * plan, and the handoffs that the plugin's steward_handoff tool writes there are sent from here with deliver():
  *
  *   <plans>/<id>.steward.json                  { format: 1, sourceId, sessionId }; none while it has no steward
  *   <plans>/<id>.handoff-<key>.json            { format: 1, text, at }, written by the plugin
  *   <plans>/<id>.handoff-<key>.result.json     { format: 1, outcome, reason }, what deliver() said
  *
- * A conversation is asked about when it opens here and whenever Agent Plus says the stewards changed. A request is
+ * stewardOf() is called for a conversation when it opens here and whenever onDidChangeStewards fires. A request is
  * taken by renaming it, so only one extension host sends it, and only for a conversation open in its window. The folder
  * is watched, with a slow poll besides, only while a conversation open here has a steward. Deleting a conversation
  * deletes these files (src/workplan removePlan).
@@ -29,13 +29,15 @@ const RESULT = /^(ses_[0-9A-Za-z]{8,64})\.handoff-[0-9A-Za-z]{8,64}\.result\.jso
 /* deliver() takes at most this many characters. */
 const MAX_TEXT = 20000;
 const POLL_MS = 5000;
-/* A request seen later than this was left by a turn whose tool has given up or is about to. */
+/* A request older than this may be answered after its tool has stopped waiting (45 seconds, and deliver() can take about
+   40). */
 const STALE_MS = 10000;
-/* A result nobody read in this long belongs to a tool that gave up. */
+/* The plugin's tool waits 45 seconds at most, so a result older than this has no reader left. */
 const ORPHAN_MS = 120000;
 const NO_TITLE = 'New conversation';
 
-/* The message the steward gets; its wording is Claude Code Plus's (src/relay.js handoffText), so the steward knows it. */
+/* The message the steward gets: Claude Code Plus's src/relay.js handoffText, naming this extension. Its steward takes a
+   message that starts "Handoff from " as not typed by the user. */
 function handoffText(sessionId, title, text) {
   return `Handoff from ${title ? `"${title}"` : 'a conversation you manage'} (${SOURCE_ID}:${sessionId}), passed on by ${brand.displayName}. `
     + 'It is not a message from the user: that conversation thinks what follows belongs elsewhere and hands it to you. '
@@ -105,13 +107,12 @@ function createStewards(deps) {
     if (!force && known.get(id) === text) return;
     known.set(id, text);
     try {
-      if (text) { writeJson(fileOf(id), JSON.parse(text)); log(`${id} is looked after by the steward ${s.sourceId}:${s.sessionId}`); } else {
+      if (text) { writeJson(fileOf(id), JSON.parse(text)); log(`the steward of ${id} is ${s.sourceId}:${s.sessionId}`); } else {
         try { fs.unlinkSync(fileOf(id)); log(`${id} has no steward`); } catch (e) { if (e.code !== 'ENOENT') throw e; }
       }
-    } catch (e) { log(`writing the steward of ${id} failed: ${(e && e.message) || e}`); }
+    } catch (e) { log(`writing ${id}${SUFFIX} failed: ${(e && e.message) || e}`); }
   }
 
-  /* Keeps the watch on while a conversation open here has a steward. */
   function follow() {
     const want = !gone && !!core && [...known.values()].some(Boolean);
     if (want && !timer) {
@@ -129,7 +130,7 @@ function createStewards(deps) {
     }
   }
 
-  /* Asks about every conversation open here (`all`), or only those opened since the last time. */
+  /* Calls stewardOf() for every conversation open here (`all`), or only for those opened since the last call. */
   function refresh(all) {
     if (!core || gone) return;
     const open = openIds();
@@ -160,7 +161,7 @@ function createStewards(deps) {
     let title = '';
     try { title = String(deps.title(id) || ''); } catch (_) { /* none */ }
     const text = handoffText(id, title === NO_TITLE ? '' : title, said);
-    if (text.length > MAX_TEXT) return { outcome: 'notReceived', reason: `the handoff is longer than the ${MAX_TEXT} characters Agent Plus sends, with its heading; make it shorter` };
+    if (text.length > MAX_TEXT) return { outcome: 'notReceived', reason: `the text is over the ${MAX_TEXT} characters Agent Plus sends once its heading is added` };
     if (!core || typeof core.deliver !== 'function') return { outcome: 'notReceived', reason: 'Agent Plus cannot send messages in this window' };
     let r;
     try { r = await core.deliver({ sourceId: steward.sourceId, sessionId: steward.sessionId, text }); } catch (e) { r = { outcome: 'notReceived', reason: String((e && e.message) || e) }; }
@@ -184,7 +185,7 @@ function createStewards(deps) {
       try { fs.unlinkSync(taken); } catch (_) { /* gone */ }
       const result = await handle(id, body && body.format === FORMAT ? body : null);
       log(`handoff from ${id}: ${result.outcome}${result.reason ? ` (${result.reason})` : ''}`);
-      try { writeJson(path.join(dir, `${id}.handoff-${m[2]}.result.json`), { format: FORMAT, ...result }); } catch (e) { log(`writing the handoff result of ${id} failed: ${(e && e.message) || e}`); }
+      try { writeJson(path.join(dir, `${id}.handoff-${m[2]}.result.json`), { format: FORMAT, ...result }); } catch (e) { log(`writing ${id}.handoff-${m[2]}.result.json failed: ${(e && e.message) || e}`); }
     } finally {
       busy.delete(name);
     }
@@ -192,12 +193,12 @@ function createStewards(deps) {
 
   return {
     fileOf,
-    /* `agentPlus` is Agent Plus's interface; one without 'stewards' leaves everything as it is. */
+    /* Without 'stewards' in agentPlus.features this does nothing. */
     attach(agentPlus) {
       if (gone || core) return false;
       const ok = !!agentPlus && Array.isArray(agentPlus.features) && agentPlus.features.includes('stewards')
         && typeof agentPlus.stewardOf === 'function' && typeof agentPlus.onDidChangeStewards === 'function';
-      if (!ok) { log('this Agent Plus says nothing about stewards'); return false; }
+      if (!ok) { log("this Agent Plus does not list 'stewards'"); return false; }
       core = agentPlus;
       try { sub = core.onDidChangeStewards(() => refresh(true)); } catch (e) { log(`onDidChangeStewards: ${(e && e.message) || e}`); }
       refresh(true);

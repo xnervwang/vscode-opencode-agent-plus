@@ -20,8 +20,8 @@
  *   compaction   the same, plus the plan file, in the summary request
  *   tools        set_row, add_row, set_summary, set_status, each one run of plan-row.py; steward_handoff too while a session
  *                this instance has seen has a steward
- *   steward      while the extension has written <plans>/<session id>.steward.json (a steward in Claude Code Plus looks
- *                after the conversation), each turn's text also says so; steward_handoff writes <session id>.handoff-<key>.json
+ *   steward      while <plans>/<session id>.steward.json exists (the extension writes it when a steward in Claude Code
+ *                Plus looks after the conversation), each turn's text also says so; steward_handoff writes <session id>.handoff-<key>.json
  *                there, which the extension sends to the steward with Agent Plus's deliver(), and reads the
  *                .result.json it writes back (src/host/steward.js in the extension)
  *   events       session.compaction.ended runs resume-work-plan.py and the two notes again; session.usage.updated is recorded;
@@ -30,7 +30,7 @@
  * Environment: OPENCODE_AGENT_PLUS_HOOKS_DIR (the scripts), OPENCODE_AGENT_PLUS_HOME (plans are in its plans/, ~/.opencode-agent-plus by default),
  * OPENCODE_AGENT_PLUS_PLAN_NUDGE ("note", the default, keeps the reminder for the next turn; "resume" also runs a turn for it;
  * "off"), OPENCODE_AGENT_PLUS_PLAN_LOG (a file to append a JSON line to for each thing done, for tests),
- * OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS (for tests: how long steward_handoff waits, at most the 45000 it waits otherwise).
+ * OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS (for tests: a wait for steward_handoff shorter than its usual 45000 ms).
  */
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -227,7 +227,7 @@ const TOOLS = [
 ];
 const TOOL_NAMES = TOOLS.map((t) => t.name);
 
-/* What a watched conversation is told each turn: Claude Code Plus's steward.py watched(), with this plugin's tool. */
+/* Claude Code Plus's steward.py watched(), with steward_handoff in place of the relay command it names. */
 const WATCHED = 'A steward conversation watches this one for the user through Claude Code Plus: it reads your work plan and '
   + 'latest reply, and speaks for the user by typing messages here, which come as the user\'s own. Do not send it status '
   + 'messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly '
@@ -236,7 +236,7 @@ const WATCHED = 'A steward conversation watches this one for the user through Cl
   + 'id, or a folder for a new conversation) and why, and say in one sentence what it answered.';
 const STEWARD_TOOL = {
   name: 'steward_handoff',
-  description: 'Hand a message that belongs elsewhere to the steward conversation that watches this one for the user. '
+  description: 'Hand a message that belongs elsewhere to the steward watching this conversation. '
     + 'It returns whether the steward got it; do not call it again for the same message.',
   input: { type: 'object', required: ['text'], additionalProperties: false, properties: {
     text: { type: 'string', description: "The user's words, where it should go (a session id, or a folder for a new conversation) and why." } } },
@@ -251,7 +251,6 @@ const HANDOFF_POLL_MS = 250;
 const NO_STEWARD = 'This conversation has no steward.';
 const LEAVE_IT = ' Say in your reply where it seems to belong, so the user decides.';
 
-/* Whether the extension says a steward looks after this session. */
 function hasSteward(sessionID) {
   try {
     const s = JSON.parse(fs.readFileSync(stewardPath(sessionID), 'utf8'));
@@ -259,13 +258,12 @@ function hasSteward(sessionID) {
   } catch (_) { return false; }
 }
 
-/* What steward_handoff returns for the extension's { outcome, reason }. */
 function handedSaid(r) {
   const reason = r && typeof r.reason === 'string' && r.reason ? r.reason : '';
   const outcome = r && typeof r.outcome === 'string' ? r.outcome : '';
   if (outcome === 'submitted') {
-    return 'Handed off to the steward: it was told, in a notice that is not the user\'s message. Say so in one sentence in your '
-      + 'reply and leave it to the steward.';
+    return 'Handed off to the steward, as a notice that says it is not from the user. Say so in one sentence in your reply '
+      + 'and leave it to the steward.';
   }
   if (outcome === 'uncertain') return `Unclear whether the steward was told: ${reason || 'no outcome came in time'}.`;
   if (outcome === 'drafted') return `Not done: it was put into the steward's message input, and not sent.${LEAVE_IT}`;
@@ -278,7 +276,7 @@ const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
 async function handoff(sessionID, input, context) {
   if (!SESSION.test(String(sessionID || '')) || !hasSteward(sessionID)) return NO_STEWARD;
   const text = input && typeof input.text === 'string' ? input.text.trim() : '';
-  if (!text) return "Not done: the handoff needs text: the user's words, where it should go and why.";
+  if (!text) return "Not done: the text was empty. Give the user's words, where the message should go and why.";
   const key = `${process.pid.toString(36)}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.replace(/[^0-9a-z]/g, '');
   const base = path.join(plansDir(), `${sessionID}.handoff-${key}`);
   const request = `${base}.json`, result = `${base}.result.json`;
@@ -302,13 +300,12 @@ async function handoff(sessionID, input, context) {
     }
     await sleepMs(HANDOFF_POLL_MS);
   }
-  /* Still there: no window took it, and now none will. Gone: a window took it and said nothing in time. */
   let untaken = false;
   try { fs.unlinkSync(request); untaken = true; } catch (_) { /* taken */ }
   log('handoff', { sessionID, outcome: untaken ? 'untaken' : 'unanswered', aborted: !!(signal && signal.aborted) });
   if (signal && signal.aborted && untaken) return 'Not done: the turn was stopped before a window took the handoff.';
   if (untaken) return `Not done: no VS Code window took the handoff within ${wait / 1000} seconds.${LEAVE_IT}`;
-  return 'Unclear whether the steward was told: a window took the handoff but gave no answer in time.';
+  return 'Unclear whether the steward was told: a window took the handoff, but no result came back in time.';
 }
 
 function str(v) { return v == null ? '' : String(v); }
@@ -443,9 +440,9 @@ async function setup(ctx) {
   const windows = new Map();
   const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE) ? process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE : 'note');
 
-  /* The tools are registered while plans are on and withdrawn while they are off, steward_handoff with them only while
-     a session seen here has a steward, so the others are not handed its description; a change applies to the requests
-     made after it, and registers the set again as a whole. */
+  /* The tools are registered while plans are on and withdrawn while they are off. steward_handoff is in the set only
+     while some session seen here has a steward file, so that its description is sent only while a session can use it.
+     A change applies to the requests made after it and registers the whole set again. */
   let tools = null;
   let toolsSet = '';
   let toolsBusy = Promise.resolve();

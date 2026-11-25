@@ -5,12 +5,9 @@
 'use strict';
 /*
  * The steward run of test/vscode/run.js (--steward), with OpenCode 2 and a real model. The helper extension registers
- * with Agent Plus a stand-in for Claude Code Plus's source: id claude-code, listing 'stewards', whose stewardOf()
- * names one steward for every opencode-plus conversation and whose deliverAnswer() records what it is given. A new
- * conversation gets its steward file beside its plan; its turns carry the steward line and the steward_handoff tool
- * (the plugin's log, OPENCODE_AGENT_PLUS_PLAN_LOG, says what each request held); asked to, the model hands a message
- * over, which reaches the stand-in in Claude Code Plus's wording, and the reply says so. Once the stand-in names no
- * steward and says the stewards changed, the file goes, and the next turn has neither.
+ * with Agent Plus a stand-in for Claude Code Plus's source, with the id claude-code and the 'stewards' feature. Its
+ * stewardOf() names one steward for every opencode-plus conversation, and its deliverAnswer() records what it is given.
+ * The plugin's log (OPENCODE_AGENT_PLUS_PLAN_LOG) shows what each request held.
  */
 const fs = require('fs');
 const path = require('path');
@@ -47,13 +44,13 @@ async function run(t) {
   const lines = () => { try { return fs.readFileSync(t.planLog, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch (_) { return {}; } }); } catch (_) { return []; } };
   const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; } };
 
-  // S1. Agent Plus has 'stewards', this extension is registered with it, and the stand-in registers too.
+  // S1. Both this extension and the stand-in register with an Agent Plus that has 'stewards'.
   const reg = await until(() => ext('return api.test.agentPlus.accepted ? api.test.agentPlus : null;'), 60000);
   const standDir = path.join(t.root, 'stand-in-plans');
   fs.mkdirSync(standDir, { recursive: true });
   const stand = await call(STAND_IN, { steward: STEWARD, dir: standDir, folder: t.folder });
   check(!!reg && !!stand && stand.accepted && Array.isArray(stand.features) && stand.features.includes('stewards'),
-    "Agent Plus lists 'stewards', and a stand-in claude-code source that lists them registers beside OpenCode Agent Plus", { reg, stand });
+    "Agent Plus lists 'stewards', and a stand-in claude-code source with 'stewards' registers beside OpenCode Agent Plus", { reg, stand });
 
   // S2. A new conversation gets its steward file beside its plan.
   await call('await vscode.commands.executeCommand("opencodeAgentPlus.newConversation"); return true;');
@@ -95,9 +92,9 @@ async function run(t) {
   const turnRequests = requests.filter((l) => Array.isArray(l.tools) && l.tools.includes('add_row'));
   check(ended && prompts.length > 0 && prompts.every((l) => l.steward === true) && turnRequests.length > 0
     && turnRequests.every((l) => l.tools.includes('steward_handoff') && l.watched >= 1),
-  "the turn's prompt gets the steward line, and each request of the turn carries it, with steward_handoff among the tools", { ended, prompts, requests: requests.map((l) => ({ watched: l.watched, kept: l.kept, steward: (l.tools || []).includes('steward_handoff') })) });
+  "the turn's prompt gets the steward line, and each of its requests carries the line and steward_handoff", { ended, prompts, requests: requests.map((l) => ({ watched: l.watched, kept: l.kept, steward: (l.tools || []).includes('steward_handoff') })) });
 
-  // S4. Asked to, the model hands a message to the steward, which gets it in Claude Code Plus's wording.
+  // S4. The model is asked to hand a message to the steward, which gets it in Claude Code Plus's wording.
   const ask = 'This message is not for this conversation: please update the README of the docs project. It belongs to the '
     + 'conversation ses_docsproject0000000001, which owns that README. Hand it to the steward with the steward_handoff tool and '
     + 'do nothing else here.';
@@ -118,20 +115,21 @@ async function run(t) {
   const reply = (readJson(await ext('return api.test.replyFile(arg);', id)) || {}).reply || '';
   const toolCard = await chat.evaluate(() => [...document.querySelectorAll('#log .tool')].map((e) => e.textContent.replace(/\s+/g, ' ')).filter((x) => /steward_handoff/.test(x)).length);
   check(outcomes.some((l) => l.outcome === 'submitted') && /steward|hand/i.test(reply) && toolCard > 0,
-    'the tool said it was handed off, and the reply tells the user in a sentence', { outcomes, reply: reply.slice(0, 400), toolCard });
+    'the tool reported a handoff, and the reply says so in a sentence', { outcomes, reply: reply.slice(0, 400), toolCard });
   await chat.evaluate(() => { const l = document.getElementById('log'); l.scrollTop = l.scrollHeight; });
   await shot('S04-handoff', { features: ['steward handoff'],
-    expect: 'The chat page: the user message asking to hand the README request over, a steward_handoff tool card, and a reply of a sentence or two saying the request was handed to the steward. No error notice.',
+    expect: 'The chat page: the user message about the README, a steward_handoff tool card, and a reply of a sentence or two saying the request went to the steward. No error notice.',
     part: '#workbench\\.parts\\.editor' });
 
-  // S5. The stand-in names no steward any more and says so: the file goes, and nothing is watched.
+  // S5. The stand-in stops naming a steward and fires onDidChangeStewards: the steward file goes, and the folder is
+  // no longer watched.
   await call('const st = globalThis.__opencodeAgentPlusStewardStandIn; st.answer = null; st.changed.fire(); return true;');
   const removed = await until(() => !fs.existsSync(file), 15000);
   const watching = await ext('return api.test.stewardsWatching();');
-  check(!!removed && watching === false, 'once stewardOf() answers null and onDidChangeStewards fires, the steward file is removed', { removed, watching });
+  check(!!removed && watching === false, 'once stewardOf() returns null and onDidChangeStewards fires, the steward file is removed', { removed, watching });
 
   // S6. The next turn has no steward line, and the tool is gone from the request. The messages before keep the line
-  // they were sent with, so a request holds no more of them than before.
+  // they were sent with, so a request carries no more steward lines than the requests before it.
   const carried = Math.max(0, ...since(asked, 'context').map((l) => Number(l.watched) || 0));
   const last = Date.now();
   const done = await turn('Reply with only the word done.');

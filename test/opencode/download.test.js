@@ -3,7 +3,8 @@
 // All rights reserved.
 
 'use strict';
-/* src/opencode/download.js with an injected fetch and unpack, so nothing goes to the network, and findOpenCode's order. */
+/* src/opencode/download.js with an injected fetch and unpack, so nothing goes to the network. Also the order findOpenCode
+   searches in. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
@@ -24,15 +25,15 @@ const tmpRoot = (t) => {
   return root;
 };
 const LINUX = dl.asset('linux', 'x64', false);
-/* A fetch that writes a small file and says what fetchFile would say of the bytes it wrote: by default the size and
-   SHA-256 recorded for the linux x64 archive. */
+/* A fetch that writes a small file and reports the size and SHA-256 in `said`, by default those recorded for the linux
+   x64 archive. */
 const fakeFetch = (said = { sha256: LINUX.sha256, bytes: LINUX.size }, calls = []) => async (url, file, { onProgress } = {}) => {
   calls.push(url);
   fs.writeFileSync(file, 'archive bytes');
   if (onProgress) { onProgress(Math.floor(said.bytes / 2)); onProgress(said.bytes); }
   return said;
 };
-/* An unpack that puts an `opencode` (or `name`) into the folder. */
+/* Stands in for extract(): puts an executable called `name` (opencode by default) into the folder. */
 const fakeUnpack = (name = 'opencode', calls = []) => async (archive, dir, opts) => {
   calls.push({ archive, dir, opts });
   fs.writeFileSync(path.join(dir, name), '#!/bin/sh\necho 2.4.1\n', { mode: 0o644 });
@@ -61,7 +62,7 @@ test('the archive for each platform: baseline on x64, musl where Linux has no gl
   }
   assert.equal(dl.asset('linux', 'x64', true).name, 'opencode-linux-x64-baseline-musl.tar.gz');
   assert.equal(dl.asset('linux', 'arm64', true).name, 'opencode-linux-arm64-musl.tar.gz');
-  assert.equal(dl.asset('darwin', 'arm64', true).name, 'opencode-darwin-arm64.zip', 'musl is a Linux question only');
+  assert.equal(dl.asset('darwin', 'arm64', true).name, 'opencode-darwin-arm64.zip', 'musl changes nothing outside Linux');
   assert.equal(dl.asset('win32', 'x64', true).name, 'opencode-windows-x64-baseline.zip');
   for (const [platform, arch] of [['win32', 'ia32'], ['linux', 'ia32'], ['linux', 'arm'], ['freebsd', 'x64'], ['darwin', 'ppc64']]) {
     assert.equal(dl.asset(platform, arch, false), null, `${platform} ${arch}`);
@@ -71,20 +72,20 @@ test('the archive for each platform: baseline on x64, musl where Linux has no gl
   assert.equal(LINUX.sha256, '9ddd18e3faf64eaeccf6a0fcbc96a5c7a14520ae5fd5b61e5be51d894f478b47');
 });
 
-test('musl is told by the report Node gives: no glibcVersionRuntime in its header', () => {
+test('musl is detected from Node\'s report: its header has no glibcVersionRuntime', () => {
   assert.equal(dl.isMusl({ getReport: () => ({ header: { glibcVersionRuntime: '2.26' } }) }), false);
   assert.equal(dl.isMusl({ getReport: () => ({ header: {} }) }), true);
   assert.equal(dl.isMusl({ getReport: () => { throw new Error('no report'); } }), false);
-  assert.equal(dl.isMusl(undefined), false);
+  assert.equal(dl.isMusl(null), false);
 });
 
-test('it lives in <root>/opencode/2.4.1, opencode.exe on Windows', () => {
+test('the executable is <root>/opencode/2.4.1/opencode, opencode.exe on Windows', () => {
   assert.equal(dl.home('/r'), path.join('/r', 'opencode', '2.4.1'));
   assert.equal(dl.executable('/r', 'linux'), path.join('/r', 'opencode', '2.4.1', 'opencode'));
   assert.equal(dl.executable('/r', 'win32'), path.join('/r', 'opencode', '2.4.1', 'opencode.exe'));
 });
 
-test('findOpenCode takes the user\'s own OpenCode first and the downloaded one only when there is no other', () => {
+test('findOpenCode tries the downloaded OpenCode last', () => {
   const home = '/home/u';
   const env = { PATH: ['/usr/bin', '/opt/tools'].join(path.delimiter) };
   const downloaded = '/data/opencode/2.4.1/opencode';
@@ -92,8 +93,8 @@ test('findOpenCode takes the user\'s own OpenCode first and the downloaded one o
   const has = (set) => (p) => set.includes(p);
   const find = (set, more = {}) => findOpenCode({ env, home, platform: 'linux', arch: 'x64', downloaded, isExecutable: has(set), readVersion: version, ...more });
   assert.equal(find([downloaded, '/opt/tools/opencode']).path, '/opt/tools/opencode', 'PATH first');
-  assert.equal(find([downloaded, '/home/u/.opencode/bin/opencode']).path, '/home/u/.opencode/bin/opencode', 'the installers\' places next');
-  assert.equal(find([downloaded, '/home/u/x/opencode'], { configured: '~/x/opencode' }).path, '/home/u/x/opencode', 'the setting before all');
+  assert.equal(find([downloaded, '/home/u/.opencode/bin/opencode']).path, '/home/u/.opencode/bin/opencode', 'the installer folders next');
+  assert.equal(find([downloaded, '/home/u/x/opencode'], { configured: '~/x/opencode' }).path, '/home/u/x/opencode', 'the setting comes first');
   const r = find([downloaded]);
   assert.equal(r.path, downloaded);
   assert.equal(r.version.text, '2.4.1');
@@ -106,7 +107,7 @@ test('findOpenCode\'s notFound names the download command where there is an arch
   const opts = { env: { PATH: '' }, home: '/h', downloaded: '/d/opencode', isExecutable: () => false, readVersion: () => null };
   assert.throws(() => findOpenCode({ ...opts, platform: 'linux', arch: 'x64' }),
     (e) => e.code === 'notFound' && e.message.endsWith(DOWNLOAD_HINT) && /opencode\.ai\/install/.test(e.message));
-  assert.match(DOWNLOAD_HINT, /^Or run "OpenCode Agent Plus: Download OpenCode 2\.4\.1" from the Command Palette to download it\.$/);
+  assert.match(DOWNLOAD_HINT, /^Or run "OpenCode Agent Plus: Download OpenCode 2\.4\.1" from the Command Palette\.$/);
   assert.throws(() => findOpenCode({ ...opts, platform: 'win32', arch: 'ia32' }), (e) => e.code === 'notFound' && !e.message.includes(DOWNLOAD_HINT));
   /* By default the downloaded copy is looked for under OPENCODE_AGENT_PLUS_HOME. */
   const saved = process.env.OPENCODE_AGENT_PLUS_HOME;
@@ -114,13 +115,13 @@ test('findOpenCode\'s notFound names the download command where there is an arch
   try {
     const seen = [];
     assert.throws(() => findOpenCode({ env: { PATH: '' }, home: '/h', platform: 'linux', isExecutable: (p) => { seen.push(p); return false; }, readVersion: () => null }));
-    assert.equal(seen[seen.length - 1], path.join('/agent-home', 'opencode', '2.4.1', 'opencode'), 'and it is tried last');
+    assert.equal(seen[seen.length - 1], path.join('/agent-home', 'opencode', '2.4.1', 'opencode'), 'the downloaded copy is the last path tried');
   } finally {
     if (saved === undefined) delete process.env.OPENCODE_AGENT_PLUS_HOME; else process.env.OPENCODE_AGENT_PLUS_HOME = saved;
   }
 });
 
-test('a download that matches is unpacked and moved into place, and the archive goes', async (t) => {
+test('a download that matches is unpacked and moved into place, and the archive is removed', async (t) => {
   const root = tmpRoot(t);
   const fetched = [];
   const unpacked = [];
@@ -135,23 +136,23 @@ test('a download that matches is unpacked and moved into place, and the archive 
   assert.ok(unpacked[0].archive.endsWith('.tar.gz'), unpacked[0].archive);
   assert.deepEqual(progress, [[Math.floor(LINUX.size / 2), LINUX.size], [LINUX.size, LINUX.size]]);
   assert.deepEqual(steps, ['Unpacking']);
-  assert.deepEqual(fs.readdirSync(dl.folder(root)), ['2.4.1'], 'only the finished folder is left');
+  assert.deepEqual(fs.readdirSync(dl.folder(root)), ['2.4.1']);
   assert.deepEqual(fs.readdirSync(dl.home(root)), ['opencode']);
   if (process.platform !== 'win32') fs.accessSync(r.path, fs.constants.X_OK);
   const again = await dl.download({ root, platform: 'linux', arch: 'x64', musl: false, fetch: () => { throw new Error('not fetched again'); } });
   assert.deepEqual([again.ok, again.already], [true, true]);
 });
 
-test('a download whose SHA-256 or size does not match is thrown away whole', async (t) => {
+test('a download whose SHA-256 or size does not match is deleted, with nothing unpacked', async (t) => {
   const root = tmpRoot(t);
   let unpacked = 0;
   const unpack = async () => { unpacked++; return true; };
   let r = await dl.download({ root, platform: 'linux', arch: 'x64', musl: false, fetch: fakeFetch({ sha256: sha(Buffer.from('other')), bytes: LINUX.size }), unpack });
   assert.equal(r.ok, false);
-  assert.match(r.said, /^opencode-linux-x64-baseline\.tar\.gz did not match its recorded size and SHA-256, so it was thrown away\.$/);
+  assert.match(r.said, /^opencode-linux-x64-baseline\.tar\.gz did not match its recorded size and SHA-256 and was deleted\.$/);
   r = await dl.download({ root, platform: 'linux', arch: 'x64', musl: false, fetch: fakeFetch({ sha256: LINUX.sha256, bytes: LINUX.size - 1 }), unpack });
   assert.equal(r.ok, false);
-  assert.equal(unpacked, 0, 'nothing that failed the check is unpacked');
+  assert.equal(unpacked, 0);
   assert.deepEqual(fs.readdirSync(dl.folder(root)), [], 'no archive, no folder');
 });
 
@@ -179,7 +180,7 @@ test('cancelling stops the download and removes the part already written', async
   const r = await dl.download({ root, platform: 'linux', arch: 'x64', musl: false, signal: stop.signal, fetch, unpack: fakeUnpack() });
   assert.deepEqual([r.ok, r.cancelled], [false, true]);
   assert.equal(r.said, 'The download of OpenCode 2.4.1 was cancelled.');
-  assert.ok(partial && !fs.existsSync(partial), 'the part written is gone');
+  assert.ok(partial && !fs.existsSync(partial));
   assert.deepEqual(fs.readdirSync(dl.folder(root)), []);
   /* Cancelled after the bytes arrived but before they were used: also nothing kept. */
   const late = new AbortController();
@@ -189,7 +190,7 @@ test('cancelling stops the download and removes the part already written', async
   assert.deepEqual(fs.readdirSync(dl.folder(root)), []);
 });
 
-test('when another window put it in place first, its copy is kept and ours goes', async (t) => {
+test('when another window put it in place first, that copy is kept and ours is removed', async (t) => {
   const root = tmpRoot(t);
   const unpack = async (archive, dir) => {
     fs.writeFileSync(path.join(dir, 'opencode'), 'ours', { mode: 0o755 });
@@ -203,7 +204,7 @@ test('when another window put it in place first, its copy is kept and ours goes'
   assert.deepEqual(fs.readdirSync(dl.folder(root)), ['2.4.1']);
 });
 
-test('what a window closed halfway left is swept, but not what a running one is writing', async (t) => {
+test('the leftovers of a window closed halfway are swept, and the files of a running download are not', async (t) => {
   const root = tmpRoot(t);
   const dir = dl.folder(root);
   fs.mkdirSync(dir, { recursive: true });
@@ -214,7 +215,7 @@ test('what a window closed halfway left is swept, but not what a running one is 
   assert.deepEqual(fs.readdirSync(dir).sort(), ['.2.4.0.999001.cc.tar.gz', '.2.4.1.999002.bb.tar.gz', 'notes.txt']);
   const r = await dl.download({ root, platform: 'linux', arch: 'x64', musl: false, fetch: fakeFetch(), unpack: fakeUnpack(), isAlive: () => false });
   assert.equal(r.ok, true);
-  assert.deepEqual(leftovers(root).sort(), ['.2.4.0.999001.cc.tar.gz'], 'the download sweeps first; another version is not its business');
+  assert.deepEqual(leftovers(root).sort(), ['.2.4.0.999001.cc.tar.gz'], 'the download sweeps first and leaves the leftovers of another version alone');
 });
 
 test('no archive for the machine: nothing is fetched', async (t) => {
@@ -292,7 +293,7 @@ test('extract runs tar for tar.gz, ditto then unzip on macOS, and tar.exe on Win
   assert.equal(await dl.extract('/a.tar.gz', '/d', { kind: 'tar.gz', platform: 'linux', run: run(['tar']) }), false);
 });
 
-test('after notFound the same backend finds OpenCode on its next start, without being made again', async (t) => {
+test('after notFound the same backend object finds OpenCode on its next start', async (t) => {
   const root = tmpRoot(t);
   let there = false;
   const starter = fakeStarter('v2-run.jsonl', []);
@@ -312,5 +313,5 @@ test('after notFound the same backend finds OpenCode on its next start, without 
   const s = await oc.createSession('/work/project');
   assert.ok(s.id);
   assert.equal(oc.info().path, dl.executable(root, 'linux'));
-  assert.ok(finds.length >= 4, 'it looked each time');
+  assert.ok(finds.length >= 4);
 });

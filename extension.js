@@ -20,14 +20,14 @@
  *   src/host/plan-bar.js          the plan bar above each chat page's input box, from Agent Plus's summary
  *   src/host/window-states.js     every window's open conversations, for Agent Plus's listAllConversations()
  *   src/host/reply-file.js        each conversation's latest reply beside its plan, for a steward to read
- *   src/host/steward.js           the steward that looks after each conversation, beside its plan, and handoffs to it
+ *   src/host/steward.js           which steward looks after each conversation, and the handoffs to it
  *   src/host/rewind.js            rewinding a conversation to before one of the user's messages (OpenCode 2)
  *   src/host/reply-images.js      reads the local image files a reply shows
  *   src/host/conversation-links.js   links to the conversations a reply names
  *   src/host/recent-closed.js     the chat tabs closed in this workspace, for the Recently closed group
  *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
  *   src/host/trust-gate.js        what the commands, the chat tabs and the view do before the workspace is trusted
- *   src/host/opencode-download.js    downloading OpenCode when none is found, on the user's click
+ *   src/host/opencode-download.js    downloading OpenCode when none is found
  *
  * OPENCODE_AGENT_PLUS_TEST_BACKEND, an absolute path to a module shaped like src/opencode/index.js, stands in for OpenCode in
  * the window tests; OPENCODE_AGENT_PLUS_TEST_CONTROL makes activate() return a few internals for them.
@@ -143,8 +143,8 @@ function start(context, log, gate) {
   let backend = null;
   const settings = createProviderConfig({ vscode, secrets: context.secrets, restart: (o) => backend.restart(plan.launch(o)), log });
   subs.push(settings);
-  /* The first notFound from the backend offers the download once. After it, the backend finds OpenCode on its next
-     start (it looks again whenever none runs); what this window learned while there was none is learned again. */
+  /* After a download the backend finds OpenCode on its next start; refound() then reads again what this window could
+     not learn without it: whether Rename works, the version and the list. */
   const fetcher = createOpenCodeDownload({ vscode, ask, tell, log, done: (r) => refound(r) });
   backend = createBackend({ options: () => ({ ...plan.launch(settings.options()), root: paths.root(), log }), onError: (e) => { fetcher.offer(e); } });
   /* backend.canRename() is known once the conversation list or a conversation has started OpenCode; the Rename
@@ -181,9 +181,9 @@ function start(context, log, gate) {
     noteRename();
     nudge();
     if (found && path.resolve(found.path) !== path.resolve(r.path)) {
-      tell(`The OpenCode at ${found.path} is still used: one you installed comes before the download in ${r.path}.`);
+      tell(`The downloaded OpenCode is in ${r.path}, but the one at ${found.path} is still used because it is found first.`);
     } else {
-      tell(`OpenCode${found && found.version ? ` ${found.version.text}` : ''} is ready. New conversations use it.`);
+      tell(`OpenCode${found && found.version ? ` ${found.version.text}` : ''} is ready for new conversations.`);
     }
   }
   const models = createModels({ vscode, listModels: () => backend.listModels(), defaultModel: () => backend.defaultModel() });
@@ -634,7 +634,6 @@ function start(context, log, gate) {
     log,
   });
   subs.push(link, manager.onDidChange(() => link.changed()), plan.onDidChangeNotice(() => link.noticeChanged()));
-  /* With an Agent Plus that has 'stewards': whether a steward looks after each conversation open here, for the plugin. */
   const stewards = createStewards({
     dir: () => workplan.planDir(),
     ids: () => manager.ids(),

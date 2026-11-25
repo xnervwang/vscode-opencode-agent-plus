@@ -7,8 +7,7 @@
  * Downloading OpenCode from this window (src/opencode/download.js): the command, and the notification with a button
  * that the first notFound error in a window brings up. Nothing is fetched until the user picks one of them.
  *
- * The download shows its percentage in a cancellable notification and runs once at a time in a window. Once it is in
- * place, done(result) lets the extension find OpenCode again and redraw the list; nothing needs a reload, since the
+ * A download runs once at a time in a window. Once it is in place, done(result) lets the extension find OpenCode again and redraw the list; nothing needs a reload, since the
  * backend looks for OpenCode again every time it is not running (src/opencode/index.js ensure()).
  */
 const brand = require('../brand');
@@ -61,7 +60,7 @@ function createOpenCodeDownload({ vscode, done = () => {}, ask, tell = () => {},
           Promise.resolve(vscode.window.showErrorMessage(`${brand.displayName}: downloading OpenCode failed. ${r.said}`)).catch(() => {});
           return false;
         }
-        await Promise.resolve().then(() => done(r)).catch((e) => log(`after the OpenCode download: ${(e && e.message) || e}`));
+        await Promise.resolve().then(() => done(r)).catch((e) => log(`handling the finished OpenCode download failed: ${(e && e.message) || e}`));
         return true;
       } finally {
         if (off) { try { off.dispose(); } catch (_) { /* gone */ } }
@@ -71,17 +70,15 @@ function createOpenCodeDownload({ vscode, done = () => {}, ask, tell = () => {},
 
   return {
     COMMAND,
-    /* The command: the download, without asking again, since running it is the request. */
     run: () => get(),
-    /* After an error from the backend: the first notFound in this window, where an archive is published for the
-       machine, brings up the notification. Resolves to whether it downloaded. */
+    /* Gets every error the backend rejects with. Resolves to whether OpenCode was downloaded. */
     offer(e) {
       if (offered || !e || e.code !== 'notFound' || !lib.available()) return Promise.resolve(false);
       offered = true;
       const a = lib.asset();
       const size = a ? ` (${mb(a.size)} MB)` : '';
       return Promise.resolve(askUser(
-        `OpenCode was not found. Download OpenCode ${lib.VERSION} from GitHub${size}? An OpenCode you install yourself is used first.`, BUTTON))
+        `OpenCode was not found. Download OpenCode ${lib.VERSION} from GitHub${size}? If you install OpenCode yourself, that one is used instead.`, BUTTON))
         .then((pick) => (pick === BUTTON ? get() : false))
         .catch((err) => { log(`offering the OpenCode download failed: ${(err && err.message) || err}`); return false; });
     },

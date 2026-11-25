@@ -4,14 +4,14 @@
 
 'use strict';
 /*
- * Fetching OpenCode for a machine that has none: the command-line archive OpenCode publishes on GitHub for one fixed
+ * Downloads OpenCode where none is installed: the command-line archive OpenCode publishes on GitHub for one fixed
  * version, checked against the size and SHA-256 recorded here and unpacked into <root>/opencode/<VERSION>/, where
  * findOpenCode (server.js) looks after the user's own installations.
  *
  * Nothing is fetched unless the user asks for it (src/host/opencode-download.js). The archive and the folder it is
- * unpacked into carry the process id and a random part, sit beside the destination, and are renamed into place only
- * once the executable is in them, so two windows downloading at once, or a window closed halfway, leave no half
- * installation that findOpenCode could pick up.
+ * unpacked into have temporary names beside the destination and are renamed into place only once the executable is in
+ * them, so two windows downloading at once, or a window closed halfway, leave no half installation that findOpenCode
+ * could pick up.
  *
  * x64 gets the baseline builds, which do not need AVX2.
  */
@@ -37,7 +37,7 @@ const ASSETS = Object.freeze({
 const UNPACK_MS = 5 * 60 * 1000;
 
 let muslSeen = null;
-/* Whether this Linux has no glibc: Node's report names the glibc it runs on, and has none under musl. */
+/* Node's report names the glibc it runs on; under musl it names none. */
 function isMusl(report = process.report) {
   if (report === process.report && muslSeen !== null) return muslSeen;
   let musl = false;
@@ -58,7 +58,7 @@ function asset(platform = process.platform, arch = process.arch, musl) {
   return { name: a[0], size: a[1], sha256: a[2], url: BASE + a[0], kind: a[0].endsWith('.tar.gz') ? 'tar.gz' : 'zip' };
 }
 
-/* Whether there is a download for this platform and processor at all, without asking which libc it has. */
+/* A download exists for this platform and processor; which libc the machine has does not change the answer. */
 const available = (platform = process.platform, arch = process.arch) => !!asset(platform, arch, false);
 
 const folder = (root = paths.root()) => path.join(root, 'opencode');
@@ -74,7 +74,8 @@ function abortError() {
 
 /*
  * Fetches `url` into `file`, following up to `hops` redirects, and resolves to { sha256, bytes }. The digest is taken
- * from the bytes as they arrive. `signal` aborts it; `onProgress(bytes)` hears each chunk; `get` is https.get.
+ * from the bytes as they arrive. `signal` cancels it, `onProgress(bytes)` is called after each chunk, and `get` stands in
+ * for https.get.
  */
 function fetchFile(url, file, { signal, onProgress, userAgent = 'opencode-agent-plus', get } = {}, hops = 5) {
   const getter = get || require('https').get;
@@ -177,7 +178,7 @@ async function download({ root = paths.root(), platform = process.platform, arch
     if (stopped()) return cancelled();
     if (!got || got.bytes !== a.size || got.sha256 !== a.sha256) {
       clean();
-      return { ok: false, said: `${a.name} did not match its recorded size and SHA-256, so it was thrown away.` };
+      return { ok: false, said: `${a.name} did not match its recorded size and SHA-256 and was deleted.` };
     }
     if (onStep) { try { onStep('Unpacking'); } catch (_) { /* not shown */ } }
     fs.mkdirSync(part, { recursive: true, mode: 0o700 });

@@ -30,7 +30,7 @@ const INSTALL_HINT = 'Install OpenCode 2 with `npm install -g @opencode/cli`, th
   + 'installed somewhere else, set its path in your user settings, or in the remote machine\'s settings over Remote-SSH.';
 
 /* Added to the notFound message where an archive is published for the machine (download.js). */
-const DOWNLOAD_HINT = `Or run "${brand.displayName}: Download OpenCode ${download.VERSION}" from the Command Palette to download it.`;
+const DOWNLOAD_HINT = `Or run "${brand.displayName}: Download OpenCode ${download.VERSION}" from the Command Palette.`;
 
 class OpenCodeError extends Error {
   constructor(code, message) {
