@@ -133,6 +133,12 @@ test('1.x: opening a saved conversation replays its history as turns', async (t)
   assert.equal(await oc.openSession(s.id), s, 'a second open returns the same object');
 });
 
+test('opening a conversation OpenCode does not have fails with noConversation, not the notFound of a missing OpenCode', async (t) => {
+  const { oc } = setup(t, 'v1-load.jsonl', V1);
+  await assert.rejects(oc.openSession('ses_df3c71e7dffeqHMoF0MwSdAou9'),
+    (e) => e instanceof require('../../src/opencode/server').OpenCodeError && e.code === 'noConversation' && /has no conversation/.test(e.message));
+});
+
 test('2.x: the model is chosen with session/set_config_option; a rejection ends the turn', async (t) => {
   const { oc, agents } = setup(t, 'v2-run.jsonl', V2, { extra: [{ on: 'session/delete', reply: {} }] });
   const s = await oc.createSession(CWD, { model: GROK });

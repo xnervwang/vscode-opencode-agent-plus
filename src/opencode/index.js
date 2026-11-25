@@ -1083,7 +1083,7 @@ function createOpenCode(opts = {}) {
     let title = '';
     if (!dir) {
       const s = await findSession(p, id);
-      if (!s) throw new server.OpenCodeError('notFound', `OpenCode has no conversation ${id}`);
+      if (!s) throw new server.OpenCodeError('noConversation', `OpenCode has no conversation ${id}`);
       dir = s.cwd;
       title = mapper.normalizeTitle(s.title);
     }
@@ -1240,7 +1240,7 @@ function createOpenCode(opts = {}) {
       let cwd = h ? h.cwd : '';
       if (!cwd) {
         const s = await findSession(p, id);
-        if (!s) throw new server.OpenCodeError('notFound', `OpenCode has no conversation ${id}`);
+        if (!s) throw new server.OpenCodeError('noConversation', `OpenCode has no conversation ${id}`);
         cwd = s.cwd;
       }
       const r = await p.conn.request('session/fork', { sessionId: id, cwd, mcpServers: [] }, { timeoutMs: newSessionTimeoutMs });
