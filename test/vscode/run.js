@@ -76,8 +76,8 @@ const LOCAL = has('--local');
 const EXE = flag('--vscode');
 const VSIX = flag('--vsix');
 const CACHE = flag('--cache');
-/* The same VS Code as the local runs use. */
-const VSCODE_VERSION = '1.147.0';
+/* The same VS Code as the local runs use; OPENCODE_AGENT_PLUS_VSCODE_VERSION gives a CI=true run another, such as stable. */
+const VSCODE_VERSION = process.env.OPENCODE_AGENT_PLUS_VSCODE_VERSION || '1.147.0';
 const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-agent-plus-ui-${Date.now()}`)));
 /* 1.4.0 or later: the plan bar needs Agent Plus's planSummary. Without --agent-plus, the newest package built in a
    vscode-agent-plus checkout beside this repository. */

@@ -8,6 +8,11 @@
 # against a real model need credentials and stay on a developer's machine. The results folder of each system is kept
 # whether the run passed or not: the screenshots of every step, VS Code's logs, and for each check that failed what the
 # window held then (its failures/ folder).
+#
+# What it installs from elsewhere is pinned in .github/upstream.json: the Agent Plus commit it builds, and the versions of
+# the test runner's packages; VS Code's version is in run.js. A new Agent Plus is taken by changing that commit. Run with
+# `upstream: latest` (against-latest.yml does so once a day), it builds Agent Plus's default branch and installs VS Code
+# stable and the newest test runner instead.
 name: vscode
 
 on:
@@ -28,6 +33,21 @@ on:
         description: A regular expression of window test step names to run; empty runs them all
         type: string
         default: ''
+      times:
+        description: How many times to run them on each system
+        type: choice
+        options: ['1', '2', '3', '5']
+        default: '1'
+      upstream:
+        description: The pinned Agent Plus, VS Code and test runner, or the latest of each
+        type: choice
+        options: [pinned, latest]
+        default: pinned
+  workflow_call:
+    inputs:
+      upstream:
+        type: string
+        default: pinned
 
 permissions:
   contents: read
@@ -44,10 +64,23 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Build the .vsix
         run: node build/pack-vsix.js . --out extension.vsix
+      - name: Pick the Agent Plus commit
+        id: pick
+        shell: bash
+        env:
+          UPSTREAM: ${{ inputs.upstream }}
+        run: |
+          if [ "$UPSTREAM" = latest ]; then echo "agent-plus=" >> "$GITHUB_OUTPUT"
+          else echo "agent-plus=$(node -p "require('./.github/upstream.json').agentPlus")" >> "$GITHUB_OUTPUT"; fi
+      # An empty ref is the default branch.
       - uses: actions/checkout@v7
         with:
           repository: xnervwang/vscode-agent-plus
+          ref: ${{ steps.pick.outputs.agent-plus }}
           path: agent-plus
+      - name: Name the Agent Plus commit
+        shell: bash
+        run: git -C agent-plus log -1 --format='Agent Plus %H %s'
       - name: Build Agent Plus's .vsix
         shell: bash
         run: |
@@ -66,10 +99,13 @@ jobs:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(inputs.os && inputs.os != 'all' && format('["{0}"]', inputs.os) || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
+        round: ${{ fromJSON(inputs.times == '5' && '[1, 2, 3, 4, 5]' || inputs.times == '3' && '[1, 2, 3]' || inputs.times == '2' && '[1, 2]' || '[1]') }}
+    name: run (${{ matrix.os }}${{ matrix.round > 1 && format(' #{0}', matrix.round) || '' }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:
       OPENCODE_AGENT_PLUS_UI_STEPS: ${{ inputs.steps }}
+      OPENCODE_AGENT_PLUS_VSCODE_VERSION: ${{ inputs.upstream == 'latest' && 'stable' || '' }}
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
@@ -82,7 +118,13 @@ jobs:
       # The run drives VS Code's Electron, so playwright-core is enough and no browser is downloaded.
       - name: Install the test runner
         shell: bash
-        run: npm install --no-save --no-package-lock --ignore-scripts @vscode/test-electron@3 playwright-core@1
+        env:
+          UPSTREAM: ${{ inputs.upstream }}
+        run: |
+          if [ "$UPSTREAM" = latest ]; then set -- @vscode/test-electron@latest playwright-core@latest
+          else set -- "@vscode/test-electron@$(node -p "require('./.github/upstream.json').testElectron")" "playwright-core@$(node -p "require('./.github/upstream.json').playwrightCore")"; fi
+          npm install --no-save --no-package-lock --ignore-scripts "$@"
+          for p in @vscode/test-electron playwright-core; do echo "$p $(node -p "require('./node_modules/$p/package.json').version")"; done
       # Without a CJK font the 「」 in one of the window test's replies are drawn as boxes in the screenshots.
       - name: Install a CJK font
         if: runner.os == 'Linux'
@@ -104,6 +146,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: vscode-${{ runner.os }}
+          name: vscode-${{ runner.os }}${{ matrix.round > 1 && format('-{0}', matrix.round) || '' }}
           path: vscode-results
           if-no-files-found: warn

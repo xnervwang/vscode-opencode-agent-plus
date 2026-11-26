@@ -1,0 +1,24 @@
+# BSD 3-Clause License
+# Copyright (c) 2026, Xnerv Wang
+# All rights reserved.
+
+# Once a day, the window tests of vscode.yml against the newest of what it pins: Agent Plus's default branch, VS Code
+# stable and the newest test runner. A red run here says one of them changed in a way this extension or its tests have
+# to follow; it holds up nothing pushed here, which runs against the versions in .github/upstream.json. GitHub sends the
+# failure to whoever last changed the schedule below.
+name: against-latest
+
+on:
+  schedule:
+    # 10:47 UTC. Not on the hour, when the scheduler is busiest and runs are likeliest to be dropped.
+    - cron: '47 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vscode:
+    uses: ./.github/workflows/vscode.yml
+    with:
+      upstream: latest
