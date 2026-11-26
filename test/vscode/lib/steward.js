@@ -68,7 +68,7 @@ async function run(t) {
   // S2. A new conversation gets its steward file beside its plan, with both stewards.
   await call('await vscode.commands.executeCommand("opencodeAgentPlus.newConversation"); return true;');
   const tab = await until(() => call(`const x = vscode.window.tabGroups.activeTabGroup.activeTab;
-    return x && x.input instanceof vscode.TabInputCustom && /^opencodeagentplus-session:/.test(x.input.uri.toString()) ? x.input.uri.toString() : null;`), 30000);
+    return x && x.input instanceof vscode.TabInputCustom && /^opencodeagentplus-session:/.test(x.input.uri.toString()) ? "opencodeagentplus-session:/" + x.input.uri.path.split("/")[1] : null;`), 30000);
   const id = tab ? tab.replace(/^opencodeagentplus-session:\//, '') : '';
   let chat = await frameWith(page, '#input', 30000);
   const file = id ? await ext('return api.test.stewardFile(arg);', id) : '';

@@ -397,7 +397,10 @@ function start(context, log, gate, channel) {
     const offFront = panel.onDidChangeViewState(noteFront);
     const draft = drafts.get(entry.id);
     if (draft) { drafts.delete(entry.id); chat.compose({ draft }); }
-    for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);
+    /* Another page of this conversation has the turns this window ran since it opened, which conv.saved lacks. */
+    const twin = [...chats].find((c) => c !== chat && !c.disposed && c.conversation === conv);
+    if (twin) chat.adopt(twin.state);
+    else for (const ev of (conv.saved && conv.saved.events) || []) chat.dispatch(ev);
     /* Shows the model a turn runs on (turnStart.modelId) and, after the model's first call, the context window
        OpenCode has learned for it. */
     const follow = (name) => {
@@ -630,10 +633,49 @@ function start(context, log, gate, channel) {
     const panel = manager.panelOf(id);
     if (panel) { panel.reveal(panel.viewColumn); return true; }
     if (locks.holder(id) && !(await takeOver(id))) return false;
-    await vscode.commands.executeCommand('vscode.openWith', ap.uriOf(id), ap.VIEW_TYPE,
-      { preview: false, viewColumn: chatColumn(vscode, ap.isChatTab) });
+    /* A tab restored after a reload and not shown since has no page yet, and its resource may carry an older title:
+       that tab is brought to the front rather than a second one opened beside it. */
+    const tab = chatTabs(id)[0];
+    await vscode.commands.executeCommand('vscode.openWith', tab ? tab.input.uri : ap.uriOf(id, titleOf(id)), ap.VIEW_TYPE,
+      { preview: false, viewColumn: tab ? tab.group.viewColumn : chatColumn(vscode, ap.isChatTab) });
     return true;
   }
+
+  /*
+   * VS Code names a chat tab restored after a reload after the last part of its resource until its page loads, so the
+   * resource carries the title (agentplus-source uriOf). A conversation's title comes after its tab opened (OpenCode
+   * names a new one after its first reply) or changes (a rename), so the tab is opened again under its title: beside
+   * itself, where the old one closes, and only while it is in front and the conversation idle, which a page reload
+   * then disturbs least. The draft in its box goes along; the conversation stays open throughout. The window tests
+   * turn it on only where they check it, since it replaces the page the other steps hold.
+   */
+  let retitling = !process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL;
+  const renaming = new Set();
+  async function retitleTab(id) {
+    const title = titleOf(id);
+    const tab = chatTabs(id).find((t) => t.isActive && t.group.isActive);
+    const s = manager.snapshot(id);
+    if (!retitling || renaming.has(id) || !title || !tab || !s || s.activity === 'working' || s.activity === 'waiting') return;
+    if (ap.nameOfUri(tab.input.uri) === ap.tabName(title)) return;
+    renaming.add(id);
+    try {
+      const chat = [...chats].find((c) => c.conversation && c.conversation.id === id);
+      const draft = chat ? await chat.draftText(1500) : '';
+      if (draft) drafts.set(id, draft);
+      await vscode.commands.executeCommand('vscode.openWith', ap.uriOf(id, title), ap.VIEW_TYPE, { viewColumn: tab.group.viewColumn, preview: false });
+      await vscode.window.tabGroups.close(tab, true);
+      log(`opened the tab of ${id} again under its title`);
+    } catch (e) {
+      log(`opening the tab of ${id} under its title failed: ${(e && e.message) || e}`);
+    } finally {
+      renaming.delete(id);
+    }
+  }
+  const retitleSoon = (id) => setTimeout(() => { retitleTab(id).catch(() => {}); }, 300);
+  subs.push(manager.onDidChange((e) => { if (e && e.sessionId) retitleSoon(e.sessionId); }));
+  subs.push(vscode.window.tabGroups.onDidChangeTabs((e) => {
+    for (const t of (e && e.changed) || []) if (ap.isChatTab(t) && t.isActive) retitleSoon(ap.sessionOfUri(t.input.uri));
+  }));
 
   /* Starts a conversation and opens its tab; resolves with its id, or '' when that failed. */
   async function newConversationId() {
@@ -658,6 +700,10 @@ function start(context, log, gate, channel) {
     const tab = activeTab();
     return ap.isChatTab(tab) ? ap.sessionOfUri(tab.input.uri) : '';
   };
+  /* The titles of conversations not open here now: from OpenCode's session list, and the last of each one open here. */
+  const titles = new Map();
+  subs.push(manager.onDidChange((e) => { const s = e && manager.snapshot(e.sessionId); if (s && s.named) titles.set(s.sessionId, s.title); }));
+  const titleOf = (id) => { const s = manager.snapshot(id); return (s && s.named && s.title) || titles.get(id) || ''; };
   const chatTabs = (id) => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
     .filter((t) => ap.isChatTab(t) && ap.sessionOfUri(t.input.uri) === id);
 
@@ -690,6 +736,7 @@ function start(context, log, gate, channel) {
     busy: (id) => takeOver(id),
     ownWindow: (id) => locks.ownWindow(id),
     label: (s) => marks.withMarks(s.title, { unseen: s.unseen, envelope: envelope.envelope(vscode) }),
+    titleOf: (id) => titleOf(id),
     iconFor,
     onDidChangeLook: (fn) => envelope.onEnvelopeChange(vscode, fn),
     log,
@@ -718,7 +765,10 @@ function start(context, log, gate, channel) {
       ...backend,
       listSessions: () => backend.listSessions().then((rows) => {
         noteRename();
-        for (const r of rows) if (r.cwd) folders.set(r.id, r.cwd);
+        for (const r of rows) {
+          if (r.cwd) folders.set(r.id, r.cwd);
+          if (r.title) titles.set(r.id, r.title);
+        }
         return rows.filter((r) => inScope(r.cwd));
       }),
       deleteSession: (id) => removeConversation(id),
@@ -979,6 +1029,11 @@ function start(context, log, gate, channel) {
       /* For tests: the program the sign-in terminal runs in place of the OpenCode found ('' to run that one), and how many
          times the sign-in ran. */
       loginProgram: (p) => { loginProgram = String(p || ''); return true; }, logins: () => ({ ...logins }),
+      retitleTabs: (on) => {
+        retitling = on !== false;
+        if (retitling) for (const t of vscode.window.tabGroups.all.flatMap((g) => g.tabs)) if (ap.isChatTab(t) && t.isActive) retitleSoon(ap.sessionOfUri(t.input.uri));
+        return retitling;
+      },
       autoEdit: (id) => autoEdit.get(id), rescanDetached: () => { for (const c of chats) c.lookForDetached(0); return chats.size; },
       canForkBefore: () => backend.canForkBefore(), restartOpenCode: () => backend.restart(plan.launch(settings.options())).then(() => true),
       loginLaunch: async () => loginLaunch({ found: await backend.detect(), env: plan.launch(settings.options()).env, authMethods: (backend.info() || {}).authMethods }) };

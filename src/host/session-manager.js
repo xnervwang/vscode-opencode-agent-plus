@@ -92,6 +92,7 @@ function createSessionManager(deps) {
     const out = {
       sessionId: e.id,
       title: e.title || 'New conversation',
+      named: !!e.title,
       cwd: e.cwd,
       /* A turn over with background work still running: a command moved to the background, or a subagent. */
       activity: e.state === 'stopped' && e.background.size ? 'background' : e.state,

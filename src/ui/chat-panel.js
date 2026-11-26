@@ -402,6 +402,13 @@ ${hl}<script src="${media('kit.js')}"></script>
     Promise.resolve(this.panel.webview.postMessage({ ...msg, now: this.now() })).catch(() => {});
   }
 
+  /* Shows the view of another page of the same conversation; the view's state is never changed in place. */
+  adopt(state) {
+    if (this.disposed || !state) return;
+    this.state = state;
+    if (this.ready) this.sendReset();
+  }
+
   /* After a rewind: rebuilds the view from `events`, sends it whole, and offers `draft` for the input. */
   replaceHistory(events, draft) {
     if (this.disposed) return;
@@ -471,6 +478,17 @@ ${hl}<script src="${media('kit.js')}"></script>
       this.prefills.set(id, (ok) => { clearTimeout(timer); this.prefills.delete(id); resolve(ok === true); });
       const msg = { type: 'prefill', id, text };
       if (this.ready) this.post(msg); else this.waiting.push(msg);
+    });
+  }
+
+  /* The text in the page's message box, or '' when the page gives none within `ms`. */
+  draftText(ms) {
+    if (this.disposed || !this.ready) return Promise.resolve('');
+    const id = `d${++this.prefillSeq}`;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.prefills.delete(id); resolve(''); }, Math.max(0, ms));
+      this.prefills.set(id, (text) => { clearTimeout(timer); this.prefills.delete(id); resolve(typeof text === 'string' ? text : ''); });
+      this.post({ type: 'draftText', id });
     });
   }
 
@@ -719,6 +737,11 @@ ${hl}<script src="${media('kit.js')}"></script>
   onMessage(msg) {
     if (!msg || typeof msg.type !== 'string' || this.disposed) return;
     switch (msg.type) {
+      case 'draftText': {
+        const done = typeof msg.id === 'string' ? this.prefills.get(msg.id) : null;
+        if (done) done(msg.text);
+        break;
+      }
       case 'prefilled': {
         const done = typeof msg.id === 'string' ? this.prefills.get(msg.id) : null;
         if (done) done(msg.ok === true);

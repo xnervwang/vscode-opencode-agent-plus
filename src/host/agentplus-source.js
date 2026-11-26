@@ -37,7 +37,17 @@ function sessionOfUri(uri) {
   return /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/.test(id) ? id : '';
 }
 
-const uriOf = (sessionId) => vscode.Uri.from({ scheme: SCHEME, path: `/${sessionId}` });
+/*
+ * A chat tab's resource: the session id, then the conversation's title when known. VS Code names a tab whose page has
+ * never set a title after the last part of its resource, as it does for a tab restored after a reload that was never
+ * shown, so the title makes that name the conversation's rather than its id; a conversation without one is named as
+ * its tab is. Slashes in a title would start a new part, so they are replaced.
+ */
+const NO_TITLE = 'New conversation';
+const tabName = (title) => String(title || '').replace(/[\\/]/g, '\u2215').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 120);
+const uriOf = (sessionId, title) => vscode.Uri.from({ scheme: SCHEME, path: `/${sessionId}/${tabName(title) || NO_TITLE}` });
+/* The title a chat tab's resource carries, or ''. */
+const nameOfUri = (uri) => String((uri && uri.path) || '').split('/').slice(2).join('/');
 
 const isChatTab = (tab) => !!tab && tab.input instanceof vscode.TabInputCustom && String(tab.input.viewType).endsWith(VIEW_TYPE);
 
@@ -295,4 +305,4 @@ async function register(source, { log = () => {} } = {}) {
   return { accepted: false, code, reason, registration: null };
 }
 
-module.exports = { createAgentPlusSource, register, toConversation, stateOf, waitReason, sessionOfUri, uriOf, isChatTab, PROTOCOL, ID, CORE_ID, VIEW_TYPE, SCHEME, EXTENSION_ID };
+module.exports = { createAgentPlusSource, register, toConversation, stateOf, waitReason, sessionOfUri, uriOf, tabName, nameOfUri, isChatTab, PROTOCOL, ID, CORE_ID, VIEW_TYPE, SCHEME, EXTENSION_ID };

@@ -31,6 +31,7 @@ const page = (text) => `<!DOCTYPE html><html><head><meta charset="utf-8">
  *                            back without asking
  *   label(snapshot)          optional: the tab's title for the conversation's snapshot (its title with an envelope
  *                            while a reply is unread); the title alone otherwise
+ *   titleOf(sessionId)       optional: the conversation's title before it is open, or ''
  *   iconFor(activity)        optional: the tab's icon for 'working', 'waiting' or 'stopped' ({ light, dark } Uris),
  *                            or undefined to leave it
  *   onDidChangeLook(fn)      optional: fires when the label or icon for the same state changes (the colour theme)
@@ -48,6 +49,12 @@ class ChatEditorProvider {
     const subs = [];
     subs.push(panel.onDidDispose(() => { gone = true; }));
     if (!id) { panel.webview.html = page('This tab has no valid conversation id.'); return; }
+    /* The title goes on the tab before the conversation opens, and stays when it cannot (another window has it, or
+       opening failed): VS Code saves a tab's title for the next window, and without one it names the tab after its
+       resource. */
+    let known = '';
+    try { known = (this.deps.titleOf && this.deps.titleOf(id)) || ''; } catch (_) { known = ''; }
+    if (known && panel.title !== known) panel.title = known;
     let r = await manager.open(id);
     if (!gone && !r.ok && r.pid && this.deps.busy) {
       let own = false;

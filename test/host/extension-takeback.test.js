@@ -50,7 +50,7 @@ test('this window takes back what its earlier extension host holds without askin
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
   await control.state.handlers['opencodeAgentPlus.newConversation']();
   await control.state.handlers['opencodeAgentPlus.newConversation']();
-  const [a, b] = opened.map((u) => u.slice('opencodeagentplus-session:/'.length));
+  const [a, b] = opened.map((u) => u.slice('opencodeagentplus-session:/'.length).split('/')[0]);
   const token = store.get('opencodeAgentPlus.window');
   assert.match(String(token), /^[0-9a-f-]{36}$/, 'the window has a name, kept in its workspace state');
 
@@ -91,7 +91,7 @@ test('the lock of an earlier host of this window that does not answer is taken b
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
   await control.state.handlers['opencodeAgentPlus.newConversation']();
-  const id = opened[0].slice('opencodeagentplus-session:/'.length);
+  const id = opened[0].slice('opencodeagentplus-session:/'.length).split('/')[0];
   const dir = path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'locks');
   /* A frozen host: it holds the lock and never sees the request. */
   const frozen = createLocks({ dir, pid: ghost.pid, window: store.get('opencodeAgentPlus.window'), watch: () => ({ close() {} }) });

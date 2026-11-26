@@ -2230,6 +2230,8 @@
       input.focus();
       input.setSelectionRange(want.length, want.length);
       api.postMessage({ type: 'prefilled', id: m.id, ok: !!m.text && input.value === want && input.value.endsWith(m.text) });
+    } else if (m.type === 'draftText') {
+      api.postMessage({ type: 'draftText', id: m.id, text: input.value });
     } else if (m.type === 'focus') {
       input.focus();
     } else if (m.type === 'detached') {

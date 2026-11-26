@@ -71,7 +71,7 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   control.state.handlers['vscode.openWith'] = (uri, viewType, opts) => opened.push([uri.toString(), viewType, opts]);
   await control.state.handlers['opencodeAgentPlus.newConversation']();
   assert.strictEqual(opened.length, 1);
-  assert.match(opened[0][0], /^opencodeagentplus-session:\/ses_[0-9a-f]+$/);
+  assert.match(opened[0][0], /^opencodeagentplus-session:\/ses_[0-9a-f]+\/New(%20| )conversation$/, 'named as its tab is until it has a title');
   assert.deepStrictEqual(opened[0].slice(1), ['opencodeAgentPlus.chat', { preview: false, viewColumn: 1 }]);
 
   const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
@@ -97,7 +97,7 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   assert.strictEqual(rows.length, 1);
   assert.strictEqual(tree.getTreeItem(rows[0]).command.command, 'opencodeAgentPlus.openConversation');
 
-  const id = opened[0][0].slice('opencodeagentplus-session:/'.length);
+  const id = opened[0][0].slice('opencodeagentplus-session:/'.length).split('/')[0];
   const plans = path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'plans');
   const scratch = path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'scratch');
   const other = 'ses_0000000000000000other';

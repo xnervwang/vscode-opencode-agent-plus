@@ -51,7 +51,7 @@ test("opens a conversation with the backend's folder and state", async () => {
   assert.strictEqual(made.length, 1);
   assert.strictEqual(manager.snapshot(A).cwd, '/work/folder');
   assert.strictEqual(made[0].askedFor, A, 'the info is read with the conversation at hand');
-  assert.deepStrictEqual(manager.list(), [{ sessionId: A, title: 'New conversation', cwd: '/work/folder', activity: 'stopped', unseen: false,
+  assert.deepStrictEqual(manager.list(), [{ sessionId: A, title: 'New conversation', named: false, cwd: '/work/folder', activity: 'stopped', unseen: false,
     lastActiveAt: 5000, running: true, lastUserAt: 0, lastReplyAt: 0, background: [] }]);
   assert.deepStrictEqual(changes, [A]);
 });

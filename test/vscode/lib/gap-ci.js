@@ -46,10 +46,10 @@ function writePlan(file, rows) {
 
 /* The chat tabs: [{ id, column, active }], in the order of the editor groups. */
 const chatTabs = (call) => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs.filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat")
-  .map((t) => ({ id: t.input.uri.toString().slice(${SCHEME.length}), column: g.viewColumn, active: t.isActive })));`);
+  .map((t) => ({ id: t.input.uri.path.split('/')[1], column: g.viewColumn, active: t.isActive })));`);
 
 /* Brings the chat tab of `id` to the front of the group it is in. */
-const reveal = (call, id) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === arg);
+const reveal = (call, id) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && "opencodeagentplus-session:/" + x.input.uri.path.split("/")[1] === arg);
   if (!t) return false;
   await vscode.commands.executeCommand("vscode.openWith", t.input.uri, "opencodeAgentPlus.chat", { viewColumn: t.group.viewColumn, preview: false });
   return true;`, SCHEME + id);
@@ -98,6 +98,15 @@ async function openTabs(ctx, first) {
   }
   const done = (id) => ext('const s = api.test.snapshot(arg); return !!s && s.activity === "stopped" && !!s.lastReplyAt;', id).catch(() => false);
   await until(async () => (await Promise.all(tabs.slice(1).map((t) => done(t.id)))).every(Boolean), 180000, 500);
+  /* The tab behind `first` is opened again from its conversation, now that it has a title, as a conversation picked
+     from a list or a link is: its resource then carries the title, which names the tab after a reload until it is shown. */
+  await reveal(call, first.id);
+  if (tabs[1]) {
+    await call('await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path.split("/")[1] === arg)); return true;', tabs[1].id);
+    await until(async () => (!(await chatTabs(call)).some((x) => x.id === tabs[1].id) || null), 10000);
+    await call('return vscode.commands.executeCommand("opencodeAgentPlus.openConversation", arg);', tabs[1].id);
+    await until(async () => ((await chatTabs(call)).some((x) => x.id === tabs[1].id) || null), 20000);
+  }
   await reveal(call, first.id);
   const now = await chatTabs(call);
   for (const t of tabs) t.column = (now.find((x) => x.id === t.id) || {}).column || 0;
@@ -132,8 +141,8 @@ async function checkTabs(ctx, tabs) {
   check(pages.every((x) => x.page && x.session === x.id), 'each restored chat tab, once brought to the front, loads its own conversation, and its info box names that session', pages);
 }
 
-const closeTabs = (call, tabs) => call(`const ids = arg.map((t) => "${SCHEME}" + t.id);
-  await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && ids.includes(t.input.uri.toString())));
+const closeTabs = (call, tabs) => call(`const ids = arg.map((t) => t.id);
+  await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.scheme === "${SCHEME.replace(/:\/$/, '')}" && ids.includes(t.input.uri.path.split('/')[1])));
   return true;`, tabs).catch(() => false);
 
 module.exports = { fakeRecord, fakeParents, fakeUserTexts, writePlan, openTabs, checkTabs, pageOf, closeTabs, frameShowing };

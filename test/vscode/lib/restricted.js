@@ -221,7 +221,7 @@ async function run(t) {
     const waiting = await ext('return api.test.waitingTabs();');
     return !still && waiting === 0;
   }, 60000);
-  const probeTab = await call('const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === "opencodeagentplus-session:/" + arg); return t ? t.label : null;', PROBE);
+  const probeTab = await call('const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.path.split("/")[1] === arg); return t ? t.label : null;', PROBE);
   check(!!handed && !!probeTab, 'the chat tab that showed the Restricted Mode page is handed to the chat editor (it names no real conversation, so it says it could not be opened)', { handed, probeTab });
   await closeTrustEditor();
   await until(async () => !(await trustEditor()).editor, 10000);
@@ -229,7 +229,7 @@ async function run(t) {
   await shot('r05-trusted-tab', { features: ['chat tab after trust'],
     expect: 'The editor shows the chat tab that had the Restricted Mode page, now drawn by the chat editor: since the tab names a made-up conversation, it says "This conversation could not be opened:" followed by OpenCode\'s error. The Restricted Mode text and button are gone. VS Code no longer marks the window as Restricted Mode.',
     part: '#workbench\\.parts\\.editor' });
-  await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === "opencodeagentplus-session:/" + arg); await vscode.window.tabGroups.close(tabs); return true;', PROBE);
+  await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.path.split("/")[1] === arg); await vscode.window.tabGroups.close(tabs); return true;', PROBE);
 
   // R9. A new conversation runs on the user's OpenCode.
   await page.hover(`${sidebar} .pane-header`).catch(() => {});

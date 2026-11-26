@@ -43,7 +43,8 @@ test('through extension.js: Recently closed, Find Conversation, and links from a
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
   await control.state.handlers['opencodeAgentPlus.newConversation']();
   await control.state.handlers['opencodeAgentPlus.newConversation']();
-  const [a, b] = opened.map((u) => u.slice('opencodeagentplus-session:/'.length));
+  const idOf = (u) => u.slice('opencodeagentplus-session:/'.length).split('/')[0];
+  const [a, b] = opened.map(idOf);
   const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
   const panel = control.panel();
   await provider.resolveCustomEditor(provider.openCustomDocument(vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${a}` })), panel);
@@ -62,7 +63,7 @@ test('through extension.js: Recently closed, Find Conversation, and links from a
   const before = opened.length;
   panel.fromPage({ type: 'openConversation', sourceId: 'opencode-plus', sessionId: b });
   await settle();
-  assert.deepStrictEqual(opened.slice(before), [`opencodeagentplus-session:/${b}`]);
+  assert.deepStrictEqual(opened.slice(before).map(idOf), [b]);
   /* One open here comes to the front. */
   const shown = panel.revealed;
   panel.fromPage({ type: 'openConversation', sourceId: 'opencode-plus', sessionId: a });
@@ -105,7 +106,7 @@ test('through extension.js: Recently closed, Find Conversation, and links from a
   const n = opened.length;
   qp.answer((items) => items.find((i) => i.detail.includes(a.slice(4, 12))));
   assert.strictEqual(await run, a);
-  assert.deepStrictEqual(opened.slice(n), [`opencodeagentplus-session:/${a}`]);
+  assert.deepStrictEqual(opened.slice(n).map(idOf), [a]);
   extension.deactivate();
 });
 

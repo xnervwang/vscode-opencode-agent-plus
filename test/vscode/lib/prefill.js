@@ -17,9 +17,9 @@ const MISSING = 'ses_prefillwindowtestmissing00';
 async function run(t) {
   const { page, call, ext, check, shot, until, sleep, frameWith, chatUris, front, real } = t;
   const idOf = (uri) => decodeURIComponent(uri.slice(SCHEME.length).replace(/^\/+/, ''));
-  const tabOf = 'vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === arg)';
+  const tabOf = 'vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && "opencodeagentplus-session:/" + x.input.uri.path.split("/")[1] === arg)';
   const close = (uri) => call(`const t = ${tabOf}; if (t) await vscode.window.tabGroups.close(t); return true;`, uri);
-  const inFront = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : "";');
+  const inFront = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1] : "";');
   const boxes = async () => {
     const out = [];
     for (const f of page.frames()) {
@@ -81,7 +81,8 @@ async function run(t) {
   const box1 = await until(() => ending(FIRST), 15000);
   check(!!r1 && r1.outcome === 'drafted' && !!box1 && (await inFront()) === target && box1.start === box1.value.length && box1.end === box1.value.length && box1.focused,
     "prefill opens a conversation whose tab is closed, brings it to the front and puts the text in its message box, which has the focus, with the caret at the end",
-    { r1, box1: box1 && { ...box1, f: undefined }, front: await inFront() });
+    { r1, box1: box1 && { ...box1, f: undefined }, front: await inFront(),
+      where: await page.evaluate(() => { const a = document.activeElement; return { window: document.hasFocus(), active: a ? `${a.tagName}.${String(a.className).slice(0, 80)}` : null }; }).catch(() => null) });
 
   const usersBefore = box1 ? await settled(FIRST) : null;
   if (box1) await setBox(box1.f, 'first words');

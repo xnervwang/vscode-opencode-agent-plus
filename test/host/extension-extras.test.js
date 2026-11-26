@@ -40,7 +40,7 @@ test('through extension.js: the time zone, the info box, the chimes, Fork from t
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
   await control.state.handlers['opencodeAgentPlus.newConversation']();
-  const id = opened[0].slice('opencodeagentplus-session:/'.length);
+  const id = opened[0].slice('opencodeagentplus-session:/'.length).split('/')[0];
   const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
   const panel = control.panel();
   await provider.resolveCustomEditor(provider.openCustomDocument(vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${id}` })), panel);

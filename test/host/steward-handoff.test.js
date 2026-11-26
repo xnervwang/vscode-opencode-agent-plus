@@ -380,7 +380,7 @@ test('through extension.js: the steward file of an open conversation follows Age
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
   await control.state.handlers['opencodeAgentPlus.newConversation']();
-  const id = opened[0].slice('opencodeagentplus-session:/'.length);
+  const id = opened[0].slice('opencodeagentplus-session:/'.length).split('/')[0];
   const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
   await provider.resolveCustomEditor(provider.openCustomDocument(vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${id}` })), control.panel());
   const file = api.test.stewardFile(id);

@@ -195,7 +195,7 @@ async function run(ctx) {
     : await f.evaluate(() => document.querySelector('#log').textContent.includes('Edited sum.js'));
   const shownRequests = await f.evaluate(() => document.querySelectorAll('#log .permission').length);
   check(!!done11c && edited && asked === 0 && shownRequests === 0, 'with Edit automatically the edit went through and no request was shown', { done: !!done11c, edited, asked, shownRequests });
-  await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path === "/" + arg);
+  await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path.split("/")[1] === arg);
     await vscode.window.tabGroups.close(tabs); return true;`, autoId);
   await sleep(800);
   await call('return vscode.commands.executeCommand("opencodeAgentPlus.openConversation", arg);', autoId);
@@ -487,7 +487,8 @@ async function run(ctx) {
   await sleep(500);
   await press('Meta+Escape', 'opencodeAgentPlus.focusInput');
   const started = await until(async () => ((await chatUris()).length === 1 && await focusedBox() ? true : null), 30000);
-  check(!!started, 'with no chat tab open, it starts a conversation and focuses its message box');
+  const where = started ? undefined : await page.evaluate(() => { const a = document.activeElement; return { window: document.hasFocus(), active: a ? `${a.tagName}.${String(a.className).slice(0, 80)}` : null }; }).catch(() => null);
+  check(!!started, 'with no chat tab open, it starts a conversation and focuses its message box', where);
   void ID;
 }
 

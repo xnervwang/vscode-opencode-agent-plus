@@ -19,7 +19,7 @@ const { uriOf } = require('../../src/host/agentplus-source');
 
 const A = '3f2b6c1e-0000-4000-8000-00000000000a';
 
-function setup({ locked = false, onBusy = null, ownWindow = null } = {}) {
+function setup({ locked = false, onBusy = null, ownWindow = null, titleOf = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'na-ce-'));
   const other = createLocks({ dir, pid: 7777, alive: () => true });
   if (locked) other.acquire(A);
@@ -42,6 +42,7 @@ function setup({ locked = false, onBusy = null, ownWindow = null } = {}) {
     focus: (id) => focused.push(id),
     busy: async (id, pid) => { busy.push([id, pid]); return onBusy ? onBusy(other, provider) : false; },
     ...(ownWindow ? { ownWindow } : {}),
+    ...(titleOf ? { titleOf } : {}),
   });
   return { manager, provider, shown, focused, busy, convs };
 }
@@ -131,4 +132,23 @@ test('a page that fails to draw leaves a message in the tab', async () => {
   const panel = control.panel();
   await open(s.provider, uriOf(A), panel);
   assert.match(panel.webview.html, /could not be shown: no media folder/);
+});
+
+test("a tab takes the conversation's known title before it opens, and keeps it when another window has it", async () => {
+  const s = setup({ locked: true, titleOf: (id) => (id === A ? 'Listed title' : '') });
+  const panel = control.panel();
+  panel.title = A;
+  await open(s.provider, uriOf(A), panel);
+  assert.strictEqual(s.shown.length, 0, 'the conversation did not open here');
+  assert.strictEqual(panel.title, 'Listed title', 'the busy page keeps the title VS Code saves for the next window');
+});
+
+test("a tab's resource carries the title after the session id, which still reads back as the id", () => {
+  const { sessionOfUri } = require('../../src/host/agentplus-source');
+  const u = uriOf(A, 'Fix the build / tests\nnow');
+  assert.strictEqual(u.path, `/${A}/Fix the build \u2215 tests now`);
+  assert.strictEqual(sessionOfUri(u), A);
+  assert.strictEqual(uriOf(A, '  ').path, `/${A}/New conversation`, 'without a title it is named as the tab is');
+  assert.strictEqual(sessionOfUri({ scheme: u.scheme, path: `/${A}` }), A, 'a resource saved without a name still reads back');
+  assert.strictEqual(sessionOfUri(uriOf(A)), A);
 });

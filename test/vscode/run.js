@@ -324,7 +324,7 @@ async function main() {
   };
   const ext = (body, arg, ms) => call(`const e = vscode.extensions.getExtension(${JSON.stringify(ID)}); const api = e.isActive ? e.exports : await e.activate(); ${body}`, arg, ms);
   /* The chat tab of conversation `id` as VS Code's tab API has it: its label and whether it is in front. */
-  const tabOf = (id) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === "opencodeagentplus-session:/" + arg);
+  const tabOf = (id) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.path.split("/")[1] === arg);
     return t ? { label: t.label, active: t.isActive } : null;`, id);
   /* The image the tab strip draws as the icon of the tab whose label starts with `label`. */
   const iconOf = (label) => page.evaluate((t) => {
@@ -365,8 +365,8 @@ async function main() {
 
   /* The chat page's links to other conversations: [{ session, source, text, tip }]. */
   const convLinks = (f) => f.evaluate(() => [...document.querySelectorAll('#log a.conv-link')].map((a) => ({ session: a.dataset.session, source: a.dataset.source, text: a.textContent, tip: a.title })));
-  const activeUri = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
-  const closeChat = (id) => call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeagentplus-session:/" + arg);
+  const activeUri = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1] : null;');
+  const closeChat = (id) => call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path.split("/")[1] === arg);
     await vscode.window.tabGroups.close(tabs); return true;`, id).catch(() => false);
   /* Clicks the page's last link to conversation `id`; resolves to the id of the chat tab in front after the click. */
   const followLink = async (f, id) => {
@@ -628,7 +628,7 @@ async function main() {
     const before = Date.now();
     await page.click('.pane-header [aria-label="New Conversation"], .pane-header .codicon-add').catch(async () => { await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");'); });
     const tab = await until(() => call(`const t = vscode.window.tabGroups.activeTabGroup.activeTab;
-      return t && t.input instanceof vscode.TabInputCustom ? { viewType: t.input.viewType, uri: t.input.uri.toString(), label: t.label } : null;`), 30000);
+      return t && t.input instanceof vscode.TabInputCustom ? { viewType: t.input.viewType, uri: "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1], resource: t.input.uri.toString(), label: t.label } : null;`), 30000);
     check(tab && tab.viewType === 'opencodeAgentPlus.chat' && /^opencodeagentplus-session:\/ses_/.test(tab.uri), 'a new conversation opens a opencodeAgentPlus.chat tab of opencodeagentplus-session:/<id>', tab);
     let chat = await frameWith(page, '#input', 30000);
     check(!!chat, 'the chat page loaded in the tab');
@@ -731,7 +731,7 @@ async function main() {
           await sleep(700);
           await page.locator('.monaco-menu .action-label', { hasText: 'Fork Conversation' }).first().click();
           forkId = await until(async () => {
-            const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
+            const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1] : null;');
             return u && u !== `opencodeagentplus-session:/${sessionId}` ? u.replace(/^opencodeagentplus-session:\//, '') : null;
           }, 20000);
         } else await page.keyboard.press('Escape');
@@ -739,7 +739,7 @@ async function main() {
         const forkShows = forkPage && await until(() => forkPage.evaluate(() => /subtracted instead of adding/.test(document.getElementById('log').textContent)), 15000);
         check(!!forkId && !!forkShows, "Fork Conversation in the chat tab's menu opens a copy of the conversation in a new tab", { items: forkItems, forkId, forkShows });
         if (forkId) {
-          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeagentplus-session:/" + arg);
+          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path.split("/")[1] === arg);
             await vscode.window.tabGroups.close(tabs); return true;`, forkId).catch(() => {});
           await sleep(800);
           chat = await frameWith(page, '#input', 20000);
@@ -848,8 +848,9 @@ async function main() {
           for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) { button = b; break; }
           if (button) {
             if (!approved) {
-              const t = await tabOf(sessionId);
-              if (t) waitIcons.push(await iconOf(t.label));
+              /* OpenCode may name the conversation just then, between reading the tab's label and finding it drawn. */
+              const icon = await until(async () => { const t = await tabOf(sessionId); const i = t ? await iconOf(t.label) : 'no such tab'; return i === 'no such tab' ? null : i; }, 3000, 200);
+              waitIcons.push(icon || 'no such tab');
               await shot(`${name}-permission`, { features: ['tool call', 'permission request'],
                 expect: 'The user message, a tool row, and right above the message box the permission box: "Allow <tool>?", then the numbered rows 1 Allow once (highlighted), 2 Allow in this project and 3 Deny.',
                 part: '#workbench\\.parts\\.editor' });
@@ -1285,7 +1286,7 @@ async function main() {
           // 3n. A reply in a tab not in front: an envelope after its title, gone once the tab comes to the front.
           await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
           const secondId = await until(async () => {
-            const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
+            const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1] : null;');
             return u && u !== `opencodeagentplus-session:/${sessionId}` ? u.replace(/^opencodeagentplus-session:\//, '') : null;
           }, 30000);
           const delivered = await ext('return api.test.source.deliverAnswer(arg, "Reply with only the word five.", { deliveryId: "window-test-2" });', sessionId);
@@ -1309,7 +1310,7 @@ async function main() {
           await call('return vscode.commands.executeCommand("opencodeAgentPlus.openConversation", arg);', sessionId);
           const seen = await until(async () => { const t = await tabOf(sessionId); return t && t.active && t.label === NEW_TITLE ? t : null; }, 15000);
           check(!!seen, 'once that tab comes to the front, the envelope is gone', seen || await tabOf(sessionId));
-          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeagentplus-session:/" + arg);
+          await call(`const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path.split("/")[1] === arg);
             await vscode.window.tabGroups.close(tabs); return true;`, secondId).catch(() => {});
           await sleep(1000);
           chat = await frameWith(page, '#input', 30000);
@@ -1484,7 +1485,7 @@ async function main() {
             await sleep(700);
             await page.locator('.monaco-menu .action-label', { hasText: 'Fork Conversation' }).first().click();
             forked = await until(async () => {
-              const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : null;');
+              const u = await call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1] : null;');
               return u && u !== 'opencodeagentplus-session:/' + sessionId ? u.replace(/^opencodeagentplus-session:\//, '') : null;
             }, 30000);
           } else await page.keyboard.press('Escape');
@@ -1503,7 +1504,7 @@ async function main() {
               ? 'The editor shows the fork in a new tab (the same conversation); the Conversations view has three groups: "Recently closed" with the untitled one closed earlier, "Open in this window" with the conversation and its fork, and "Other conversations" with the untitled one again; each group header shows a count.'
               : 'The editor shows the fork in a new tab (the same conversation); the Conversations view has three groups: "Recently closed" with the untitled one closed earlier and the first fork ("Renamed in the fake run (fork)"), "Open in this window" with the conversation and its new fork, and "Other conversations" with those two closed ones again; each group header shows a count.' });
           if (forked) {
-            await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.toString() === "opencodeagentplus-session:/" + arg); await vscode.window.tabGroups.close(tabs); return true;', forked).catch(() => {});
+            await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path.split("/")[1] === arg); await vscode.window.tabGroups.close(tabs); return true;', forked).catch(() => {});
             await sleep(1000);
           }
           chat = await frameWith(page, '#input', 30000);
@@ -1649,10 +1650,29 @@ async function main() {
 
     // 6. A reload brings the tabs back with their history: this conversation's, one behind it and one in a split to the
     //    right (lib/gap-ci.js).
-    const recentBefore = ((await ext('return api.test.recent();')) || []).map((e) => e.id);
     const firstText = real ? '列出工作目录下的文件' : 'subtracted instead of adding';
     const reloadCtx = { page, call, ext, check, until };
+    /* Opening a tab again under its conversation's title (extension.js retitleTab) is on for this check only: it replaces
+       the page that the other steps hold, and takes the front while tabs open. Turned on, it looks at the tab in front,
+       which has had a title since before its resource could carry one. */
+    const DRAFT = 'A draft that goes along when the tab opens again';
+    const firstPage = await gapCi.pageOf(reloadCtx, { id: sessionId, text: firstText });
+    if (firstPage) await firstPage.fill('#input', DRAFT);
+    await ext('return api.test.retitleTabs(true);');
+    const named = await until(() => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.path.split("/")[1] === arg);
+      return t && t.input.uri.path.split("/").slice(2).join("/") === t.label ? { label: t.label, active: t.isActive, column: t.group.viewColumn } : null;`, sessionId), 20000);
+    let boxNow = '';
+    const carried = named ? await until(async () => {
+      const f = await gapCi.pageOf(reloadCtx, { id: sessionId, text: firstText }).catch(() => null);
+      boxNow = f ? await f.inputValue('#input').catch(() => '') : '';
+      return f && boxNow === DRAFT ? f : null;
+    }, 15000) : null;
+    check(!!named && named.active && named.column === 1 && !!carried,
+      "once its conversation has a title, the tab in front opens again in its place under it, its resource carrying the title and the draft in its box going along", { named, carried: !!carried, boxNow });
+    if (carried) await carried.fill('#input', '');
+    await ext('return api.test.retitleTabs(false);');
     const reloadTabs = await gapCi.openTabs(reloadCtx, { id: sessionId, text: firstText });
+    const recentBefore = ((await ext('return api.test.recent();')) || []).map((e) => e.id);
     /* Records the log's entries by kind and each turn's figures, to compare with the page after the reload. */
     const logShape = (f) => f.evaluate(() => {
       const kinds = {};
@@ -1665,9 +1685,18 @@ async function main() {
       return { kinds, figures: [...document.querySelectorAll('#log .figures')].map((x) => x.textContent) };
     });
     const beforeReload = await gapCi.pageOf(reloadCtx, { id: sessionId, text: firstText }).then((f) => (f ? logShape(f) : null)).catch(() => null);
+    /* Each chat tab's name, and whether it is the one its group shows. */
+    const labelsOf = () => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat")
+      .map((t) => ({ id: t.input.uri.path.split("/")[1], label: t.label, active: t.isActive }));`);
+    const labelsBefore = await labelsOf();
     await w.reload();
     await until(() => ext('return !!(api && api.test);'), 60000);
-    const back = await until(() => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map((t) => t.input.uri.toString());`), 30000);
+    /* Read before any tab is shown: VS Code does not load the page of a tab behind another until it is shown. */
+    const labelsAfter = await labelsOf();
+    const behind = (labelsAfter || []).filter((t) => !t.active);
+    check(behind.length > 0 && behind.every((t) => { const b = (labelsBefore || []).find((x) => x.id === t.id); return !!b && t.label === b.label && !t.label.includes(t.id); }),
+      "after a reload a chat tab behind another keeps its conversation's title, not its id, before it is shown", { before: labelsBefore, after: labelsAfter });
+    const back = await until(() => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map((t) => "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1]);`), 30000);
     check(Array.isArray(back) && back.includes(`opencodeagentplus-session:/${sessionId}`), 'after a reload the chat tab is back for the same conversation', back);
     const again = await gapCi.pageOf(reloadCtx, { id: sessionId, text: firstText });
     const history = again && await until(() => again.evaluate((re) => new RegExp(re).test(document.getElementById('log').textContent), firstText), 30000);
@@ -1727,7 +1756,7 @@ async function main() {
     if (mark) {
       await page.locator(markAt).first().click();
       const other = await until(() => call(`const t = vscode.window.tabGroups.activeTabGroup.activeTab;
-        return t && t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat" ? t.input.uri.toString() : null;`)
+        return t && t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat" ? "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1] : null;`)
         .then((u) => (u && u !== `opencodeagentplus-session:/${sessionId}` ? u : null)), 30000);
       check(!!other, 'clicking the mark opens a new conversation in its own tab', other);
     }
@@ -1759,8 +1788,8 @@ async function main() {
       part: '#workbench\\.parts\\.editor' });
 
     // 9. No frame shows a black disc while chat tabs are switched or a new one opens.
-    const chatUris = () => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map((t) => t.input.uri.toString());`);
-    const front = (uri) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === arg);
+    const chatUris = () => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map((t) => "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1]);`);
+    const front = (uri) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && "opencodeagentplus-session:/" + x.input.uri.path.split("/")[1] === arg);
       await vscode.commands.executeCommand("vscode.openWith", t.input.uri, "opencodeAgentPlus.chat", { viewColumn: t.group.viewColumn, preview: false });
       return true;`, uri);
     const editorBox = await page.evaluate(() => { const r = document.querySelector('#workbench\\.parts\\.editor').getBoundingClientRect();
@@ -1914,7 +1943,7 @@ async function main() {
         console.log('  note  the new-conversation key is not pressed on Windows, where the Windows key belongs to the system');
       }
       const reopen = chats10[0];
-      await call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === arg);
+      await call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && "opencodeagentplus-session:/" + x.input.uri.path.split("/")[1] === arg);
         await vscode.window.tabGroups.close(t); return true;`, reopen);
       await until(async () => (!(await chatUris()).includes(reopen) ? true : null), 10000);
       await call('await vscode.commands.executeCommand("workbench.action.reopenClosedEditor"); return true;');
