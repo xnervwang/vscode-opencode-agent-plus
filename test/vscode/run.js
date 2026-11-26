@@ -1067,14 +1067,135 @@ async function main() {
               const b = document.querySelector('[data-agent-plus-plan-bar]');
               if (!b || b.style.display === 'none') return null;
               const r = b.getBoundingClientRect(), f = document.getElementById('composer').getBoundingClientRect();
-              return { text: b.textContent, label: b.getAttribute('aria-label'), gap: Math.round(f.top - r.bottom), width: Math.round(r.width), box: Math.round(f.width) };
+              return { text: b.textContent, label: b.getAttribute('aria-label'), gap: Math.round(f.top - r.bottom), width: Math.round(r.width), box: Math.round(f.width),
+                bubbles: [...b.querySelectorAll('.apb-b')].map((x) => `${x.dataset.state} ${x.textContent}`) };
             });
             const bar = await until(barNow, 45000);
-            check(!!bar && (/list the files/.test(bar.text) || /All rows done/.test(bar.text)) && bar.gap >= 0 && bar.gap <= 12 && Math.abs(bar.width - bar.box) <= 2,
-              'once the plan has a row, the plan bar shows it right above the input box, as wide as it', bar);
+            check(!!bar && (bar.bubbles.join() === 'doing 1' || /All rows done/.test(bar.text)) && bar.gap >= 0 && bar.gap <= 12 && Math.abs(bar.width - bar.box) <= 2,
+              'once the plan has a row, the plan bar counts it right above the input box, as wide as it', bar);
             await shot('04b2-plan-bar', { features: ['plan bar'],
-              expect: 'Right above the message box, as wide as it, a one-line bar: a list icon and "Plan", a short track coloured by the states of the rows still open (all one colour when the one open row is in progress, empty once every row is done), "1 open", and the row "1 list the files" with its state icon (or a green check and "All rows done"), and an arrow at the right end.',
+              expect: 'Right above the message box, as wide as it, a one-line bar: a list icon and "Plan", one small rounded bubble with a blue triangle and "1" on a light blue tint (or a green check and "All rows done"), and an arrow at the right end.',
               part: '#workbench\\.parts\\.editor' });
+            /* Rows in every state the bar counts, two of them waiting for the user's answer: a bubble for each state with
+               rows, those two in "2 to decide" only. Shot in each kind of theme, narrow, and with a bubble's list open;
+               Agent Plus's status bar entry, which then says a conversation needs the user, in a dark, a light and a blue
+               status bar. */
+            if (!real) {
+              gapCi.writePlan(planFile, [{ title: 'list the files', state: 'doing' },
+                { title: 'Wait for the build', state: 'waiting', waitingOn: 'build' },
+                { title: 'Pick a name', state: 'waiting', waitingOn: 'user', question: 'Which name should the export command take?' },
+                { title: 'Which month to default to', state: 'discussing' },
+                { title: 'Colours', state: 'discussing', waitingOn: 'user', question: 'Amber or yellow for the warnings?' },
+                { title: 'Docs', state: 'todo' }, { title: 'Tests', state: 'todo' }, { title: 'Refunds later', state: 'parked' }]);
+              const parts = () => chat.evaluate(() => {
+                const b = document.querySelector('[data-agent-plus-plan-bar]');
+                const q = b && b.querySelector('.apb-q');
+                return b ? { compact: b.getAttribute('data-compact'), plan: !!b.querySelector('.apb-name'), chevron: !!b.querySelector('.apb-chev'),
+                  bubbles: [...b.querySelectorAll('.apb-b')].map((x) => `${x.dataset.state} ${x.textContent}`), ask: q ? q.textContent : '' } : null;
+              });
+              const counted = await until(async () => { const p = await parts(); return p && p.ask === '2 to decide' && p.bubbles.length === 4 ? p : null; }, 20000);
+              check(!!counted && counted.bubbles.join() === 'doing 1,waiting 1,discussing 1,todo 2' && counted.plan && counted.chevron,
+                'the plan bar counts the open rows in a bubble per state, doing, waiting, discussing and todo, and the two waiting for the answer in "2 to decide" only', counted);
+              /* The colours as drawn: each bubble's icon against its state's charts colour, its tint over the bar, "to decide"'s
+                 words against its fill, and waiting against discussing. */
+              const colours = () => chat.evaluate(() => {
+                const parse = (c) => {
+                  const n = (String(c).match(/[\d.]+/g) || []).map(Number);
+                  const rgb = /^color\(/.test(c) ? n.slice(0, 3).map((x) => x * 255) : n.slice(0, 3);
+                  return [...rgb, n.length > 3 ? n[3] : 1];
+                };
+                const probe = (css) => { const e = document.createElement('span'); e.style.color = css; document.body.appendChild(e); const c = getComputedStyle(e).color; e.remove(); return parse(c); };
+                const over = (top, under) => top.slice(0, 3).map((x, i) => x * top[3] + under[i] * (1 - top[3]));
+                const hue = ([r, g, b]) => {
+                  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+                  if (d < 8) return null;
+                  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+                  return Math.round(((h * 60) + 360) % 360);
+                };
+                const lum = (c) => { const v = c.map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+                const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return Math.round(((x + 0.05) / (y + 0.05)) * 10) / 10; };
+                const bar = document.querySelector('[data-agent-plus-plan-bar]');
+                const under = parse(getComputedStyle(bar).backgroundColor);
+                const chart = { doing: 'blue', waiting: 'orange', discussing: 'yellow', todo: 'purple' };
+                const bubbles = {};
+                for (const x of bar.querySelectorAll('.apb-b')) {
+                  const s = x.dataset.state;
+                  const fill = over(parse(getComputedStyle(x).backgroundColor), under);
+                  bubbles[s] = { icon: hue(parse(getComputedStyle(x.querySelector('.apb-icon')).color)), chart: hue(probe(`var(--vscode-charts-${chart[s]})`)),
+                    fill: fill.map(Math.round), apart: Math.round(Math.hypot(...fill.map((v, i) => v - under[i]))) };
+                }
+                const q = bar.querySelector('.apb-q');
+                const qFill = parse(getComputedStyle(q).backgroundColor);
+                const asked = probe('var(--vscode-charts-orange)');
+                const w = bubbles.waiting.fill, d = bubbles.discussing.fill;
+                return { bubbles, ask: { fill: hue(qFill), asked: hue(asked), words: contrast(parse(getComputedStyle(q).color), qFill) },
+                  waitingVsDiscussing: Math.round(Math.hypot(w[0] - d[0], w[1] - d[1], w[2] - d[2])) };
+              });
+              /* Agent Plus's status bar entry while a conversation needs the user: the colour of its words against the bar. */
+              const entry = () => page.evaluate(() => {
+                const parse = (c) => (String(c).match(/[\d.]+/g) || []).map(Number).slice(0, 3);
+                const lum = (c) => { const v = c.map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+                const item = [...document.querySelectorAll('.statusbar-item')].find((e) => /needs? you/.test(e.textContent));
+                if (!item) return null;
+                const label = item.querySelector('.statusbar-item-label') || item;
+                const words = parse(getComputedStyle(label).color), under = parse(getComputedStyle(document.getElementById('workbench.parts.statusbar')).backgroundColor);
+                const [x, y] = [lum(words), lum(under)].sort((p, q) => q - p);
+                return { text: item.textContent.trim(), words, under, background: getComputedStyle(item).backgroundColor, contrast: Math.round(((x + 0.05) / (y + 0.05)) * 10) / 10 };
+              });
+              const apart = (a, b) => a !== null && b !== null && Math.min(Math.abs(a - b), 360 - Math.abs(a - b)) <= 12;
+              const looks = [];
+              for (const [theme, cls, name, words, status] of [['Default Dark Modern', 'vs-dark', '04b3-plan-bar-bubbles-dark', 'the dark theme', true],
+                ['Default Light Modern', 'vs', '04b4-plan-bar-bubbles-light', 'the light theme', true],
+                ['Default High Contrast', 'hc-black', '04b5-plan-bar-bubbles-hc', 'the dark high contrast theme', false],
+                ['Default High Contrast Light', 'hc-light', '04b6-plan-bar-bubbles-hc-light', 'the light high contrast theme', false],
+                ['Default Dark+', 'vs-dark', '', 'Dark+, whose status bar is blue', true]]) {
+                const themed = await setTheme(theme, cls);
+                await sleep(800);
+                const c = await colours();
+                const e = status ? await until(entry, 10000) : null;
+                looks.push({ theme, themed: !!themed, colours: c, entry: e });
+                if (name) {
+                  await shot(name, { features: ['plan bar', 'plan bar bubbles'],
+                    expect: `In ${words}, the one-line bar right above the message box: a list icon, "Plan", then four small rounded bubbles, each a state's icon in its colour with a number on a light tint of that colour: a blue triangle 1, an orange clock 1, a yellow speech bubble 1 and a purple circle 2 (the light high contrast theme gives these its own darker colours); far right a solid pill with a question mark and "2 to decide" in dark words (white on the dark blue of the light high contrast theme), then an arrow. The orange and the yellow bubble are told apart at a glance.`,
+                    part: '#workbench\\.parts\\.editor' });
+                }
+                if (status) {
+                  await shot(`04b7-status-entry-${cls === 'vs' ? 'light' : theme === 'Default Dark+' ? 'dark-plus' : 'dark'}`, { features: ['status bar entry'],
+                    expect: `In ${words}, at the right of the status bar Agent Plus's entry "1 conversation needs you" with a speech-bubble icon, in the status bar's own colours like the entries beside it: no yellow or red block behind it, and readable.`,
+                    part: '#workbench\\.parts\\.statusbar' });
+                }
+              }
+              await setTheme('Default Dark Modern', 'vs-dark');
+              const good = (l) => l.themed && l.colours && Object.values(l.colours.bubbles).every((b) => apart(b.icon, b.chart) && b.apart >= 12)
+                && apart(l.colours.ask.fill, l.colours.ask.asked) && l.colours.ask.words >= 4.5;
+              check(looks.every((l) => !/High Contrast/.test(l.theme) || good(l)) && looks.filter((l) => !/High Contrast/.test(l.theme)).every(good),
+                "each bubble's icon is its state's colour on a tint that stands out from the bar, and \"to decide\" is the question mark's colour with words of 4.5:1 or more, in every theme", looks.map((l) => [l.theme, l.colours]));
+              const light = looks.find((l) => l.theme === 'Default Light Modern');
+              check(!!light && light.colours.waitingVsDiscussing >= 10, 'in the light theme the waiting and the discussing bubble are told apart, by their deeper tints', light && light.colours);
+              check(looks.filter((l) => l.entry).length === 3 && looks.filter((l) => l.entry).every((l) => /rgba\(0, 0, 0, 0\)|transparent/.test(l.entry.background) && l.entry.contrast >= 4.5),
+                "Agent Plus's status bar entry says the conversation needs the user in the status bar's own colours, readable on a dark, a light and a blue status bar", looks.map((l) => [l.theme, l.entry]));
+              /* Narrow, the bar drops Plan and the arrow, and "to decide" keeps its number. */
+              await chat.evaluate(() => { document.querySelector('[data-agent-plus-plan-bar]').style.maxWidth = '340px'; });
+              const narrow = await until(async () => { const p = await parts(); return p && p.compact === '1' ? p : null; }, 10000);
+              check(!!narrow && !narrow.plan && !narrow.chevron && narrow.bubbles.length === 4 && narrow.ask === '2',
+                'narrower than 400 pixels the bar drops Plan and the arrow, keeps its bubbles, and "to decide" keeps only its number', narrow);
+              await shot('04b8-plan-bar-bubbles-narrow', { features: ['plan bar', 'plan bar bubbles'],
+                expect: 'The bar above the message box, here only about 340 pixels wide: a list icon, then the four bubbles (blue 1, orange 1, yellow 1, purple 2) and at the right a solid amber pill with a question mark and "2"; no "Plan" and no arrow.',
+                part: '#workbench\\.parts\\.editor' });
+              await chat.evaluate(() => { document.querySelector('[data-agent-plus-plan-bar]').style.maxWidth = ''; });
+              await until(async () => { const p = await parts(); return p && p.compact === '0' ? p : null; }, 10000);
+              /* Hovering the waiting bubble lists its row, without the one that waits for the answer. */
+              await chat.hover('[data-agent-plus-plan-bar] .apb-b[data-state="waiting"]');
+              const hovered = await until(() => chat.evaluate(() => { const l = document.querySelector('[data-agent-plus-plan-bar-list]'); return l ? l.textContent : null; }), 5000);
+              check(!!hovered && /1 waiting/.test(hovered) && /Wait for the build/.test(hovered) && !/Pick a name/.test(hovered),
+                "hovering a bubble lists that state's rows, without those waiting for the answer", hovered);
+              await shot('04b9-plan-bar-bubble-hover', { features: ['plan bar', 'plan bar hover'],
+                expect: 'Above the plan bar, a small framed list with "1 waiting" and under it one row, an orange clock and "2 Wait for the build"; the pointer rests on the orange bubble.',
+                part: '#workbench\\.parts\\.editor' });
+              await page.mouse.move(5, 5);
+              gapCi.writePlan(planFile, [{ title: 'list the files', state: 'doing' }]);
+              await until(async () => { const p = await parts(); return p && !p.ask && p.bubbles.join() === 'doing 1' ? p : null; }, 20000);
+            }
             await call('await vscode.commands.executeCommand("workbench.view.explorer"); return true;').catch(() => {});
             await until(() => page.evaluate(() => !/Work plan/i.test(document.getElementById('workbench.parts.sidebar').textContent)), 5000);
             await chat.click('[data-agent-plus-plan-bar]');
