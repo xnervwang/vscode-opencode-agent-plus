@@ -59,10 +59,10 @@ test('activate registers, and starts nothing', async () => {
   const cfg = JSON.parse(fs.readFileSync(path.join(home, 'plans', 'config.json'), 'utf8'));
   assert.deepStrictEqual({ enabled: cfg.enabled, brief: cfg.brief }, { enabled: true, brief: true });
   assert.strictEqual(api.test.plan().launch.OPENCODE_AGENT_PLUS_HOOKS_DIR, path.join(home, 'opencode-plugin', 'agent-work-plan', 'hooks'));
-  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere', 'brief', 'prefill']);
+  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere', 'brief', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo']);
   control.setConfig('agentPlus.tokenMode', 'interface');
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(home, 'plans', 'config.json'), 'utf8')).enabled, false);
-  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere', 'prefill']);
+  assert.deepStrictEqual(api.test.source.features, ['shows', 'openHere', 'prefill', 'sessions', 'sessionImport', 'sessionSeen', 'accountInfo']);
   control.setConfig('agentPlus.tokenMode', 'all');
 });
 
@@ -109,7 +109,7 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   }
   control.state.answers.push(['Delete "', 'Delete']);
   assert.strictEqual(await control.state.handlers['opencodeAgentPlus.deleteConversation'](rows[0]), true);
-  assert.deepStrictEqual(fs.readdirSync(plans).sort(), ['config.json', `${other}.json`]);
+  assert.deepStrictEqual(fs.readdirSync(plans).sort(), ['config.json', `${other}.json`, 'windows'], 'and the window entry Agent Plus reads stays');
   assert.deepStrictEqual(fs.readdirSync(scratch), [other]);
   assert.ok(fs.existsSync(path.join(scratch, other, 'sub', 'more.svg')));
   extension.deactivate();

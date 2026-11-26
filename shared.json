@@ -102,6 +102,11 @@
       "sha256": "300e433bd5dec1c531c01fa3f4777024f81870495e7df3fd87c463705806b50b"
     },
     {
+      "path": "src/shared/window-entries.js",
+      "from": "shared/host/window-entries.js",
+      "sha256": "2e12b5781b4b5c233765f4f90ab7d730fdb77761d1778d1d6f6e73ba428f4fcf"
+    },
+    {
       "path": "media/plan-bar.js",
       "from": "shared/page/plan-bar.js",
       "sha256": "b754bf73392094d6df25f9f209cac2acba72351bb7d588169f94206f190d57b0"

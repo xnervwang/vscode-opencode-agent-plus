@@ -82,6 +82,15 @@ const { registerFixActions, COMMAND: FIX_COMMAND } = require('./src/host/fix-act
 const autoEditing = require('./src/host/auto-edit');
 const detaching = require('./src/host/detached');
 const fs = require('fs');
+const childProcess = require('child_process');
+const { createSessionIndex } = require('./src/opencode/session-index');
+const { createElsewhere } = require('./src/opencode/elsewhere');
+const { createSessionSource } = require('./src/host/session-source');
+const windowEntries = require('./src/shared/window-entries');
+const { writeAtomic } = require('./src/shared/files');
+/* How the Account & usage section names a model provider of OpenCode's. */
+const PROVIDER_NAMES = Object.freeze({ 'amazon-bedrock': 'Amazon Bedrock', anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode', google: 'Google',
+  openrouter: 'OpenRouter', 'github-copilot': 'GitHub Copilot', xai: 'xAI', mistral: 'Mistral', deepseek: 'DeepSeek' });
 const COMMANDS = require('./package.json').contributes.commands.map((c) => c.command);
 const VIEW_ID = `${brand.prefix}.sessions`;
 
@@ -690,6 +699,16 @@ function start(context, log, gate, channel) {
     if (!f.length) return true;
     return f.some((root) => cwd === root || String(cwd).startsWith(root.endsWith(path.sep) ? root : root + path.sep));
   };
+  /* Deleting a session also removes its plan files and scratch folder, since Agent Plus only reads the plans folder and
+     nothing else clears them. */
+  const removeConversation = (id) => backend.deleteSession(id).then(() => {
+    recent.remove(id);
+    const gone = workplan.removePlan(id);
+    if (gone.length) log(`deleted the plan files of ${id}: ${gone.join(', ')}`);
+    try {
+      if (workplan.removeScratch(id)) log(`deleted the scratch folder of ${id}`);
+    } catch (e) { log(`could not delete the scratch folder of ${id}: ${e.message}`); }
+  });
   const listed = createSessionsList({
     backend: {
       ...backend,
@@ -698,16 +717,7 @@ function start(context, log, gate, channel) {
         for (const r of rows) if (r.cwd) folders.set(r.id, r.cwd);
         return rows.filter((r) => inScope(r.cwd));
       }),
-      /* Deleting a session also removes its plan files and scratch folder, since Agent Plus only reads the plans folder
-         and nothing else clears them. */
-      deleteSession: (id) => backend.deleteSession(id).then(() => {
-        recent.remove(id);
-        const gone = workplan.removePlan(id);
-        if (gone.length) log(`deleted the plan files of ${id}: ${gone.join(', ')}`);
-        try {
-          if (workplan.removeScratch(id)) log(`deleted the scratch folder of ${id}`);
-        } catch (e) { log(`could not delete the scratch folder of ${id}: ${e.message}`); }
-      }),
+      deleteSession: (id) => removeConversation(id),
     },
     manager,
     holder: (id) => locks.holder(id),
@@ -852,6 +862,40 @@ function start(context, log, gate, channel) {
     return true;
   }
 
+  /* Agent Plus's session list (src/host/session-source.js): OpenCode's own records of this window's folders, and where
+     else they are open. The sessions an `opencode run` created are kept in a file every window reads. */
+  const sessionIndex = createSessionIndex({ found: () => backend.detect(), paths: () => backend.dataPaths(), execFile: childProcess.execFile,
+    env: () => require('./src/opencode/server').subcommandEnv(plan.launch(settings.options()).env), log });
+  const runsFile = path.join(paths.root(), 'opencode-runs.json');
+  const runs = {
+    get: () => { try { const v = JSON.parse(fs.readFileSync(runsFile, 'utf8')); return v && v.runs && typeof v.runs === 'object' ? v.runs : {}; } catch (_) { return {}; } },
+    set: (v) => {
+      const kept = Object.fromEntries(Object.entries(v).sort((a, b) => b[1] - a[1]).slice(0, 2000));
+      try { fs.mkdirSync(paths.root(), { recursive: true }); writeAtomic(runsFile, JSON.stringify({ format: 1, runs: kept })); } catch (e) { log(`saving the sessions opencode run started failed: ${e.message}`); }
+    },
+  };
+  const elsewhere = createElsewhere({ stateDir: async () => ((await backend.dataPaths()) || {}).state || '', active: () => sessionIndex.active(),
+    execFile: childProcess.execFile, memory: runs, ours: (id) => manager.has(id) });
+  const sessionSource = createSessionSource({
+    index: sessionIndex, elsewhere, manager,
+    ours: (id) => manager.has(id),
+    holder: (id) => locks.holder(id),
+    otherWindows: () => windows.readAll(),
+    open: (id) => openSession(id),
+    create: () => newConversationId(),
+    canRename: () => backend.canRename(),
+    rename: (id, title) => listed.rename(id, title),
+    remove: (id) => removeConversation(id),
+    canFork: () => backend.canFork(),
+    fork: async (id) => { const f = await backend.forkSession(id); folders.set(f.id, f.cwd); log(`forked ${id} as ${f.id}`); return openSession(f.id); },
+    markViewed: (id, idle) => sessionIndex.view(id, idle),
+    stats: (from, to, zone) => sessionIndex.stats(from, to, zone),
+    providerName: (id) => PROVIDER_NAMES[id] || id,
+    timeZone: () => timeZone,
+    log,
+  });
+  subs.push(sessionSource, manager.onDidChange(() => sessionSource.changed()), backend.onDidChangeSessions(() => sessionSource.changed()));
+
   /* Agent Plus. Everything above works the same when Agent Plus is not installed or turns down this registration. */
   let logo;
   link = ap.createAgentPlusSource({
@@ -874,6 +918,7 @@ function start(context, log, gate, channel) {
     hidden: (id) => backend.isChild(id),
     allConversations: () => windows.readAll(),
     timeZone: () => timeZone,
+    sessions: sessionSource,
     log,
   });
   subs.push(link, manager.onDidChange(() => link.changed()), plan.onDidChangeNotice(() => link.noticeChanged()));
@@ -889,6 +934,15 @@ function start(context, log, gate, channel) {
   let stateSoon = null;
   const stateChanged = () => { if (!stateSoon) stateSoon = setTimeout(() => { stateSoon = null; windows.write(); }, 250); };
   subs.push(manager.onDidChange(stateChanged), { dispose: () => { clearTimeout(stateSoon); windows.dispose(); } });
+  /* The conversations this window shows, in the window entry Agent Plus reads to tell what another window has open
+     (src/shared/window-entries.js), written when they change and every half minute besides. */
+  const writeEntry = windowEntries.publisher(workplan.planDir(), () => ({ name: vscode.workspace.name || '',
+    folders: (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath), sessions: manager.ids().filter((id) => manager.panelOf(id)) }), { log });
+  const entryTimer = setInterval(() => writeEntry(), 30000);
+  if (entryTimer.unref) entryTimer.unref();
+  subs.push(manager.onDidChange(() => writeEntry()), vscode.window.tabGroups.onDidChangeTabs(() => writeEntry()),
+    { dispose: () => { clearInterval(entryTimer); windowEntries.withdraw(workplan.planDir()); } });
+  writeEntry();
   /* The token mode decides whether the conversations keep a brief, which Agent Plus reads with their list. */
   subs.push(vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration('agentPlus.tokenMode')) link.changed(); }));
   subs.push(vscode.window.tabGroups.onDidChangeTabs(() => link.tabsChanged(activeTab())));

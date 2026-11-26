@@ -79,10 +79,10 @@ function toRecord(row) {
 
 /*
  * deps:
- *   found()          { path, version } of the OpenCode in use; throws when there is none
+ *   found()          { path, version } of the OpenCode in use, or a Promise of it; throws when there is none
  *   paths()          Promise of `opencode debug paths` as { state, db, ... }
  *   execFile         child_process.execFile
- *   env              the environment for subcommands
+ *   env              the environment for subcommands, or a function answering it
  *   request          optional (url, { headers, timeout }) => Promise<{ status, body }>, plain HTTP GET
  *   fs, platform, log
  */
@@ -113,11 +113,11 @@ function createSessionIndex(deps) {
     return r.body ? JSON.parse(r.body) : null;
   }
 
-  function fromPrivate(params, { operation = 'session.list', data } = {}) {
-    const found = deps.found();
+  async function fromPrivate(params, { operation = 'session.list', data } = {}) {
+    const found = await deps.found();
     const args = ['api', operation, ...params.flatMap(([k, v]) => ['--param', `${k}=${v}`]), ...(data === undefined ? [] : ['-d', JSON.stringify(data)]), '--standalone'];
     return new Promise((resolve, reject) => {
-      deps.execFile(found.path, args, { timeout: 60000, maxBuffer: 64 * 1024 * 1024, env: deps.env || process.env, windowsHide: true }, (err, stdout, stderr) => {
+      deps.execFile(found.path, args, { timeout: 60000, maxBuffer: 64 * 1024 * 1024, env: (typeof deps.env === 'function' ? deps.env() : deps.env) || process.env, windowsHide: true }, (err, stdout, stderr) => {
         if (err) { reject(new Error(String(stderr || err.message).trim().slice(0, 300))); return; }
         const text = String(stdout || '').trim();
         try { resolve(text ? JSON.parse(text) : null); } catch (e) { reject(new Error(`${operation} was not JSON: ${e.message}`)); }

@@ -108,6 +108,7 @@ function emitter() {
  *   hidden(sessionId)  optional: true for a session not to list (a subagent's, open in a tab restored from before)
  *   allConversations() optional: every window's conversations on this machine
  *   timeZone()         optional: the reader's IANA time zone, or ''
+ *   sessions           optional: the session list's members (src/host/session-source.js)
  *   log(line)          optional
  */
 function createAgentPlusSource(deps) {
@@ -142,7 +143,9 @@ function createAgentPlusSource(deps) {
 
   const source = {
     protocol: PROTOCOL,
-    get features() { return ['shows', 'openHere', ...(briefOn() ? ['brief'] : []), ...(canPrefill ? ['prefill'] : [])]; },
+    get features() {
+      return ['shows', 'openHere', ...(briefOn() ? ['brief'] : []), ...(canPrefill ? ['prefill'] : []), ...(deps.sessions ? deps.sessions.features : [])];
+    },
     id: ID,
     label: brand.displayName,
     extensionId: EXTENSION_ID,
@@ -228,6 +231,17 @@ function createAgentPlusSource(deps) {
       return p;
     },
   };
+
+  /* Agent Plus's session list: the members of src/host/session-source.js, as they are when asked for. */
+  if (deps.sessions) {
+    const s = deps.sessions;
+    source.onDidChangeSessions = s.onDidChangeSessions;
+    source.onDidChangeAccountInfo = s.onDidChangeAccountInfo;
+    for (const k of ['listSessions', 'runSessionAction', 'describeDeletion', 'wantSessionDetail', 'importSessions', 'noteSeen', 'accountInfo']) {
+      source[k] = (...a) => s[k](...a);
+    }
+    Object.defineProperty(source, 'sessionActions', { get: () => s.sessionActions, enumerable: true });
+  }
 
   return {
     source,
