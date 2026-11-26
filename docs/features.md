@@ -183,7 +183,7 @@ The list includes OpenCode conversations you started in any of this window's wor
 
 Search the list by conversation title or by the Git branch of the conversation's folder. Run `Agent Plus: Find Conversation by Title or ID...` and enter part of a conversation's title or session ID.
 
-Agent Plus hides background conversations by default. These include subagent sessions, sessions started by `opencode run`, and conversations with no messages yet. Turn off `agentPlus.sessions.hideBackground` to see them. Each subagent session appears indented under the conversation that started it.
+By default, Agent Plus hides background conversations: subagent sessions, sessions started by `opencode run`, and conversations with no messages yet. Turn off `agentPlus.sessions.hideBackground` to see them. Each subagent session appears indented under the conversation that started it.
 
 ### Reading a conversation row
 
@@ -197,7 +197,7 @@ A dot or ring on the OpenCode mark shows the conversation's state:
 - A red dot means the conversation's work plan has a question for you. See [Work Plan and Plan Bar](#work-plan-and-plan-bar).
 - A red ring means there's a plan question and a turn is still running.
 
-If a conversation is open in another VS Code window or a tab of OpenCode's terminal interface, or is run by `opencode run`, its row is dimmed and starts with an outlined stripe. The status dot stays at full brightness. Hover over the row to see the VS Code window's name or the terminal, folder, and process ID.
+A dimmed row with an outlined stripe at the start means the conversation is open in another VS Code window or a tab of OpenCode's terminal interface, or `opencode run` is running it. The status dot stays at full brightness. Hover over the row to see the VS Code window's name or the terminal, folder, and process ID.
 
 If more than one process has the conversation open, the row shows "· N processes". You can lose turns if two processes write to the same conversation.
 
@@ -225,7 +225,7 @@ For the OpenCode conversation you have in front, the OpenCode part of Account & 
 
 ### When OpenCode is unavailable
 
-If OpenCode Agent Plus cannot find OpenCode, a note above the list includes a `Show Logs` button. On platforms where OpenCode 2.4.1 is available to download, the note also includes a `Download OpenCode` button.
+If OpenCode Agent Plus cannot find OpenCode, a note above the list includes a `Show Logs` button. If OpenCode 2.4.1 is available to download for your platform, you'll also see a `Download OpenCode` button in the note.
 
 In Restricted Mode, OpenCode Agent Plus does not start, so the list has no OpenCode rows. A note in the list explains that some agents start only in a trusted workspace.
 

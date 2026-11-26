@@ -70,7 +70,7 @@ In the Command Palette, search for `OpenCode Agent Plus:` to find these commands
 | `OpenCode Agent Plus: Show MCP Servers` | Runs `opencode mcp list` and shows OpenCode's MCP (Model Context Protocol) servers in a VS Code output channel. |
 | `OpenCode Agent Plus: Show Logs` | Opens OpenCode Agent Plus's log in the Output panel. |
 | `OpenCode Agent Plus: Toggle Focus View` | Turns [Focus view](features.md#focus-view) on or off. Ctrl+Alt+F in a chat tab does the same. |
-| `OpenCode Agent Plus: Connect a Model Provider` | Runs OpenCode's own sign-in (`opencode auth login`) in a terminal, then refreshes the model list when you close the terminal and tells you whether the sign-in connected a provider, saved new credentials for one already connected, or saved nothing. |
+| `OpenCode Agent Plus: Connect a Model Provider` | Runs OpenCode's own sign-in (`opencode auth login`) in a terminal, then refreshes the chat tabs' model lists when you close the terminal and tells you whether the sign-in connected a provider, saved new credentials for one already connected, or saved nothing. |
 | `OpenCode Agent Plus: Focus the Message Box` | Moves to the input box of the chat tab in front (the one you used last), or opens a new conversation. Cmd+Esc on macOS, the Windows or Super key with Esc on Windows and Linux, as in the Claude Code extension. |
 | `OpenCode Agent Plus: Insert @-Mention Reference` | Inserts an @ reference to the file in the editor, or to its selected lines, into the chat tab in front. Alt+K. |
 
