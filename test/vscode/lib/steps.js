@@ -11,7 +11,10 @@
  * step of its own, named after that option.
  */
 
-/* The steps of the run without those options, in their order, each with the earlier steps it relies on. */
+/* The steps of the run without those options, in their order, each with the earlier steps it relies on. Behind the fake
+   backend only fake-chat's turns record context use and cost, which rewind and fork check on the turns drawn again;
+   compact checks the plan bar, which plan's row brings; a conversation with no message is not listed, so sessions needs
+   opencode's turn. */
 const NEEDS = {
   basics: [],
   'new-conversation': [],
@@ -23,13 +26,13 @@ const NEEDS = {
   plan: ['opencode'],
   input: ['opencode'],
   rename: ['opencode'],
-  rewind: ['opencode'],
+  rewind: ['fake-chat', 'opencode'],
   replies: ['opencode'],
-  fork: ['opencode', 'replies'],
+  fork: ['fake-chat', 'opencode', 'replies'],
   outline: ['opencode'],
-  compact: ['opencode'],
+  compact: ['opencode', 'plan'],
   'agent-plus': [],
-  sessions: [],
+  sessions: ['opencode'],
   reload: ['fake-chat', 'opencode'],
   'title-mark': [],
   split: [],

@@ -27,7 +27,7 @@ test('a step needs only steps that come before it', () => {
 
 test('a pattern picks the steps it matches, those they rely on and the base, in their order', () => {
   assert.strictEqual(chosen(''), null);
-  assert.deepStrictEqual([...chosen('^fork$')], ['new-conversation', 'opencode', 'replies', 'fork']);
+  assert.deepStrictEqual([...chosen('^fork$')], ['new-conversation', 'fake-chat', 'opencode', 'replies', 'fork']);
   assert.deepStrictEqual([...chosen('tab-switch')], ['new-conversation', 'split', 'tab-switch']);
   assert.deepStrictEqual([...chosen('^gap-')], ['new-conversation', 'gap-page', 'gap-host']);
   assert.deepStrictEqual([...chosen('^reload$')], ['new-conversation', 'fake-chat', 'opencode', 'reload']);
