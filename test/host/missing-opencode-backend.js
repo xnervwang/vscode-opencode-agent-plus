@@ -13,7 +13,7 @@ const path = require('path');
 const fake = require('../vscode/fake-backend');
 const server = require('../../src/opencode/server');
 
-const STARTS = new Set(['listSessions', 'createSession', 'openSession', 'session', 'listModels', 'defaultModel', 'mcpList', 'dataPaths']);
+const STARTS = new Set(['listSessions', 'createSession', 'openSession', 'session', 'listModels', 'defaultModel', 'mcpList', 'dataPaths', 'sessionStore']);
 
 function createOpenCode(opts) {
   const inner = fake.createOpenCode(opts);

@@ -44,16 +44,19 @@ const context = {
 };
 const OFFER = 'OpenCode was not found. Download OpenCode 2.4.1 from GitHub (';
 
-test('no OpenCode: the list says how to get one and the offer comes once', async () => {
+let api;
+test('no OpenCode: the list says how to get one, with a button, and the download is offered once', async () => {
   control.state.answers.push([OFFER, undefined]);
-  const api = extension.activate(context);
-  const tree = control.state.trees['opencodeAgentPlus.sessions'];
-  assert.deepStrictEqual(await tree.opts.treeDataProvider.getChildren(), []);
-  assert.match(tree.message, /^Couldn't list conversations: OpenCode was not found\. Install OpenCode 2 with/);
-  assert.ok(tree.message.endsWith(DOWNLOAD_HINT), tree.message);
+  api = extension.activate(context);
+  await api.test.registered;
+  const source = api.test.source;
+  assert.deepStrictEqual((await source.listSessions({ folders: [HOME] })).sessions, []);
+  const notice = source.sessionsNotice();
+  assert.match(notice.text, /^OpenCode was not found\. Install OpenCode 2 with/);
+  assert.deepStrictEqual(notice.actions.map((a) => [a.label, a.command]), [['Download OpenCode', 'opencodeAgentPlus.downloadOpenCode'], ['Show Logs', 'opencodeAgentPlus.showLogs']]);
   await settle();
   assert.strictEqual(await control.state.handlers['opencodeAgentPlus.newConversation'](), false);
-  await tree.opts.treeDataProvider.getChildren();
+  await source.listSessions({ folders: [HOME] });
   await settle();
   const offers = control.state.said.filter((s) => s.message.startsWith(OFFER));
   assert.strictEqual(offers.length, 1);
@@ -65,16 +68,16 @@ test('no OpenCode: the list says how to get one and the offer comes once', async
 });
 
 test('the command downloads OpenCode, and the list and a new conversation work without a reload', async () => {
-  const tree = control.state.trees['opencodeAgentPlus.sessions'];
-  let redrawn = 0;
-  tree.opts.treeDataProvider.onDidChangeTreeData(() => { redrawn++; });
+  const source = api.test.source;
+  let changed = 0;
+  source.onDidChangeSessions(() => { changed++; });
   assert.strictEqual(await control.state.handlers['opencodeAgentPlus.downloadOpenCode'](), true);
   assert.strictEqual(fetched.length, 1);
   assert.strictEqual(fetched[0].userAgent, 'opencode-agent-plus');
   assert.ok(control.state.progress.some((p) => p.cancellable === true && /^Downloading OpenCode 2\.4\.1 from GitHub \(\d+ MB\)$/.test(p.title)), JSON.stringify(control.state.progress));
-  assert.ok(await until(() => redrawn > 0));
-  assert.deepStrictEqual(await tree.opts.treeDataProvider.getChildren(), []);
-  assert.strictEqual(tree.message, undefined, 'no error left in the list');
+  assert.ok(await until(() => changed > 0), 'the list is told to read again');
+  assert.deepStrictEqual((await source.listSessions({ folders: [HOME] })).sessions, []);
+  assert.strictEqual(source.sessionsNotice(), null, 'no note left above the list');
   assert.ok(control.state.said.some((s) => s.message === 'OpenCode 2.4.1 is ready for new conversations.'));
   assert.ok(await until(() => control.state.context['opencodeAgentPlus.canRename'] === true), 'the Rename entries come back');
   assert.strictEqual(await control.state.handlers['opencodeAgentPlus.newConversation'](), true);

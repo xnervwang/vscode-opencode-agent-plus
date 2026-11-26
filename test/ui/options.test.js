@@ -3,13 +3,12 @@
 // All rights reserved.
 
 'use strict';
-/* The chat page's mode and effort pickers, the effort in a reply's figures, and the list's tooltip. */
+/* The chat page's mode and effort pickers, and the effort in a reply's figures. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const { ChatPanel } = require('../../src/ui/chat-panel');
 const vm = require('../../src/ui/view-model');
-const { SessionsView } = require('../../src/ui/sessions-view');
 const { createFakeVscode, createFakePanel, Uri } = require('./fake-vscode');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -121,23 +120,4 @@ test('a turn the agent began itself is announced; a retry shows until its attemp
   s = vm.reduce(s, { type: 'turnEnd', turnId: 'o1', reason: 'endTurn', at: 30 });
   assert.equal(s.status, 'idle');
   assert.ok(!s.items.some((it) => it.kind === 'user'));
-});
-
-test('the tooltip says how long ago and names the time zone of the time it shows', async () => {
-  const NOW = Date.UTC(2026, 10, 24, 8, 8, 35);
-  const vscode = createFakeVscode();
-  const view = new SessionsView({
-    vscode,
-    listSessions: async () => [{ id: 'a', title: 'Greeting', cwd: '/w', lastActiveAt: NOW - 5 * 60000 }, { id: 'b', title: 'Fresh', lastActiveAt: NOW - 1000 }],
-    rename: async () => {}, remove: async () => {},
-    now: () => NOW,
-  });
-  const rows = await view.getChildren();
-  const a = rows.find((r) => r.id === 'a');
-  const b = rows.find((r) => r.id === 'b');
-  const tip = view.getTreeItem(a).tooltip;
-  assert.match(tip, /Idle · last active 5m ago \(.+\)/);
-  const zone = new Date(NOW).toLocaleString(undefined, { timeZoneName: 'short' }).split(' ').pop();
-  assert.ok(tip.includes(zone), `the zone ${zone} is named in: ${tip}`);
-  assert.match(view.getTreeItem(b).tooltip, /last active just now \(/);
 });

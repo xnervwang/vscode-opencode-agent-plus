@@ -32,6 +32,8 @@ const { within } = require('../opencode/session-index');
 
 const SCAN_MS = 10000;
 const DB_POLL_MS = 3000;
+/* How long a reading of Account & usage is given as it is. */
+const ACCOUNT_MS = 5000;
 
 function emitter() {
   const listeners = new Set();
@@ -85,6 +87,7 @@ const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n /
  *   timeZone()       optional: the user's IANA time zone
  *   canDownload()    optional: whether OpenCode can be downloaded for this platform
  *   commands         { download, logs }: the commands the notice's buttons run
+ *   noted(records)   optional: called with OpenCode's records each time they are read for the list
  *   now, setInterval, clearInterval, log
  */
 function createSessionSource(deps) {
@@ -118,6 +121,9 @@ function createSessionSource(deps) {
   let timers = [];
   let dbStamp = '';
   let today = { day: 0, at: 0, stats: null };
+  let account = { id: null, at: 0, record: null };
+  let accountReading = null;
+  let accountKey = '';
 
   const fire = () => changed.fire();
 
@@ -132,7 +138,7 @@ function createSessionSource(deps) {
 
   async function pollDb() {
     const s = typeof deps.index.stamp === 'function' ? await deps.index.stamp() : '';
-    if (s && dbStamp && s !== dbStamp) { fire(); accountChanged.fire(); }
+    if (s && dbStamp && s !== dbStamp) { account.at = 0; fire(); accountChanged.fire(); }
     if (s) dbStamp = s;
   }
 
@@ -150,6 +156,51 @@ function createSessionSource(deps) {
   async function others() {
     if (typeof deps.otherWindows !== 'function') return new Map();
     try { return new Map(((await deps.otherWindows()) || []).filter((c) => c && c.sessionId).map((c) => [c.sessionId, c])); } catch (_) { return new Map(); }
+  }
+
+  /* The record of the conversation in front, and today's statistics, read for accountOf(). */
+  function readAccount(sessionId) {
+    if (accountReading) return;
+    accountReading = (async () => {
+      const all = await deps.index.all().catch(() => []);
+      const record = sessionId ? all.find((x) => x.id === sessionId) || null : null;
+      if (typeof deps.stats === 'function') {
+        const t = now();
+        const zone = deps.timeZone ? deps.timeZone() : '';
+        const day = startOfDay(t, zone);
+        if (today.day !== day || t - today.at > 60000) {
+          try { today = { day, at: t, stats: await deps.stats(day, t, zone) }; } catch (e) { log(`reading OpenCode's statistics failed: ${e.message}`); }
+        }
+      }
+      account = { id: sessionId, at: now(), record };
+    })().catch((e) => log(`reading Account & usage failed: ${e.message}`)).finally(() => {
+      accountReading = null;
+      const k = JSON.stringify(accountOf(account.id));
+      if (k !== accountKey) { accountKey = k; accountChanged.fire(); }
+    });
+  }
+
+  /* This extension's part of Account & usage, from the last reading. */
+  function accountOf(sessionId) {
+    const rows = [];
+    const r = account.id === sessionId ? account.record : null;
+    const here = sessionId && deps.manager.has(sessionId) ? deps.manager.snapshot(sessionId) : null;
+    const model = (here && here.model) || (r && r.model) || '';
+    if (model) {
+      const provider = model.split('/')[0];
+      rows.push({ label: 'Provider', value: (deps.providerName && deps.providerName(provider)) || provider });
+      rows.push({ label: 'Model', value: model.slice(provider.length + 1) || model });
+    }
+    if (today.stats) rows.push({ label: 'Today, all conversations', value: money(Number(today.stats.cost) || 0), tooltip: 'What OpenCode recorded for every conversation since midnight' });
+    const conversation = r ? {
+      title: r.title || 'New conversation',
+      rows: [
+        { label: 'Cost', value: money(r.cost) },
+        { label: 'Tokens', value: `${count(r.tokens.input)} in · ${count(r.tokens.output)} out`, tooltip: `Cache read ${count(r.tokens.cacheRead)}, cache write ${count(r.tokens.cacheWrite)}, reasoning ${count(r.tokens.reasoning)}` },
+      ],
+    } : undefined;
+    if (!rows.length && !conversation) return null;
+    return { rows: rows.slice(0, 12), bars: [], links: [], ...(conversation ? { conversation } : {}) };
   }
 
   function backgroundLines(list) {
@@ -234,6 +285,7 @@ function createSessionSource(deps) {
       throw e;
     }
     setNotice(null);
+    if (typeof deps.noted === 'function') { try { deps.noted(records); } catch (e) { log(`noting OpenCode's records failed: ${e.message}`); } }
     const known = deps.elsewhere.noteRuns(records, reading);
     const far = await others();
     const branches = new Map();
@@ -357,38 +409,16 @@ function createSessionSource(deps) {
       deps.index.invalidate();
     },
 
-    async accountInfo({ sessionId = '' } = {}) {
-      const rows = [];
-      const all = await deps.index.all().catch(() => []);
-      const r = sessionId ? all.find((x) => x.id === sessionId) : null;
-      const here = sessionId && deps.manager.has(sessionId) ? deps.manager.snapshot(sessionId) : null;
-      const model = (here && here.model) || (r && r.model) || '';
-      if (model) {
-        const provider = model.split('/')[0];
-        rows.push({ label: 'Provider', value: (deps.providerName && deps.providerName(provider)) || provider });
-        rows.push({ label: 'Model', value: model.slice(provider.length + 1) || model });
-      }
-      if (typeof deps.stats === 'function') {
-        const t = now();
-        const day = startOfDay(t, deps.timeZone ? deps.timeZone() : '');
-        if (today.day !== day || t - today.at > 60000) {
-          try { today = { day, at: t, stats: await deps.stats(day, t, deps.timeZone ? deps.timeZone() : '') }; } catch (e) { log(`reading OpenCode's statistics failed: ${e.message}`); }
-        }
-        if (today.stats) rows.push({ label: 'Today, all conversations', value: money(Number(today.stats.cost) || 0), tooltip: 'What OpenCode recorded for every conversation since midnight' });
-      }
-      const conversation = r ? {
-        title: r.title || 'New conversation',
-        rows: [
-          { label: 'Cost', value: money(r.cost) },
-          { label: 'Tokens', value: `${count(r.tokens.input)} in · ${count(r.tokens.output)} out`, tooltip: `Cache read ${count(r.tokens.cacheRead)}, cache write ${count(r.tokens.cacheWrite)}, reasoning ${count(r.tokens.reasoning)}` },
-        ],
-      } : undefined;
-      if (!rows.length && !conversation) return null;
-      return { rows: rows.slice(0, 12), bars: [], links: [], ...(conversation ? { conversation } : {}) };
+    /* Agent Plus reads this at once, without waiting: it gives what was last read, and reads again (telling the core
+       through onDidChangeAccountInfo when that changes anything) when the reading is of another conversation or older
+       than ACCOUNT_MS. */
+    accountInfo({ sessionId = '' } = {}) {
+      if (account.id !== sessionId || now() - account.at > ACCOUNT_MS) readAccount(sessionId);
+      return accountOf(sessionId);
     },
 
     /* For the extension: a change it knows of, such as a conversation it opened or closed. */
-    changed() { fire(); accountChanged.fire(); },
+    changed() { account.at = 0; fire(); accountChanged.fire(); },
     dispose() {
       const clear = deps.clearInterval || clearInterval;
       for (const t of timers) clear(t);

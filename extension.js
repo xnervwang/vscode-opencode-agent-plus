@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * Activation registers the commands, the Conversations view, the chat editor and the listeners. The agent (OpenCode,
- * through src/host/backend.js and src/opencode/) starts when the first conversation or the Conversations view needs it,
- * and a conversation's history is read when its tab opens. In Restricted Mode not even that: start() waits until the
+ * Activation registers the commands, the chat editor, the source Agent Plus lists the conversations from, and the
+ * listeners. The agent (OpenCode, through src/host/backend.js and src/opencode/) starts when the first conversation
+ * needs it, and a conversation's history is read when its tab opens. In Restricted Mode not even that: start() waits until the
  * workspace is trusted (src/host/trust-gate.js).
  *
  *   src/host/chat-editor.js       a chat tab is the custom editor opencodeAgentPlus.chat of opencodeagentplus-session:/<session id>
@@ -25,8 +25,6 @@
  *   src/host/rewind.js            rewinding a conversation to before one of the user's messages (OpenCode 2)
  *   src/host/reply-images.js      reads the local image files a reply shows
  *   src/host/conversation-links.js   links to the conversations a reply names
- *   src/host/recent-closed.js     the chat tabs closed in this workspace, for the Recently closed group
- *   src/host/find-conversation.js    finding a conversation by part of its title, id or folder
  *   src/host/trust-gate.js        what the commands, the chat tabs and the view do before the workspace is trusted
  *   src/host/opencode-download.js    downloading OpenCode when none is found
  *   src/host/provider-login.js    OpenCode's sign-in wizard in a terminal, and the restart that follows it
@@ -49,7 +47,6 @@ const { chatColumn } = require('./src/host/chat-group');
 const { createBackend } = require('./src/host/backend');
 const { createModels, visibleModels } = require('./src/host/models');
 const { withModelChoice } = require('./src/host/model-choice');
-const { createSessionsList } = require('./src/host/sessions-list');
 const { createProviderConfig } = require('./src/host/provider-config');
 const { historyFor } = require('./src/host/history');
 const { ChatEditorProvider } = require('./src/host/chat-editor');
@@ -68,8 +65,6 @@ const workplan = require('./src/workplan');
 const rewinding = require('./src/host/rewind');
 const { loadImage } = require('./src/host/reply-images');
 const { createConversationLinks } = require('./src/host/conversation-links');
-const { createRecentClosed } = require('./src/host/recent-closed');
-const { findConversation } = require('./src/host/find-conversation');
 const hookSettings = require('./src/shared/hook-settings');
 const tokenMode = require('./src/shared/token-mode');
 const { createTrustGate } = require('./src/host/trust-gate');
@@ -94,7 +89,6 @@ const { writeAtomic } = require('./src/shared/files');
 const PROVIDER_NAMES = Object.freeze({ 'amazon-bedrock': 'Amazon Bedrock', anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode', google: 'Google',
   openrouter: 'OpenRouter', 'github-copilot': 'GitHub Copilot', xai: 'xAI', mistral: 'Mistral', deepseek: 'DeepSeek' });
 const COMMANDS = require('./package.json').contributes.commands.map((c) => c.command);
-const VIEW_ID = `${brand.prefix}.sessions`;
 
 const CONTEXT_AGENT_PLUS = `${brand.prefix}.agentPlus`;
 /* package.json shows the Rename entries when this is true: the OpenCode found can rename conversations (2.x). */
@@ -125,7 +119,7 @@ function activate(context) {
   const channel = vscode.window.createOutputChannel(brand.displayName, { log: true });
   const log = (line) => channel.info(String(line));
   context.subscriptions.push(channel);
-  const gate = createTrustGate({ vscode, viewType: ap.VIEW_TYPE, viewId: VIEW_ID, commands: COMMANDS, log });
+  const gate = createTrustGate({ vscode, viewType: ap.VIEW_TYPE, commands: COMMANDS, log });
   context.subscriptions.push(gate);
   /* The window tests' handle; its other members come with start(). */
   const api = process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL ? { test: { restricted: () => !gate.started, waitingTabs: () => gate.waiting() } } : undefined;
@@ -714,8 +708,8 @@ function start(context, log, gate, channel) {
   const newConversation = () => newConversationId().then((id) => !!id);
 
   const activeTab = () => { const g = vscode.window.tabGroups.activeTabGroup; return g ? g.activeTab : undefined; };
-  /* The conversation a command was run on: a row of the list, an id, a chat tab's URI, the chat page's own context
-     menu (its argument names the webview), or the chat tab in front. */
+  /* The conversation a command was run on: an id, a chat tab's URI, the chat page's own context menu (its argument
+     names the webview), or the chat tab in front. */
   const conversationOf = (arg) => {
     if (typeof arg === 'string') return arg;
     if (arg instanceof vscode.Uri) return ap.sessionOfUri(arg);
@@ -731,15 +725,6 @@ function start(context, log, gate, channel) {
   const chatTabs = (id) => vscode.window.tabGroups.all.flatMap((g) => g.tabs)
     .filter((t) => ap.isChatTab(t) && ap.sessionOfUri(t.input.uri) === id);
 
-  /* Closing a chat tab puts its conversation at the top of Recently closed, unless a takeover or a delete closed it. */
-  const recent = createRecentClosed({ memo: context.workspaceState, log });
-  subs.push(vscode.window.tabGroups.onDidChangeTabs((e) => {
-    for (const t of (e && e.closed) || []) {
-      if (!ap.isChatTab(t)) continue;
-      const id = ap.sessionOfUri(t.input.uri);
-      if (id && !quietClose.has(id) && !chatTabs(id).length) recent.add(id);
-    }
-  }));
 
   /* A dot on a chat tab's icon shows what its conversation is doing, and an envelope after its title marks a reply
      the user has not read yet. */
@@ -767,65 +752,27 @@ function start(context, log, gate, channel) {
   });
   gate.useEditor(editor);
 
-  /* The Conversations view lists the sessions of this window's folders, and is redrawn when a conversation open here,
-     OpenCode's session list or Recently closed changes. */
-  const inScope = (cwd) => {
-    const f = (vscode.workspace.workspaceFolders || []).filter((x) => x.uri.scheme === 'file').map((x) => x.uri.fsPath);
-    if (!f.length) return true;
-    return f.some((root) => cwd === root || String(cwd).startsWith(root.endsWith(path.sep) ? root : root + path.sep));
-  };
   /* Deleting a session also removes its plan files and scratch folder, since Agent Plus only reads the plans folder and
      nothing else clears them. */
   const removeConversation = (id) => backend.deleteSession(id).then(() => {
-    recent.remove(id);
     const gone = workplan.removePlan(id);
     if (gone.length) log(`deleted the plan files of ${id}: ${gone.join(', ')}`);
     try {
       if (workplan.removeScratch(id)) log(`deleted the scratch folder of ${id}`);
     } catch (e) { log(`could not delete the scratch folder of ${id}: ${e.message}`); }
+    nudge();
   });
-  const listed = createSessionsList({
-    backend: {
-      ...backend,
-      listSessions: () => backend.listSessions().then((rows) => {
-        noteRename();
-        for (const r of rows) {
-          if (r.cwd) folders.set(r.id, r.cwd);
-          if (r.title) titles.set(r.id, r.title);
-        }
-        return rows.filter((r) => inScope(r.cwd));
-      }),
-      deleteSession: (id) => removeConversation(id),
-    },
-    manager,
-    holder: (id) => locks.holder(id),
-    closeTabs: async (id) => { const tabs = chatTabs(id); if (tabs.length) await vscode.window.tabGroups.close(tabs); },
-  });
+  /* The conversations a reply can link to are read again when one open here, or OpenCode's list, changes. */
   const listChanged = new vscode.EventEmitter();
   let soon = null;
   const nudge = () => { if (!soon) soon = setTimeout(() => { soon = null; listChanged.fire(); }, 200); };
   subs.push(listChanged, { dispose: () => clearTimeout(soon) }, manager.onDidChange(nudge), backend.onDidChangeSessions(nudge));
-  subs.push(listChanged.event(() => links.refresh()), recent.onDidChange(nudge));
-  const { SessionsView } = require('./src/ui/sessions-view');
-  const sessionsView = new SessionsView({
-    listSessions: () => listed.list().catch((e) => { if (e && e.name === 'OpenCodeError') throw new Error(e.message); throw e; }).finally(() => backend.listen()),
-    onDidChange: (fn) => listChanged.event(fn),
-    statusOf: (meta) => listed.statusOf(meta),
-    rename: (id, title) => listed.rename(id, marks.withoutMarks(title)),
-    remove: (id) => listed.remove(id),
-    /* A chat tab's menus pass its URI. With no argument, this takes the chat tab in front. */
-    idOf: (arg) => {
-      if (arg instanceof vscode.Uri) return ap.sessionOfUri(arg);
-      if (arg !== undefined) return '';
-      const tab = activeTab();
-      return ap.isChatTab(tab) ? ap.sessionOfUri(tab.input.uri) : '';
-    },
-    titleOf: (id) => { const s = manager.snapshot(id); return s ? s.title : ''; },
-    isOpenHere: (id) => manager.has(id),
-    recent: () => recent.get(),
-    vscode,
-  });
-  subs.push(sessionsView.register(), sessionsView);
+  subs.push(listChanged.event(() => links.refresh()));
+  /* Renames the conversation in OpenCode, and in this window at once when it is open here. */
+  const renameConversation = async (id, title) => {
+    await backend.renameSession(id, title);
+    if (manager.get(id)) manager.update([{ id, title }]);
+  };
 
   subs.push(
     vscode.commands.registerCommand(`${brand.prefix}.newConversation`, () => newConversation()),
@@ -834,6 +781,17 @@ function start(context, log, gate, channel) {
     vscode.commands.registerCommand(`${brand.prefix}.openConversation`, (arg) => {
       const id = typeof arg === 'string' ? arg : arg && arg.id;
       return id ? openSession(id) : false;
+    }),
+    /* From the chat tab's title bar and its tab's menu. */
+    vscode.commands.registerCommand(`${brand.prefix}.renameConversation`, async (arg) => {
+      const id = conversationOf(arg);
+      if (!id) return false;
+      const s = manager.snapshot(id);
+      const title = await vscode.window.showInputBox({ prompt: 'New title for the conversation', value: (s && s.named && s.title) || titleOf(id),
+        validateInput: (v) => (v.trim() ? null : 'Enter a title.') });
+      if (title === undefined || !title.trim()) return false;
+      try { await renameConversation(id, marks.withoutMarks(title.trim())); } catch (e) { fail("Couldn't rename the conversation", e); return false; }
+      return true;
     }),
     vscode.commands.registerCommand(`${brand.prefix}.forkConversation`, async (arg) => {
       const id = conversationOf(arg);
@@ -888,9 +846,6 @@ function start(context, log, gate, channel) {
       if (!ref) return false;
       return toFrontChat((c) => c.compose({ refs: [ref], draft: mentions.fixDraft(ref, list) }));
     }),
-    vscode.commands.registerCommand(`${brand.prefix}.findConversation`, () => findConversation({ vscode,
-      list: () => backend.listSessions().finally(() => backend.listen()), open: (id) => openSession(id), openHere: (id) => manager.has(id) })),
-    vscode.commands.registerCommand(`${brand.prefix}.clearRecentlyClosed`, () => { recent.clear(); return true; }),
     vscode.commands.registerCommand(`${brand.prefix}.diffAllowOnce`, (arg) => answerDiff(arg, 'allowOnce')),
     vscode.commands.registerCommand(`${brand.prefix}.diffAllowInProject`, (arg) => answerDiff(arg, 'allowSession')),
     vscode.commands.registerCommand(`${brand.prefix}.diffDeny`, (arg) => answerDiff(arg, 'deny')),
@@ -962,7 +917,7 @@ function start(context, log, gate, channel) {
     open: (id) => openSession(id),
     create: () => newConversationId(),
     canRename: () => backend.canRename(),
-    rename: (id, title) => listed.rename(id, title),
+    rename: (id, title) => renameConversation(id, title),
     remove: (id) => removeConversation(id),
     canFork: () => backend.canFork(),
     fork: async (id) => { const f = await backend.forkSession(id); folders.set(f.id, f.cwd); log(`forked ${id} as ${f.id}`); return openSession(f.id); },
@@ -972,6 +927,16 @@ function start(context, log, gate, channel) {
     timeZone: () => timeZone,
     canDownload: () => require('./src/opencode/download').available(),
     commands: { download: `${brand.prefix}.downloadOpenCode`, logs: `${brand.prefix}.showLogs` },
+    /* What OpenCode's records say of each conversation: its folder, which opens it without asking OpenCode for it, its
+       title, which names its tab after a reload, and for one open here a newer title or time. */
+    noted: (records) => {
+      noteRename();
+      for (const r of records) {
+        if (r.cwd) folders.set(r.id, r.cwd);
+        if (r.title) titles.set(r.id, r.title);
+      }
+      manager.update(records.map((r) => ({ id: r.id, title: r.title, lastReplyAt: r.lastReplyAt, lastActiveAt: r.lastActiveAt })));
+    },
     log,
   });
   subs.push(sessionSource, manager.onDidChange(() => sessionSource.changed()), backend.onDidChangeSessions(() => sessionSource.changed()));
@@ -1043,11 +1008,11 @@ function start(context, log, gate, channel) {
   running = { manager, backend, registration: null };
   log(`activated ${context.extension ? context.extension.packageJSON.version : ''}`.trim());
   if (process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL) {
-    return { agentPlus, registered, conversations: () => manager.list(), sessions: () => listed.list(), isChild: (id) => backend.isChild(id),
+    return { agentPlus, registered, conversations: () => manager.list(), sessions: () => backend.listSessions().then((rows) => rows.map((r) => { const here = manager.snapshot(r.id); return { ...r, title: (here && here.title) || r.title }; })), isChild: (id) => backend.isChild(id),
       source: link.source, locks: () => locks.held(), settings: () => settings.options(), ready: settings.ready, windowFile: windows.file,
       send: (id, text) => manager.send(id, text), snapshot: (id) => manager.snapshot(id), replyFile: (id) => replies.fileOf(id),
       stewardFile: (id) => stewards.fileOf(id), stewardsWatching: () => stewards.watching(),
-      told: () => told.slice(), sound: () => soundOn, recent: () => recent.get(), links: () => links.list(), infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
+      told: () => told.slice(), sound: () => soundOn, links: () => links.list(), infoRows: (id) => infoRows(id), mcp: () => showMcp(), chats: () => chats.size,
       zoneFile: () => path.join(workplan.planDir(), 'client-time-zone.json'), plan: () => ({ values: plan.values(), python: plan.python, notice: plan.planNotice(), dir: workplan.planDir(), launch: plan.launch(settings.options()).env }),
       backendInfo: () => backend.info(), downloadOffered: () => fetcher.offered,
       /* For tests: the program the sign-in terminal runs in place of the OpenCode found ('' to run that one), and how many
@@ -1055,6 +1020,8 @@ function start(context, log, gate, channel) {
       loginProgram: (p) => { loginProgram = String(p || ''); return true; }, logins: () => ({ ...logins }),
       loadRestored: () => loadRestored(),
       chatPages: () => [...chats].map((c) => c.conversation && c.conversation.id).filter(Boolean),
+      /* Tells the session list's source that what it reads changed, as a DB change or another window would. */
+      sessionsChanged: () => { sessionSource.changed(); return true; },
       retitleTabs: (on) => {
         retitling = on !== false;
         if (retitling) for (const t of vscode.window.tabGroups.all.flatMap((g) => g.tabs)) if (ap.isChatTab(t) && t.isActive) retitleSoon(ap.sessionOfUri(t.input.uri));

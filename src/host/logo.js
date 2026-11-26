@@ -5,7 +5,7 @@
 'use strict';
 /*
  * The logo Agent Plus draws beside this extension's conversations. It is read as an SVG file, where currentColor has
- * no theme to follow, so the activity bar icon (images/sidebar.svg) is copied into the extension's storage twice, once
+ * no theme to follow, so the OpenCode mark (images/sidebar.svg) is copied into the extension's storage twice, once
  * in each default theme's icon colour, and rewritten only when the icon changes.
  *
  * A chat tab's icon (tabIcons) is the same logo with a dot for the conversation's state, in the colours Claude Code

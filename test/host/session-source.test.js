@@ -14,7 +14,7 @@ const { createSessionSource, startOfDay } = require('../../src/host/session-sour
 const rec = (id, extra = {}) => ({ id, title: `Title ${id}`, cwd: '/w/p', parentId: '', createdAt: 100, lastActiveAt: 300, lastReplyAt: 300, viewedAt: 0,
   archivedAt: 0, busy: false, cost: 0.25, tokens: { input: 1200, output: 30, reasoning: 0, cacheRead: 5000, cacheWrite: 0 }, model: 'amazon-bedrock/x.grok', outcome: 'succeeded', ...extra });
 
-function setup({ records = [], here = {}, far = [], places = {}, known = {}, holders = {}, active = [], activeRef = null, canRename = true, canFork = true, listError = null, canDownload = true, git = null } = {}) {
+function setup({ records = [], here = {}, far = [], places = {}, known = {}, holders = {}, active = [], activeRef = null, canRename = true, canFork = true, listError = null, canDownload = true, git = null, noted } = {}) {
   const calls = [];
   const timers = [];
   let readings = 0;
@@ -32,7 +32,7 @@ function setup({ records = [], here = {}, far = [], places = {}, known = {}, hol
   };
   const manager = { has: (id) => id in here, snapshot: (id) => here[id] || null };
   const source = createSessionSource({
-    index, elsewhere, manager, git, platform: 'linux', ours: () => false, holder: (id) => holders[id] || null, otherWindows: async () => far,
+    index, elsewhere, manager, git, noted, platform: 'linux', ours: () => false, holder: (id) => holders[id] || null, otherWindows: async () => far,
     open: async (id, where) => { calls.push(['open', id, where]); return true; },
     create: async (where) => { calls.push(['create', where]); return 'ses_new'; },
     canRename: () => canRename, rename: async (id, t) => calls.push(['rename', id, t]),
@@ -132,6 +132,17 @@ test('rows: processes counts this window, another VS Code window holding it and 
   assert.equal(by.ses_three.processes, 3);
   assert.equal(by.ses_held.processes, undefined, 'held by one other window and open nowhere else');
   assert.equal(by.ses_out.processes, undefined, 'one terminal alone');
+});
+
+test('rows: one open here has the title this window knows, and the records read are handed to the extension', async () => {
+  const records = [rec('ses_open', { title: 'Old title' }), rec('ses_closed')];
+  const here = { ses_open: { activity: 'stopped', title: 'Renamed here' } };
+  const noted = [];
+  const { source } = setup({ records, here, noted: (r) => noted.push(r.map((x) => x.id)) });
+  const by = Object.fromEntries((await source.listSessions({ folders: ['/w/p'] })).sessions.map((s) => [s.sessionId, s]));
+  assert.equal(by.ses_open.title, 'Renamed here');
+  assert.equal(by.ses_closed.title, 'Title ses_closed');
+  assert.deepEqual(noted, [['ses_open', 'ses_closed']]);
 });
 
 test('rows page by the core\'s limit, the later pages from the same reading', async () => {
@@ -236,15 +247,24 @@ test('seen is written to OpenCode for a reply it has not recorded as seen; unrea
   assert.equal(calls.filter((c) => c[0] === 'view').length, 1);
 });
 
-test('Account & usage: the provider and model of the conversation in front, today\'s cost of every conversation, and this one\'s cost and tokens', async () => {
+test('Account & usage, given at once from the last reading: the provider and model of the conversation in front, today\'s cost of every conversation, and this one\'s cost and tokens', async () => {
   const { source, calls } = setup({ records: [rec('ses_a')] });
-  const info = await source.accountInfo({ sessionId: 'ses_a' });
+  let told = 0;
+  source.onDidChangeAccountInfo(() => { told++; });
+  const first = source.accountInfo({ sessionId: 'ses_a' });
+  assert.ok(!first || typeof first.then !== 'function', 'not a promise: Agent Plus does not wait for it');
+  assert.equal(first, null, 'nothing read yet');
+  for (let i = 0; i < 50 && !told; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(told, 1, 'the core is told once the reading is in');
+  const info = source.accountInfo({ sessionId: 'ses_a' });
   assert.deepEqual(info.rows.map((r) => [r.label, r.value]), [['Provider', 'Amazon Bedrock'], ['Model', 'x.grok'], ['Today, all conversations', '$3.50']]);
   assert.deepEqual(info.conversation.rows.map((r) => [r.label, r.value]), [['Cost', '$0.25'], ['Tokens', '1.2K in · 30 out']]);
   assert.deepEqual(calls.filter((c) => c[0] === 'stats'), [['stats', 'America/Los_Angeles']]);
-  await source.accountInfo({ sessionId: 'ses_a' });
+  source.accountInfo({ sessionId: 'ses_a' });
+  await new Promise((r) => setTimeout(r, 20));
   assert.equal(calls.filter((c) => c[0] === 'stats').length, 1, 'read again only after a minute');
-  const none = await source.accountInfo({ sessionId: '' });
+  assert.equal(told, 1, 'and nothing new to tell');
+  const none = source.accountInfo({ sessionId: '' });
   assert.deepEqual(none.rows.map((r) => r.label), ['Today, all conversations']);
 });
 

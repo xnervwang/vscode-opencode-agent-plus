@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * Through extension.js with the window tests' fake backend: a closed chat tab goes to Recently closed, a group in the
- * Conversations view that the button on its row empties; a deleted conversation leaves that group; Find Conversation
- * opens the one picked; a chat page gets the conversations it may link to, and a click on one opens it.
+ * Through extension.js with the window tests' fake backend: a chat page gets the conversations it may link to, and a
+ * click on one opens it; a closed chat tab leaves no list of this extension's own behind, and Agent Plus's list
+ * deletes a closed conversation.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -37,7 +37,7 @@ const context = {
 };
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 
-test('through extension.js: Recently closed, Find Conversation, and links from a chat page to other conversations', async () => {
+test('through extension.js: links from a chat page to other conversations, and a closed one deleted from the list', async () => {
   const api = extension.activate(context);
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
@@ -70,58 +70,33 @@ test('through extension.js: Recently closed, Find Conversation, and links from a
   await settle();
   assert.strictEqual(panel.revealed, shown + 1);
 
-  /* Closing the chat tab puts it at the top of Recently closed, which the Conversations view shows first. */
+  /* Closing the chat tab leaves nothing of its own behind: Agent Plus keeps Recently closed for every agent. */
   const tabA = control.chatTab(a);
   control.setTabs([tabA, control.chatTab(b)]);
   const [t0] = control.groups[0].tabs;
   panel.dispose();
   control.closeTabs([t0]);
-  assert.deepStrictEqual(api.test.recent().map((e) => e.id), [a]);
-  assert.deepStrictEqual(store.get('opencodeAgentPlus.recentlyClosed').map((e) => e.id), [a]);
-  const tree = control.state.trees['opencodeAgentPlus.sessions'].opts.treeDataProvider;
-  await settle();
-  const top = await tree.getChildren();
-  assert.deepStrictEqual(top.map((g) => g.label), ['Recently closed', 'Other conversations']);
-  assert.deepStrictEqual(top[0].rows.map((r) => r.id), [a]);
-  assert.strictEqual(tree.getTreeItem(top[0]).contextValue, 'opencodeAgentPlus.group.recent');
+  assert.strictEqual(store.has('opencodeAgentPlus.recentlyClosed'), false);
+  assert.strictEqual(api.test.recent, undefined);
 
-  /* Its row's button clears it. */
-  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.clearRecentlyClosed'](), true);
-  assert.deepStrictEqual(api.test.recent(), []);
-
-  /* A deleted conversation leaves Recently closed. */
-  control.closeTabs([control.groups[0].tabs[0]]);
-  assert.deepStrictEqual(api.test.recent().map((e) => e.id), [b]);
-  control.state.answers.push(['Delete "', 'Delete']);
-  const rowB = (await tree.getChildren()).flatMap((g) => g.rows || [g]).find((r) => r.id === b);
-  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.deleteConversation'](rowB), true);
-  assert.deepStrictEqual(api.test.recent(), []);
-
-  /* Find Conversation opens the one picked by part of its id. */
-  const run = control.state.handlers['opencodeAgentPlus.findConversation']();
-  await settle();
-  const qp = control.state.quickPick;
-  assert.deepStrictEqual(qp.items.map((i) => i.id), [a]);
-  assert.match(qp.items[0].detail, new RegExp(`^${a}`));
-  const n = opened.length;
-  qp.answer((items) => items.find((i) => i.detail.includes(a.slice(4, 12))));
-  assert.strictEqual(await run, a);
-  assert.deepStrictEqual(opened.slice(n).map(idOf), [a]);
+  /* Agent Plus's list deletes the closed one. */
+  assert.deepStrictEqual((await api.test.source.runSessionAction('delete', [b], {})).results, [{ sessionId: b, outcome: 'done' }]);
+  assert.ok(!(await api.test.sessions()).some((r) => r.id === b), 'OpenCode no longer has it');
   extension.deactivate();
 });
 
-test('package.json declares the two commands, the list\'s search button, the clear button on its group and the links setting', () => {
+test('package.json: no list of its own (no view, no view menus, no commands only it used), and the links setting', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   const c = pkg.contributes;
-  const cmd = (id) => c.commands.find((x) => x.command === id);
-  assert.strictEqual(cmd('opencodeAgentPlus.findConversation').title, 'Find Conversation…');
-  assert.strictEqual(cmd('opencodeAgentPlus.clearRecentlyClosed').icon, '$(clear-all)');
-  assert.ok(c.menus['view/title'].some((m) => m.command === 'opencodeAgentPlus.findConversation' && m.when === 'view == opencodeAgentPlus.sessions && isWorkspaceTrusted'));
-  const clear = c.menus['view/item/context'].find((m) => m.command === 'opencodeAgentPlus.clearRecentlyClosed');
-  assert.deepStrictEqual([clear.when, clear.group], ['view == opencodeAgentPlus.sessions && viewItem == opencodeAgentPlus.group.recent', 'inline']);
-  /* Rename, Fork and Delete apply only to conversation rows; the group's row is not one. */
-  for (const m of c.menus['view/item/context'].filter((x) => /rename|fork|delete/i.test(x.command))) {
-    assert.ok(/viewItem =~ \/\^opencodeAgentPlus\\\.session\/|viewItem == opencodeAgentPlus\.session\b/.test(m.when), m.when);
+  assert.strictEqual(c.viewsContainers, undefined);
+  assert.strictEqual(c.views, undefined);
+  assert.strictEqual(c.viewsWelcome, undefined);
+  assert.strictEqual(c.menus['view/title'], undefined);
+  assert.strictEqual(c.menus['view/item/context'], undefined);
+  for (const id of ['opencodeAgentPlus.findConversation', 'opencodeAgentPlus.clearRecentlyClosed', 'opencodeAgentPlus.deleteConversation']) {
+    assert.ok(!c.commands.some((x) => x.command === id), id);
+    assert.ok(!JSON.stringify(c.menus).includes(id), `${id} in no menu`);
   }
+  assert.ok(!pkg.activationEvents.some((e) => e.startsWith('onView:')));
   assert.strictEqual(c.configuration.properties['opencodeAgentPlus.conversationLinks'].default, true);
 });

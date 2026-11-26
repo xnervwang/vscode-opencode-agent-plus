@@ -382,7 +382,8 @@ test('through extension.js: the steward file of an open conversation follows Age
   await control.state.handlers['opencodeAgentPlus.newConversation']();
   const id = opened[0].slice('opencodeagentplus-session:/'.length).split('/')[0];
   const provider = control.state.editors['opencodeAgentPlus.chat'].provider;
-  await provider.resolveCustomEditor(provider.openCustomDocument(vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${id}` })), control.panel());
+  const panel = control.panel();
+  await provider.resolveCustomEditor(provider.openCustomDocument(vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${id}` })), panel);
   const file = api.test.stewardFile(id);
   assert.strictEqual(file, path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'plans', `${id}.steward.json`));
   assert.ok(await until(() => fs.existsSync(file)), 'written when the conversation opened');
@@ -400,10 +401,9 @@ test('through extension.js: the steward file of an open conversation follows Age
 
   const plans = path.dirname(file);
   fs.writeFileSync(path.join(plans, `${id}.handoff-abcdef12.result.json`), '{}');
-  const tree = control.state.trees['opencodeAgentPlus.sessions'].opts.treeDataProvider;
-  const rows = await tree.getChildren();
-  control.state.answers.push(['Delete "', 'Delete']);
-  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.deleteConversation'](rows[0]), true);
+  panel.dispose();
+  assert.ok(await until(() => !api.test.snapshot(id)), 'closed');
+  assert.deepStrictEqual((await api.test.source.runSessionAction('delete', [id], {})).results, [{ sessionId: id, outcome: 'done' }], 'deleted from Agent Plus\'s list');
   assert.ok(!fs.existsSync(file));
   assert.ok(!fs.existsSync(path.join(plans, `${id}.handoff-abcdef12.result.json`)));
   extension.deactivate();

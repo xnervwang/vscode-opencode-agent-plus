@@ -85,7 +85,7 @@ test('the title bar buttons are in package.json for those diffs only, and Fork s
   const titles = Object.fromEntries(pkg.contributes.commands.map((c) => [c.command, c.title]));
   assert.deepEqual(buttons.map((b) => titles[b.command]), ['Allow Once', 'Allow in This Project', 'Deny']);
   const fork = Object.entries(pkg.contributes.menus).flatMap(([where, list]) => list.filter((m) => m.command === 'opencodeAgentPlus.forkConversation').map((m) => [where, m.when]));
-  assert.deepEqual(fork.map((f) => f[0]).sort(), ['commandPalette', 'editor/title', 'editor/title/context', 'view/item/context', 'webview/context']);
+  assert.deepEqual(fork.map((f) => f[0]).sort(), ['commandPalette', 'editor/title', 'editor/title/context', 'webview/context'], 'and in Agent Plus\'s list, as the source\'s own action');
   for (const [, when] of fork) assert.match(when, /opencodeAgentPlus\.canFork/);
   assert.ok(pkg.contributes.commands.some((c) => c.command === 'opencodeAgentPlus.showMcpServers' && c.title === 'Show MCP Servers'));
 });

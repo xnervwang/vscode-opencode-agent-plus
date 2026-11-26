@@ -7,14 +7,16 @@
  * The Restricted Mode run of test/vscode/run.js (--restricted). The window has Workspace Trust turned on and its folder
  * not trusted; the folder's .vscode/settings.json points opencodeAgentPlus.opencode.path at a program of its own, which
  * writes a file if it is ever run, and sets the other three settings that pick what runs. Until trust is granted no
- * OpenCode process may start, that program may not run, nothing may be written to the extension's folder, and the
- * Conversations view, a chat tab and a command say to trust the workspace. The buttons in the view and in the tab each
- * open the Workspace Trust editor, where the folder is then trusted; without a reload the extension starts, the chat tab is
- * handed over, and a new conversation runs on the OpenCode of the user settings, not the folder's.
+ * OpenCode process may start, that program may not run, nothing may be written to the extension's folder, Agent Plus's
+ * session list says it is in Restricted Mode and lists nothing of OpenCode's, and a chat tab and a command say to trust
+ * the workspace. The buttons on the list's note and in the tab each open the Workspace Trust editor, where the folder is
+ * then trusted; without a reload the extension starts, the list offers OpenCode, the chat tab is handed over, and a new
+ * conversation started from the list runs on the OpenCode of the user settings, not the folder's.
  */
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const sessionList = require('./session-list');
 
 const TEXT = 'OpenCode Agent Plus does nothing in Restricted Mode. It starts when you trust this workspace.';
 const KEYS = ['opencode.path', 'opencode.askPermissions', 'bedrock.profile', 'bedrock.region', 'opencode.environment'];
@@ -99,29 +101,14 @@ async function run(t) {
   const procs = () => openCodeProcesses(t.control, prepared.program, t.windowPid);
   if (process.platform !== 'linux') console.log(`  note  ${process.platform} does not show another process's environment: the checks look for OpenCode processes only among the window's descendants`);
   const ran = () => fs.existsSync(prepared.marker);
-  const textOf = (sel) => page.evaluate((s) => { const e = document.querySelector(s); return e ? e.textContent : ''; }, sel);
-  const sidebar = '#workbench\\.parts\\.sidebar';
 
   // R1. The window is in Restricted Mode, and the extension is active there.
   const trusted = await call('return vscode.workspace.isTrusted;');
   const restricted = await ext('return api.test.restricted();');
   check(trusted === false && restricted === true, 'the folder opens in Restricted Mode, and OpenCode Agent Plus is active but has not started', { trusted, restricted });
 
-  // R2. The Conversations view says to trust the workspace and shows the button, and nothing else.
-  const icon = await page.waitForSelector('.activitybar .action-item [aria-label^="OpenCode Agent Plus"]', { timeout: 30000 }).catch(() => null);
-  if (icon) await icon.click();
-  const view = await until(async () => {
-    const text = await textOf(sidebar);
-    const button = await page.evaluate(() => [...document.querySelectorAll('#workbench\\.parts\\.sidebar .welcome-view-content .monaco-button')].map((b) => b.textContent.trim()));
-    return text.includes('does nothing in Restricted Mode') ? { button, empty: /No conversations yet/.test(text) } : null;
-  }, 30000);
-  const addButton = await page.$(`${sidebar} .action-label[aria-label^="New Conversation"]`);
-  check(!!view && view.button.includes('Manage Workspace Trust') && !view.empty && !addButton,
-    'the Conversations view says OpenCode Agent Plus does nothing in Restricted Mode, with a Manage Workspace Trust button, and has no New Conversation button', { view, addButton: !!addButton });
-  await page.mouse.move(900, 500);
-  await shot('r01-view-restricted', { features: ['Restricted Mode view'],
-    expect: `The side bar shows the OpenCode Agent Plus Conversations view. In it, instead of a list, the text "${TEXT}" and under it a full-width "Manage Workspace Trust" button. The view title has no New Conversation (+) or Find button. VS Code itself marks the window as being in Restricted Mode (a "Restricted Mode" item at the left of the status bar).`,
-    part: sidebar });
+  // R2. Agent Plus's session list says it is in Restricted Mode, with the trust button, and lists nothing of OpenCode's.
+  const sl = await sessionList.restricted({ page, call, ext, check, shot, until, sleep });
 
   // R3. A chat tab, as VS Code would restore one, shows the same text and button.
   await call('await vscode.commands.executeCommand("vscode.openWith", vscode.Uri.parse("opencodeagentplus-session:/" + arg), "opencodeAgentPlus.chat", { preview: false }); return true;', PROBE);
@@ -170,10 +157,12 @@ async function run(t) {
   const trustEditor = () => page.evaluate(() => ({ editor: !!document.querySelector('.workspace-trust-editor'),
     dialog: [...document.querySelectorAll('.monaco-dialog-box')].map((d) => d.textContent.trim().slice(0, 120)) }));
   const closeTrustEditor = () => call('await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => /Workspace Trust/.test(x.label))); return true;');
-  const viewButton = page.locator(`${sidebar} .welcome-view-content .monaco-button`, { hasText: 'Manage Workspace Trust' }).first();
-  await viewButton.click({ timeout: 10000 }).catch(() => {});
+  if (sl) {
+    await sl.show();
+    await sl.sl.locator('.sl-note-btn', { hasText: 'Manage Workspace Trust' }).first().click({ timeout: 10000 }).catch(() => {});
+  }
   const fromView = await until(async () => { const x = await trustEditor(); return x.editor || x.dialog.length ? x : null; }, 20000);
-  check(!!fromView && fromView.editor && !fromView.dialog.length, "the view's Manage Workspace Trust button opens the Workspace Trust editor", fromView);
+  check(!!fromView && fromView.editor && !fromView.dialog.length, "the session list's Manage Workspace Trust button opens the Workspace Trust editor", fromView);
   if (fromView && fromView.dialog.length) await page.keyboard.press('Escape');
   await closeTrustEditor();
   await until(async () => !(await trustEditor()).editor, 10000);
@@ -194,8 +183,8 @@ async function run(t) {
   const nowTrusted = await until(() => call('return vscode.workspace.isTrusted;'), 20000);
   check(clicked === true && nowTrusted === true, 'Trust in the Workspace Trust editor trusts the folder', { clicked, nowTrusted });
 
-  // R8. Without a reload the extension starts: the Conversations view shows its list, and the chat tab is handed to the chat
-  // editor.
+  // R8. Without a reload the extension starts: the session list drops its note and offers OpenCode, and the chat tab is
+  // handed to the chat editor.
   const started = await until(() => ext('return !api.test.restricted() && typeof api.test.settings === "function";'), 30000);
   const host = await call('return process.pid;');
   check(!!started, 'OpenCode Agent Plus starts once trusted, in the same extension host (no reload)', { started, host });
@@ -210,12 +199,12 @@ async function run(t) {
   console.log(`  note  settings as VS Code gives them to the extension once trusted: ${JSON.stringify(seenTrusted)}`);
   check(Array.isArray(seenTrusted) && seenTrusted.every((x) => same(x.get, want[x.key]) && x.workspaceValue === undefined && x.workspaceFolderValue === undefined),
     "once trusted, those settings still read as the user's values: VS Code gives no workspace value for them", seenTrusted);
-  await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
-  const listed = await until(async () => {
-    const text = await textOf(sidebar);
-    return !text.includes('does nothing in Restricted Mode') && /No conversations yet|Open in this window|Other conversations|Untitled/.test(text) ? text.slice(0, 200) : null;
-  }, 60000);
-  check(!!listed, 'the Conversations view drops the Restricted Mode text and shows the list', listed || await textOf(sidebar));
+  const h = sessionList.create({ page, call, until, sleep });
+  await h.show();
+  const noteGone = h.sl && await until(async () => !(await h.notice()).some((n) => /Restricted Mode/.test(n.text)), 30000);
+  /* With OpenCode Agent Plus the only agent, the New bar's logo names it. */
+  const agents = h.sl && await until(() => h.sl.evaluate(() => { const b = document.querySelector('.sl-new-agent'); return b && /OpenCode/.test(b.title) && b.title; }), 30000);
+  check(!!noteGone && !!agents, "the session list drops its Restricted Mode note, and its New bar starts OpenCode conversations now", { noteGone, agents });
   const handed = await until(async () => {
     const still = await frameWith(page, '#restricted', 1000);
     const waiting = await ext('return api.test.waitingTabs();');
@@ -231,11 +220,10 @@ async function run(t) {
     part: '#workbench\\.parts\\.editor' });
   await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.path.split("/")[1] === arg); await vscode.window.tabGroups.close(tabs); return true;', PROBE);
 
-  // R9. A new conversation runs on the user's OpenCode.
-  await page.hover(`${sidebar} .pane-header`).catch(() => {});
-  const add = await page.waitForSelector(`${sidebar} .action-label[aria-label^="New Conversation"]`, { timeout: 15000 }).catch(() => null);
-  check(!!add, 'once trusted, the view title has the New Conversation button');
-  if (add) await add.click(); else await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
+  // R9. A new conversation, started from the session list's New bar, runs on the user's OpenCode.
+  await h.show();
+  const add = h.sl && h.sl.locator('.sl-new-half[data-where="tab"]').first();
+  if (add) await add.click().catch(() => {}); else await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
   const chat = await frameWith(page, '#input', 60000);
   check(!!chat, 'a new conversation opens with the chat page');
   if (chat && real) {

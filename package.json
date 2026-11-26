@@ -26,8 +26,7 @@
   },
   "activationEvents": [
     "onStartupFinished",
-    "onCustomEditor:opencodeAgentPlus.chat",
-    "onView:opencodeAgentPlus.sessions"
+    "onCustomEditor:opencodeAgentPlus.chat"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -43,23 +42,6 @@
     }
   },
   "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "opencodeAgentPlus",
-          "title": "OpenCode Agent Plus",
-          "icon": "images/sidebar.svg"
-        }
-      ]
-    },
-    "views": {
-      "opencodeAgentPlus": [
-        {
-          "id": "opencodeAgentPlus.sessions",
-          "name": "Conversations"
-        }
-      ]
-    },
     "commands": [
       {
         "command": "opencodeAgentPlus.newConversation",
@@ -91,12 +73,6 @@
         "title": "Fork Conversation",
         "category": "OpenCode Agent Plus",
         "icon": "$(repo-forked)"
-      },
-      {
-        "command": "opencodeAgentPlus.deleteConversation",
-        "title": "Delete Conversation",
-        "category": "OpenCode Agent Plus",
-        "icon": "$(trash)"
       },
       {
         "command": "opencodeAgentPlus.chooseModel",
@@ -132,18 +108,6 @@
         "command": "opencodeAgentPlus.findPython",
         "title": "Look for Python Again for Work Plans",
         "category": "OpenCode Agent Plus"
-      },
-      {
-        "command": "opencodeAgentPlus.findConversation",
-        "title": "Find Conversation…",
-        "category": "OpenCode Agent Plus",
-        "icon": "$(search)"
-      },
-      {
-        "command": "opencodeAgentPlus.clearRecentlyClosed",
-        "title": "Clear Recently Closed",
-        "category": "OpenCode Agent Plus",
-        "icon": "$(clear-all)"
       },
       {
         "command": "opencodeAgentPlus.showMcpServers",
@@ -209,40 +173,6 @@
       }
     ],
     "menus": {
-      "view/title": [
-        {
-          "command": "opencodeAgentPlus.newConversation",
-          "when": "view == opencodeAgentPlus.sessions && isWorkspaceTrusted",
-          "group": "navigation"
-        },
-        {
-          "command": "opencodeAgentPlus.findConversation",
-          "when": "view == opencodeAgentPlus.sessions && isWorkspaceTrusted",
-          "group": "navigation@2"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "opencodeAgentPlus.renameConversation",
-          "when": "view == opencodeAgentPlus.sessions && viewItem =~ /^opencodeAgentPlus\\.session/ && opencodeAgentPlus.canRename",
-          "group": "1_edit@1"
-        },
-        {
-          "command": "opencodeAgentPlus.forkConversation",
-          "when": "view == opencodeAgentPlus.sessions && viewItem =~ /^opencodeAgentPlus\\.session/ && opencodeAgentPlus.canFork",
-          "group": "1_edit@2"
-        },
-        {
-          "command": "opencodeAgentPlus.deleteConversation",
-          "when": "view == opencodeAgentPlus.sessions && viewItem == opencodeAgentPlus.session",
-          "group": "9_delete@1"
-        },
-        {
-          "command": "opencodeAgentPlus.clearRecentlyClosed",
-          "when": "view == opencodeAgentPlus.sessions && viewItem == opencodeAgentPlus.group.recent",
-          "group": "inline"
-        }
-      ],
       "editor/title/context": [
         {
           "command": "opencodeAgentPlus.renameConversation",
@@ -301,10 +231,6 @@
           "when": "false"
         },
         {
-          "command": "opencodeAgentPlus.deleteConversation",
-          "when": "false"
-        },
-        {
           "command": "opencodeAgentPlus.forkConversation",
           "when": "activeCustomEditorId == opencodeAgentPlus.chat && opencodeAgentPlus.canFork && isWorkspaceTrusted"
         },
@@ -350,14 +276,6 @@
         },
         {
           "command": "opencodeAgentPlus.findPython",
-          "when": "isWorkspaceTrusted"
-        },
-        {
-          "command": "opencodeAgentPlus.findConversation",
-          "when": "isWorkspaceTrusted"
-        },
-        {
-          "command": "opencodeAgentPlus.clearRecentlyClosed",
           "when": "isWorkspaceTrusted"
         },
         {
@@ -558,18 +476,6 @@
           }
         ],
         "priority": "option"
-      }
-    ],
-    "viewsWelcome": [
-      {
-        "view": "opencodeAgentPlus.sessions",
-        "contents": "No conversations yet.\n[New Conversation](command:opencodeAgentPlus.newConversation)",
-        "when": "isWorkspaceTrusted"
-      },
-      {
-        "view": "opencodeAgentPlus.sessions",
-        "contents": "OpenCode Agent Plus does nothing in Restricted Mode. It starts when you trust this workspace.\n[Manage Workspace Trust](command:workbench.trust.manage)",
-        "when": "!isWorkspaceTrusted"
       }
     ],
     "keybindings": [

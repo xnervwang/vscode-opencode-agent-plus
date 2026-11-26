@@ -29,15 +29,25 @@ const context = {
   extension: { packageJSON: { version: '0.0.1' } },
 };
 
+let api;
+const until = async (fn, ms = 10000) => {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = await fn();
+    if (v || Date.now() > end) return v;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+};
+
 test('activate registers, and starts nothing', async () => {
-  const api = extension.activate(context);
-  for (const id of ['opencodeAgentPlus.newConversation', 'opencodeAgentPlus.openConversation', 'opencodeAgentPlus.renameConversation', 'opencodeAgentPlus.deleteConversation', 'opencodeAgentPlus.chooseModel', 'opencodeAgentPlus.testConnection']) {
+  api = extension.activate(context);
+  for (const id of ['opencodeAgentPlus.newConversation', 'opencodeAgentPlus.openConversation', 'opencodeAgentPlus.renameConversation', 'opencodeAgentPlus.chooseModel', 'opencodeAgentPlus.testConnection']) {
     assert.ok(control.state.registered.includes(id), id);
   }
   assert.ok(control.state.editors['opencodeAgentPlus.chat'], 'the chat editor is registered');
   assert.strictEqual(control.state.editors['opencodeAgentPlus.chat'].opts.supportsMultipleEditorsPerDocument, false);
   assert.strictEqual(control.state.editors['opencodeAgentPlus.chat'].opts.webviewOptions.retainContextWhenHidden, true, 'a hidden chat tab keeps its page');
-  assert.ok(control.state.trees['opencodeAgentPlus.sessions'], 'the Conversations view is created');
+  assert.deepStrictEqual(Object.keys(control.state.trees), [], 'no view of its own: Agent Plus lists the conversations');
   assert.strictEqual(loaded('fake-backend.js'), false, 'the backend is not loaded');
   assert.strictEqual(loaded('@aws-sdk'), false, 'the AWS SDK is not loaded');
   assert.strictEqual(loaded('src/ui/chat-panel.js'), false, 'the chat page code is not loaded');
@@ -92,12 +102,10 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   delete control.state.config['opencodeAgentPlus.autosave'];
   assert.strictEqual(await control.state.handlers['opencodeAgentPlus.showLogs'](), true);
   assert.strictEqual(control.state.shownChannel, 'OpenCode Agent Plus', 'Show Logs opens the extension\'s output channel');
-  const tree = control.state.trees['opencodeAgentPlus.sessions'].opts.treeDataProvider;
-  const rows = await tree.getChildren();
-  assert.strictEqual(rows.length, 1);
-  assert.strictEqual(tree.getTreeItem(rows[0]).command.command, 'opencodeAgentPlus.openConversation');
-
   const id = opened[0][0].slice('opencodeagentplus-session:/'.length).split('/')[0];
+  const folder = api.test.snapshot(id).cwd;
+  const rows = (await api.test.source.listSessions({ folders: [folder] })).sessions;
+  assert.deepStrictEqual(rows.map((r) => r.sessionId), [id], 'Agent Plus\'s list gets the conversation');
   const plans = path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'plans');
   const scratch = path.join(process.env.OPENCODE_AGENT_PLUS_HOME, 'scratch');
   const other = 'ses_0000000000000000other';
@@ -107,8 +115,9 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
     fs.writeFileSync(path.join(scratch, s, 'chart.png'), 'png');
     fs.writeFileSync(path.join(scratch, s, 'sub', 'more.svg'), '<svg/>');
   }
-  control.state.answers.push(['Delete "', 'Delete']);
-  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.deleteConversation'](rows[0]), true);
+  panel.dispose();
+  await until(() => !api.test.snapshot(id));
+  assert.deepStrictEqual((await api.test.source.runSessionAction('delete', [id], {})).results, [{ sessionId: id, outcome: 'done' }]);
   assert.deepStrictEqual(fs.readdirSync(plans).sort(), ['config.json', `${other}.json`, 'windows'], 'and the window entry Agent Plus reads stays');
   assert.deepStrictEqual(fs.readdirSync(scratch), [other]);
   assert.ok(fs.existsSync(path.join(scratch, other, 'sub', 'more.svg')));

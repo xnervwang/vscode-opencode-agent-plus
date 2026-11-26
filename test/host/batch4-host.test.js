@@ -5,17 +5,11 @@
 'use strict';
 /*
  * Host modules run without an editor: which conversations a page may link to and where a click opens one
- * (src/host/conversation-links.js), the closed tabs kept for Recently closed (src/host/recent-closed.js) and how the
- * Conversations view groups them, and the Find Conversation pick (src/host/find-conversation.js).
+ * (src/host/conversation-links.js).
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const links = require('../../src/host/conversation-links');
-const recentClosed = require('../../src/host/recent-closed');
-const { pickItems, findConversation } = require('../../src/host/find-conversation');
-const { SessionsView, GROUPS, CONTEXT_RECENT, SHOWN } = require('../../src/ui/sessions-view');
-const { createFakeVscode } = require('../ui/fake-vscode');
-const fake = require('./fake-vscode');
 
 const settle = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 
@@ -136,104 +130,6 @@ test('a click opens this extension\'s conversation here, hands one held by anoth
   assert.deepEqual(alone.state.own2, [['ses_own1', false]], 'without Agent Plus it opens here, taking it over if need be');
   assert.equal(await alone.l.open('claude-code', 'x-y'), 'nowhere');
   assert.deepEqual(alone.state.core, []);
-});
-
-test('Recently closed keeps the tabs closed, most recent first, each once, and outlasts a reload', () => {
-  assert.deepEqual(recentClosed.record([{ id: 'a', at: 1 }, { id: 'b', at: 2 }], 'b', 3), [{ id: 'b', at: 3 }, { id: 'a', at: 1 }]);
-  assert.deepEqual(recentClosed.record([{ id: 'a', at: 1 }, { bad: 1 }], 'not an id!', 3), [{ id: 'a', at: 1 }]);
-  const many = Array.from({ length: 40 }, (_, i) => ({ id: `s${i}`, at: i }));
-  assert.equal(recentClosed.record(many, 'new', 99).length, recentClosed.KEEP);
-  const store = new Map();
-  const memo = { get: (k, d) => (store.has(k) ? store.get(k) : d), update: async (k, v) => { store.set(k, v); } };
-  let t = 100;
-  const r = recentClosed.createRecentClosed({ memo, now: () => t });
-  let heard = 0;
-  r.onDidChange(() => heard++);
-  r.add('ses_a'); t++; r.add('ses_b'); t++; r.add('ses_a');
-  assert.deepEqual(r.get().map((e) => e.id), ['ses_a', 'ses_b']);
-  assert.deepEqual(store.get(recentClosed.KEY), [{ id: 'ses_a', at: 102 }, { id: 'ses_b', at: 101 }]);
-  const again = recentClosed.createRecentClosed({ memo });
-  assert.deepEqual(again.get().map((e) => e.id), ['ses_a', 'ses_b'], 'read back after a reload');
-  r.remove('ses_b');
-  assert.deepEqual(r.get().map((e) => e.id), ['ses_a']);
-  r.remove('ses_zzz');
-  r.clear();
-  assert.deepEqual(r.get(), []);
-  r.clear();
-  assert.equal(heard, 5, 'three closings, one removal and one clearing; nothing for what changed nothing');
-});
-
-const NOW = Date.UTC(2026, 10, 24, 15, 0, 0);
-const rows = [
-  { id: 'a', title: 'Alpha', cwd: '/w', lastActiveAt: NOW - 3600000 },
-  { id: 'b', title: 'Bravo', cwd: '/w', lastActiveAt: NOW - 1000 },
-  { id: 'c', title: 'Charlie', cwd: '/w', lastActiveAt: NOW - 60000 },
-];
-function view(open, recent) {
-  return new SessionsView({ vscode: createFakeVscode(), listSessions: async () => rows, rename: async () => {}, remove: async () => {},
-    isOpenHere: (id) => open.includes(id), recent: () => recent, now: () => NOW });
-}
-
-test('Recently closed comes first, most recently closed first, leaving out the open ones and those no longer listed', async () => {
-  const v = view(['b'], [{ id: 'gone', at: NOW - 10 }, { id: 'b', at: NOW - 20 }, { id: 'c', at: NOW - 30000 }, { id: 'a', at: NOW - 40000 }]);
-  const top = await v.getChildren();
-  assert.deepEqual(top.map((g) => g.label), [GROUPS.recent, GROUPS.open, GROUPS.other]);
-  assert.equal(GROUPS.recent, 'Recently closed');
-  assert.deepEqual((await v.getChildren(top[0])).map((r) => r.id), ['c', 'a']);
-  assert.deepEqual((await v.getChildren(top[2])).map((r) => r.id), ['c', 'a'], 'they stay in their own group too');
-  const g = v.getTreeItem(top[0]);
-  assert.equal(g.contextValue, CONTEXT_RECENT);
-  assert.equal(g.description, '2');
-  const item = v.getTreeItem(top[0].rows[0]);
-  assert.equal(item.id, 'recent:c', 'a row id of its own, as the conversation is listed twice');
-  assert.match(item.tooltip, /Tab closed /);
-  assert.deepEqual(item.command.arguments, ['c'], 'a click opens it');
-  assert.equal(v.find(top[0].rows[0]).id, 'c', 'Rename, Delete and Fork take it');
-});
-
-test('Recently closed and one other kind make two groups; with nothing closed the rows are not grouped; Recently closed shows at most SHOWN rows', async () => {
-  const one = await view([], [{ id: 'a', at: NOW }]).getChildren();
-  assert.deepEqual(one.map((g) => g.label), [GROUPS.recent, GROUPS.other]);
-  assert.deepEqual((await view([], []).getChildren()).map((r) => r.id), ['b', 'c', 'a']);
-  const lots = Array.from({ length: 15 }, (_, i) => ({ id: `r${i}`, title: `R${i}`, lastActiveAt: NOW - i }));
-  const v = new SessionsView({ vscode: createFakeVscode(), listSessions: async () => lots, rename: async () => {}, remove: async () => {},
-    recent: () => lots.map((r, i) => ({ id: r.id, at: NOW - i })), now: () => NOW });
-  const top = await v.getChildren();
-  assert.equal(top[0].rows.length, SHOWN);
-});
-
-test('Find Conversation lists every conversation, newest first, findable by title, id or folder', () => {
-  const items = pickItems([
-    { id: 'ses_old', title: 'Old one', cwd: '/w/a', lastActiveAt: NOW - 86400000 * 2 },
-    { id: 'ses_new', title: '', cwd: '/w/b', lastActiveAt: NOW - 30000 },
-    { id: '', title: 'no id' },
-  ], { now: NOW, openHere: (id) => id === 'ses_new' });
-  assert.deepEqual(items.map((i) => [i.label, i.description, i.detail, i.id]), [
-    ['Untitled conversation', 'open in this window · active now', 'ses_new  ·  /w/b', 'ses_new'],
-    ['Old one', 'active 2d ago', 'ses_old  ·  /w/a', 'ses_old'],
-  ]);
-});
-
-test('the pick matches on the id and the folder, and opens the one picked; closing it opens nothing', async () => {
-  const { vscode, control } = fake.create();
-  const opened = [];
-  const run = findConversation({ vscode, list: async () => rows, open: async (id) => { opened.push(id); }, now: () => NOW });
-  await settle();
-  const qp = control.state.quickPick;
-  assert.equal(qp.matchOnDetail, true);
-  assert.equal(qp.matchOnDescription, true);
-  assert.deepEqual(qp.items.map((i) => i.id), ['b', 'c', 'a']);
-  qp.answer((items) => items.find((i) => i.id === 'c'));
-  assert.equal(await run, 'c');
-  assert.deepEqual(opened, ['c']);
-  assert.equal(qp.disposed, true);
-  const none = findConversation({ vscode, list: async () => { throw new Error('OpenCode is not running'); }, open: async (id) => { opened.push(id); } });
-  await settle();
-  const qp2 = control.state.quickPick;
-  assert.match(qp2.placeholder, /Couldn't list conversations: OpenCode is not running/);
-  qp2.answer(() => null);
-  assert.equal(await none, '');
-  assert.deepEqual(opened, ['c']);
 });
 
 test('a change while the backend\'s sessions are read is read again once that reading ends', async () => {

@@ -5,9 +5,9 @@
 'use strict';
 /*
  * Restricted Mode. Until the workspace is trusted the extension starts no OpenCode and no conversation, writes no file
- * and registers no Agent Plus source. It registers stand-ins that tell the user to trust the workspace: its commands, its
- * chat editor, and an empty Conversations view whose text is a viewsWelcome entry in package.json. Once trust is granted
- * they give way to the real ones without a reload, and a chat tab already open is handed to the real chat editor.
+ * and registers no Agent Plus source. It registers stand-ins that tell the user to trust the workspace: its commands and
+ * its chat editor. Once trust is granted they give way to the real ones without a reload, and a chat tab already open is
+ * handed to the real chat editor. Agent Plus's session list says itself that some agents start only once trusted.
  *
  * The chat editor is registered here in every case, since VS Code takes one provider per view type; start() hands it
  * the real provider through useEditor().
@@ -42,11 +42,10 @@ document.getElementById('manage').addEventListener('click', () => vscode.postMes
  * deps:
  *   vscode
  *   viewType      opencodeAgentPlus.chat (the chat editor)
- *   viewId        the Conversations view
  *   commands      the ids of the commands package.json contributes
  *   log(line)     optional
  */
-function createTrustGate({ vscode, viewType, viewId, commands, log = () => {} }) {
+function createTrustGate({ vscode, viewType, commands, log = () => {} }) {
   const subs = [];
   let real = null;
   /* Chat tabs showing the Restricted Mode page: panel -> { document, off: [disposables] }. */
@@ -86,7 +85,6 @@ function createTrustGate({ vscode, viewType, viewId, commands, log = () => {} })
       if (trusted()) { started = true; start(); return; }
       log('Restricted Mode: nothing starts until this workspace is trusted');
       const stubs = commands.map((id) => vscode.commands.registerCommand(id, tell));
-      stubs.push(vscode.window.registerTreeDataProvider(viewId, { getChildren: () => [], getTreeItem: (x) => x }));
       subs.push(...stubs);
       if (typeof vscode.workspace.onDidGrantWorkspaceTrust !== 'function') return;
       const grant = vscode.workspace.onDidGrantWorkspaceTrust(() => {

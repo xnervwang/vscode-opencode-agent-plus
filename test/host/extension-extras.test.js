@@ -5,8 +5,8 @@
 'use strict';
 /*
  * Through extension.js with the window tests' fake backend: the reader's time zone written for the plugin, the info
- * box's rows, the chimes' setting shared by the pages, forking from the list, the Conversations view's groups, the MCP
- * list in an output channel, and a diff's title bar on a request already answered.
+ * box's rows, the chimes' setting shared by the pages, forking from Agent Plus's list, the MCP list in an output
+ * channel, and a diff's title bar on a request already answered.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -35,7 +35,7 @@ const context = {
 };
 const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-test('through extension.js: the time zone, the info box, the chimes, Fork from the list, the view\'s groups, the MCP list, and a diff whose request was answered', async () => {
+test('through extension.js: the time zone, the info box, the chimes, Fork from the list, the MCP list, and a diff whose request was answered', async () => {
   const api = extension.activate(context);
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
@@ -70,18 +70,17 @@ test('through extension.js: the time zone, the info box, the chimes, Fork from t
   assert.strictEqual(memo.get('opencodeAgentPlus.sound'), false);
   assert.strictEqual(panel.webview.posted.filter((m) => m.type === 'sound').pop().on, false);
 
-  /* Fork from the list's row: a new conversation opens in a tab of its own, and from then on the view shows its groups. */
-  const tree = control.state.trees['opencodeAgentPlus.sessions'].opts.treeDataProvider;
-  const before = await tree.getChildren();
-  assert.strictEqual(before.length, 1);
-  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.forkConversation'](before[0]), true);
+  /* Fork from Agent Plus's list, the source's own action on the row: a new conversation opens in a tab of its own. */
+  const folder = api.test.snapshot(id).cwd;
+  const before = (await api.test.source.listSessions({ folders: [folder] })).sessions;
+  assert.deepStrictEqual(before.map((r) => [r.sessionId, r.actions]), [[id, ['fork']]]);
+  assert.deepStrictEqual(api.test.source.sessionActions.own, [{ id: 'fork', title: 'Fork Conversation' }]);
+  assert.deepStrictEqual((await api.test.source.runSessionAction('fork', [id], {})).results, [{ sessionId: id, outcome: 'done' }]);
   assert.strictEqual(opened.length, 2);
   assert.notStrictEqual(opened[1], opened[0]);
   assert.strictEqual(control.state.context['opencodeAgentPlus.canFork'], true);
-  const groups = await tree.getChildren();
-  assert.deepStrictEqual(groups.map((g) => g.label), ['Open in this window', 'Other conversations']);
-  assert.deepStrictEqual(groups[0].rows.map((r) => r.id), [id]);
-  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.forkConversation'](groups[0]), false, 'a group is not a conversation');
+  const after = (await api.test.source.listSessions({ folders: [folder] })).sessions;
+  assert.strictEqual(after.length, 2, 'the fork is listed beside it');
 
   /* The MCP list goes to an output channel of its own. */
   const text = await control.state.handlers['opencodeAgentPlus.showMcpServers']();

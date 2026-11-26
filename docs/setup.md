@@ -50,7 +50,7 @@ When OpenCode Agent Plus shows installation instructions because it can't find O
 
 ## When OpenCode Starts, Stops and Updates
 
-When a conversation or the Conversations view first needs OpenCode, the VS Code window starts one process and shares it across its conversations. The window runs `opencode acp`, OpenCode's editor mode, which uses the Agent Client Protocol to communicate with the extension. The process stops after the window has had no conversations open for 10 minutes.
+When a conversation or Agent Plus's Conversations list first needs OpenCode, the VS Code window starts one process and shares it across its conversations. The window runs `opencode acp`, OpenCode's editor mode, which uses the Agent Client Protocol to communicate with the extension. The process stops after the window has had no conversations open for 10 minutes.
 
 OpenCode Agent Plus turns off automatic updates for the OpenCode process it starts. Otherwise, OpenCode 1 could update itself in the background to OpenCode 2, which uses a different configuration format. To update OpenCode 2, run `npm install -g @opencode/cli@latest`; for OpenCode 1, run `npm install -g opencode-ai@latest`. Then reload the VS Code window. The downloaded copy stays at 2.4.1, so you'll need to install OpenCode yourself to use a later version.
 
@@ -66,7 +66,7 @@ On Windows, OpenCode Agent Plus offers to download python.org's embeddable Pytho
 
 ### Your First Conversation
 
-Click the OpenCode Agent Plus icon in the activity bar to open the Conversations view. Start a conversation with the New Conversation button (`+`) or the OpenCode Agent Plus icon in any editor's title bar. When the list is empty, the view also has a New Conversation link. The conversation opens in an editor tab and starts in the window's first workspace folder. If no folder is open, it starts in your home folder.
+Open Agent Plus's Conversations list from its icon in the activity bar. In the New bar, select the logo on the left, pick OpenCode Agent Plus, then choose New in tab. You can also start a conversation from the OpenCode Agent Plus icon in any editor's title bar or run `OpenCode Agent Plus: New Conversation` from the Command Palette. Your conversation opens in an editor tab and starts in the window's first workspace folder. If no folder is open, it starts in your home folder.
 
 Send your first message. If you haven't set a model for new conversations, OpenCode Agent Plus asks you to pick one and saves your choice for later conversations. To change the default, run `OpenCode Agent Plus: Choose Model for New Conversations`.
 

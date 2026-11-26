@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const server = require('../../../src/opencode/server');
 const dl = require('../../../src/opencode/download');
+const sessionList = require('./session-list');
 
 const OFFER = `OpenCode was not found. Download OpenCode ${dl.VERSION} from GitHub`;
 const READY = `OpenCode ${dl.VERSION} is ready for new conversations.`;
@@ -45,8 +46,6 @@ function processes(control) {
 /* t: { page, call, ext, check, shot, until, sleep, frameWith, control, home, env, xdgEnv } */
 async function run(t) {
   const { page, call, ext, check, shot, until, sleep, frameWith } = t;
-  const sidebar = '#workbench\\.parts\\.sidebar';
-  const textOf = (sel) => page.evaluate((s) => { const e = document.querySelector(s); return e ? e.textContent : ''; }, sel);
   const toasts = () => page.evaluate(() => [...document.querySelectorAll('.notifications-toasts .notification-toast')].map((e) => e.textContent.trim()));
   const exe = dl.executable(t.home);
 
@@ -59,21 +58,15 @@ async function run(t) {
     'nothing to find: the setting is empty, no PATH folder or installer folder holds an opencode, and OPENCODE_AGENT_PLUS_HOME has no download', { found, setting, hostEnv });
   check(XDG.every((k, i) => hostEnv.xdg[i] === t.xdgEnv[k]), 'the extension host, and so every opencode it runs (--version too), has this run\'s four XDG folders', hostEnv.xdg);
 
-  // D2. The Conversations view says OpenCode was not found, and the notification offers the download.
-  const icon = await page.waitForSelector('.activitybar .action-item [aria-label^="OpenCode Agent Plus"]', { timeout: 30000 }).catch(() => null);
-  if (icon) await icon.click();
-  const message = await until(async () => {
-    const text = await textOf(sidebar);
-    return /Couldn't list conversations: OpenCode was not found\./.test(text) ? text : null;
-  }, 60000);
-  check(!!message && message.includes(server.DOWNLOAD_HINT), 'the Conversations view says OpenCode was not found and names the download command', message || await textOf(sidebar));
+  // D2. Agent Plus's session list says OpenCode was not found, and the notification offers the download.
+  const sl = await sessionList.missing({ page, call, ext, check, shot, until, sleep }, { hint: server.DOWNLOAD_HINT });
   const offer = await until(async () => (await toasts()).find((x) => x.includes(OFFER)) || null, 30000);
   const button = page.locator('.notifications-toasts .notification-toast', { hasText: OFFER }).locator('.monaco-button', { hasText: 'Download OpenCode' }).first();
   const hasButton = await button.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
   check(!!offer && hasButton, 'a notification offers to download OpenCode 2.4.1, with a Download OpenCode button', { offer, hasButton, toasts: await toasts() });
   await page.mouse.move(900, 500);
   await shot('d01-not-found', { features: ['OpenCode not found', 'download offer'],
-    expect: `The side bar shows the OpenCode Agent Plus Conversations view with a message that begins "Couldn't list conversations: OpenCode was not found." and ends with "${server.DOWNLOAD_HINT}". At the bottom right a notification says "${OFFER} (125 MB)? If you install OpenCode yourself, that one is used instead." with a "Download OpenCode" button. No conversation is open.` });
+    expect: `The side bar shows Agent Plus's session list with a note above it, starting with the OpenCode mark: "OpenCode was not found. …" with Download OpenCode and Show Logs buttons. At the bottom right a notification says "${OFFER} (125 MB)? If you install OpenCode yourself, that one is used instead." with a "Download OpenCode" button. No conversation is open.` });
 
   // D3. The button downloads it from GitHub, with the percentage in a notification that can be cancelled.
   const seen = [];
@@ -110,23 +103,18 @@ async function run(t) {
   const offers = toldNow.filter((x) => x.startsWith(OFFER)).length;
   check(offers === 1, 'the offer was made once in this window', { offers });
 
-  // D4. The Conversations view drops the error.
-  await call('await vscode.commands.executeCommand("workbench.view.extension.opencodeAgentPlus"); return true;');
-  const listed = await until(async () => {
-    const text = await textOf(sidebar);
-    return !/Couldn't list conversations/.test(text) && /No conversations yet|Open in this window|Other conversations/.test(text) ? text.slice(0, 200) : null;
-  }, 120000);
+  // D4. The session list drops its note.
+  if (sl) await sl.show();
+  const listed = sl && sl.sl && await until(async () => !(await sl.notice()).some((n) => /OpenCode was not found/.test(n.text)), 120000);
   const host = await call('return process.pid;');
-  check(!!listed, 'without a reload the Conversations view drops the error and shows the list', listed || await textOf(sidebar));
+  check(!!listed, 'without a reload the session list drops its note that OpenCode was not found', sl && sl.sl && await sl.notice());
   await page.mouse.move(900, 500);
   await shot('d03-ready', { features: ['download finished', 'list after download'],
-    expect: `The Conversations view no longer shows the "Couldn't list conversations" message. A notification says "${READY}". No error notification.` });
+    expect: `Agent Plus's session list no longer has the note that OpenCode was not found. A notification says "${READY}". No error notification.` });
 
   // D5. A new conversation runs on the downloaded OpenCode and the real model answers.
   await call('await vscode.commands.executeCommand("notifications.clearAll"); return true;').catch(() => {});
-  await page.hover(`${sidebar} .pane-header`).catch(() => {});
-  const add = await page.waitForSelector(`${sidebar} .action-label[aria-label^="New Conversation"]`, { timeout: 15000 }).catch(() => null);
-  if (add) await add.click(); else await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
+  await call('return vscode.commands.executeCommand("opencodeAgentPlus.newConversation");');
   await page.mouse.move(900, 500);
   const chat = await frameWith(page, '#input', 120000);
   check(!!chat, 'New Conversation opens the chat page');
@@ -149,7 +137,7 @@ async function run(t) {
   check(procs.length > 0 && procs.every((x) => real(x.argv[0]) === real(exe) && XDG.every((k) => x.xdg[k] === t.xdgEnv[k])),
     'every OpenCode process of this run is the downloaded executable, with the same XDG folders', procs);
   await shot('d04-reply', { features: ['conversation on the downloaded OpenCode'],
-    expect: 'A chat tab with the message "Reply with the single word READY and nothing else." and the model\'s reply READY, its time followed by figures that include the model name (Grok); the Conversations view in the side bar lists the conversation. No error text or error notification.' });
+    expect: 'A chat tab with the message "Reply with the single word READY and nothing else." and the model\'s reply READY, its time followed by figures that include the model name (Grok); Agent Plus\'s session list in the side bar lists the conversation. No error text or error notification.' });
 }
 
 module.exports = { run, withoutOpenCode, processes, OFFER, READY };

@@ -13,7 +13,7 @@ You need VS Code 1.96 or later and OpenCode on the machine where the extension r
 1. Install OpenCode 2 with `npm install -g @opencode/cli` (npm comes with Node.js). Of the two release lines, OpenCode 1 is enough for chatting, but the work plan and several other features need OpenCode 2. You can also skip this step: once installed, OpenCode Agent Plus offers to download OpenCode 2.4.1 on macOS, Linux and Windows when it can't find OpenCode. See [Installing OpenCode](docs/setup.md#installing-opencode).
 2. Search for OpenCode Agent Plus in the Extensions view and install it, or run `code --install-extension xnervwang.opencode-agent-plus`. VS Code installs Agent Plus along with it. See [Installing OpenCode Agent Plus](docs/setup.md#installing-opencode-agent-plus).
 3. Give OpenCode your provider credentials as described in [Connecting a Model Provider](#connecting-a-model-provider).
-4. Click the OpenCode Agent Plus icon in the activity bar, choose New Conversation, and send your first message.
+4. Open Agent Plus's Conversations list from its icon in the activity bar, pick OpenCode Agent Plus with the logo at the left of its New bar, choose New in tab, and send your first message.
 
 See [Checking the Connection](docs/setup.md#checking-the-connection).
 
@@ -52,8 +52,8 @@ In a [Remote-SSH](docs/setup.md#remote-ssh) window, the extension and OpenCode r
 
 | Feature | What it does |
 | --- | --- |
-| [Conversations view](docs/features.md#the-conversations-list) | OpenCode Agent Plus's own view lists the conversations started in this window's workspace folders and lets you rename, fork or delete a conversation. |
-| [Find Conversation](docs/features.md#the-conversations-list) | You can search all OpenCode conversations by title, ID or the folder each started in. |
+| [Conversations list](docs/features.md#the-conversations-list) | Agent Plus's Conversations list shows the OpenCode conversations of this window's workspace folders and their git worktrees, what each is doing and where else it is open, and lets you rename, fork, archive or delete them. |
+| [Find Conversation](docs/features.md#the-conversations-list) | `Agent Plus: Find Conversation by Title or ID...` finds an OpenCode conversation by part of its title or session ID. |
 | [Tab dots and envelopes](docs/features.md#chat-tabs-and-windows) | A green dot shows that a conversation is working and a red dot that it needs your permission or an answer; an envelope marks an unread reply. |
 | [One window at a time](docs/features.md#chat-tabs-and-windows) | You can take over a conversation that's open in another window; that window then stops any running turn and closes the conversation. |
 

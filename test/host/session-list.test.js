@@ -5,8 +5,9 @@
 'use strict';
 /*
  * Through extension.js with the window tests' fake backend: the source registered with Agent Plus carries the session
- * list's members, lists a conversation of the folder with its state, renames it, will not delete it while it is open,
- * deletes it once closed together with its plan files, writes seen back, and gives its Account & usage part.
+ * list's members, lists a conversation of the folder with its state, renames it (from the list and from the chat tab's
+ * menu), will not delete it while it is open, deletes it once closed together with its plan files, writes seen back,
+ * and gives its Account & usage part; this extension has no list of its own.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -77,12 +78,29 @@ test('through extension.js: the session list\'s rows and actions for a conversat
 
   assert.deepStrictEqual((await source.runSessionAction('rename', [id], { title: 'Named by the list' })).results, [{ sessionId: id, outcome: 'done' }]);
   assert.strictEqual((await source.listSessions({ folders: [folder] })).sessions.find((s) => s.sessionId === id).title, 'Named by the list');
+  assert.strictEqual(api.test.snapshot(id).title, 'Named by the list', 'the open conversation has the new title at once');
+
+  /* Rename from the chat tab's menu: the box starts at the title, and the new one goes to OpenCode and the open page. */
+  control.state.inputAnswer = (opts) => { assert.strictEqual(opts.value, 'Named by the list'); return '  From the tab menu  '; };
+  const tabUri = vscode.Uri.from({ scheme: 'opencodeagentplus-session', path: `/${id}/Named by the list` });
+  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.renameConversation'](tabUri), true);
+  assert.strictEqual(control.state.inputs.length, 1);
+  assert.strictEqual(api.test.snapshot(id).title, 'From the tab menu');
+  assert.strictEqual((await source.listSessions({ folders: [folder] })).sessions.find((s) => s.sessionId === id).title, 'From the tab menu');
+  control.state.inputAnswer = () => undefined;
+  assert.strictEqual(await control.state.handlers['opencodeAgentPlus.renameConversation'](tabUri), false, 'Esc in the box renames nothing');
+  assert.strictEqual(api.test.snapshot(id).title, 'From the tab menu');
 
   await source.noteSeen([id], true);
   assert.strictEqual((await source.listSessions({ folders: [folder] })).sessions.find((s) => s.sessionId === id).viewedAt, row.lastReplyAt, 'seen is written back');
 
-  const info = await source.accountInfo({ sessionId: id });
-  assert.ok(info && info.conversation, 'the conversation in front has its figures');
+  source.accountInfo({ sessionId: id });
+  const info = await until(() => { const v = source.accountInfo({ sessionId: id }); return v && v.conversation ? v : null; });
+  assert.ok(info && info.conversation, 'the conversation in front has its figures, given at once once read');
+
+  for (const cmd of ['opencodeAgentPlus.findConversation', 'opencodeAgentPlus.clearRecentlyClosed', 'opencodeAgentPlus.deleteConversation']) {
+    assert.ok(!control.state.handlers[cmd], `${cmd} went with this extension's own list`);
+  }
 
   const refused = (await source.runSessionAction('delete', [id], {})).results[0];
   assert.strictEqual(refused.outcome, 'refused');

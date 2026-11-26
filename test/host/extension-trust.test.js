@@ -67,7 +67,7 @@ test('in Restricted Mode nothing starts: no OpenCode, no conversation, no file, 
   /* Every command is there, and says what to do instead of doing it. */
   for (const id of COMMANDS) assert.ok(control.state.handlers[id], `${id} answers`);
   control.state.answers.push(['does nothing in Restricted Mode', 'Manage Workspace Trust']);
-  for (const id of ['opencodeAgentPlus.newConversation', 'opencodeAgentPlus.testConnection', 'opencodeAgentPlus.findConversation', 'opencodeAgentPlus.chooseModel', 'opencodeAgentPlus.showMcpServers']) {
+  for (const id of ['opencodeAgentPlus.newConversation', 'opencodeAgentPlus.testConnection', 'opencodeAgentPlus.chooseModel', 'opencodeAgentPlus.showMcpServers']) {
     const before = control.state.said.length;
     assert.strictEqual(await control.state.handlers[id](), false, id);
     const said = control.state.said.slice(before);
@@ -82,11 +82,9 @@ test('in Restricted Mode nothing starts: no OpenCode, no conversation, no file, 
   assert.deepStrictEqual(fs.readdirSync(HOME), [], 'still nothing written');
   for (const part of ['fake-backend.js', 'src/opencode/index.js']) assert.strictEqual(loaded(part), false, `${part} is still not loaded`);
 
-  /* The Conversations view is an empty list, so VS Code shows package.json's Restricted Mode text in it. */
-  assert.strictEqual(control.state.trees['opencodeAgentPlus.sessions'], undefined, 'the real view is not made');
-  const stub = control.state.treeProviders['opencodeAgentPlus.sessions'];
-  assert.ok(stub && !stub.disposed);
-  assert.deepStrictEqual(await stub.provider.getChildren(), []);
+  /* No view of its own: Agent Plus's session list says that some agents start only in a trusted workspace. */
+  assert.deepStrictEqual(Object.keys(control.state.trees), []);
+  assert.deepStrictEqual(Object.keys(control.state.treeProviders || {}), []);
 
   /* A chat tab VS Code restores shows the Restricted Mode page with the button, and nothing else. */
   const editor = control.state.editors['opencodeAgentPlus.chat'];
@@ -122,8 +120,7 @@ test('once trust is granted it starts without a reload, and the chat tab already
   assert.ok(api.test.registered, "start() ran and gave the tests' handle its members");
   for (const id of COMMANDS) assert.ok(control.state.unregistered.includes(id), `the stand-in for ${id} is gone`);
   for (const id of COMMANDS) assert.strictEqual(control.state.live.get(id), 1, `${id} is registered once`);
-  assert.ok(control.state.treeProviders['opencodeAgentPlus.sessions'].disposed, 'the empty list is gone');
-  assert.ok(control.state.trees['opencodeAgentPlus.sessions'], 'the real Conversations view is made');
+  assert.deepStrictEqual(Object.keys(control.state.trees), [], 'and still no view of its own');
   assert.ok(fs.existsSync(path.join(HOME, 'opencode-plugin', 'agent-work-plan', 'index.js')), 'the work plan plugin is copied now');
   await api.test.registered;
   assert.strictEqual(sources.length, 1, 'registered with Agent Plus now');
@@ -164,14 +161,8 @@ test('package.json: the settings that decide how OpenCode is started are read fr
   assert.strictEqual(ut.description, 'In Restricted Mode, this extension does nothing. It starts when the workspace is trusted.');
 });
 
-test('package.json: the view says what to do in Restricted Mode, and its buttons and the commands are hidden there', () => {
+test('package.json: the commands are hidden in Restricted Mode', () => {
   const c = PKG.contributes;
-  const welcome = c.viewsWelcome.filter((w) => w.view === 'opencodeAgentPlus.sessions');
-  const restricted = welcome.find((w) => w.when === '!isWorkspaceTrusted');
-  assert.ok(restricted);
-  assert.strictEqual(restricted.contents, `${gate.TEXT}\n[Manage Workspace Trust](command:workbench.trust.manage)`);
-  assert.ok(welcome.filter((w) => w !== restricted).every((w) => w.when === 'isWorkspaceTrusted'), 'the empty-list text shows only once trusted');
-  for (const m of c.menus['view/title']) assert.match(m.when, /&& isWorkspaceTrusted$/, m.command);
   const titleButton = c.menus['editor/title'].find((m) => m.command === 'opencodeAgentPlus.newConversationInEditor');
   assert.deepStrictEqual(titleButton, { command: 'opencodeAgentPlus.newConversationInEditor', when: 'isWorkspaceTrusted', group: 'navigation' },
     'every editor has the New Conversation button once the workspace is trusted');

@@ -148,7 +148,7 @@ On OpenCode 2, you can rewind an idle conversation to just before one of your me
 
 Forking in OpenCode 1 and 2 creates a copy of the whole conversation and opens it in a new tab. On OpenCode 2, hover over one of your messages and choose Fork from here to copy only the conversation before that message into a new tab, with the message's text in its input box.
 
-Choose Fork Conversation from the context menu in the Conversations view, on the chat tab or on the chat page. You can also use the editor title's `...` menu or run `OpenCode Agent Plus: Fork Conversation` from the Command Palette with the chat tab active.
+Choose Fork Conversation from the menu of the conversation's row in Agent Plus's [Conversations list](#the-conversations-list), on the chat tab or on the chat page. You can also use the editor title's `...` menu or run `OpenCode Agent Plus: Fork Conversation` from the Command Palette with the chat tab active.
 
 ## Subagents and Background Work
 
@@ -164,19 +164,62 @@ On Linux, the background pill also counts detached commands, which the conversat
 
 ## The Conversations List
 
-Click the OpenCode Agent Plus icon in the activity bar to open the Conversations view. It lists OpenCode conversations in any of the workspace folders open in this window. With no folder open, you see conversations from all folders.
+Open Conversations from its icon in the activity bar. VS Code installs Agent Plus with OpenCode Agent Plus because OpenCode Agent Plus depends on it. Agent Plus provides the Conversations list; OpenCode Agent Plus has no activity bar icon or list view of its own.
 
-The view groups conversations under Recently closed, Open in this window, and Other conversations. Recently closed lists up to 10 conversations whose tabs you closed in this workspace. You see a flat list when Recently closed is empty and the conversations all fall into the same remaining group.
+Each row starts with its agent's logo. Look for the OpenCode mark to find your OpenCode conversations. If you use Claude Code Plus or Codex Plus, their Claude Code or Codex conversations appear in the same list.
 
-Each row shows the conversation's state and how long ago it was active. Hover over a row for the same details plus the folder, session ID and exact time of the last activity, such as "5m ago (11/24/2026, 8:08:35 AM UTC)". The timestamp includes the time zone name and uses the zone of the machine running OpenCode, which can differ from yours over Remote-SSH.
+### Finding a conversation
 
-The view's title bar has `OpenCode Agent Plus: New Conversation` and `OpenCode Agent Plus: Find Conversation…`. Use Find Conversation to search all OpenCode conversations across folders, most recent first. You can enter part of a title, session ID or folder. You can also start a new conversation by clicking the OpenCode Agent Plus icon in any editor's title bar.
+The list includes OpenCode conversations you started in any of this window's workspace folders or their subfolders. It also includes conversations in linked Git worktrees of a workspace folder's repository, wherever the worktrees are. This includes worktrees OpenCode creates under its own data folder. For a conversation in a linked worktree, the worktree's name appears after the title.
 
-Right-click a row for `OpenCode Agent Plus: Rename Conversation` (OpenCode 2), `OpenCode Agent Plus: Fork Conversation` (see [Forking](#forking)) or `OpenCode Agent Plus: Delete Conversation`. Delete Conversation closes the conversation's tabs, removes it from OpenCode, and deletes its work plan and its own folder. If another window has the conversation open, OpenCode Agent Plus refuses to delete it.
+Search the list by conversation title or by the Git branch of the conversation's folder. You can also use `Agent Plus: Find Conversation by Title or ID...` to find a conversation by part of its title or session ID.
+
+Agent Plus hides background conversations by default. These include subagent sessions, sessions started by `opencode run`, and conversations with no messages yet. Turn off `agentPlus.sessions.hideBackground` to see them. Each subagent session appears indented under the conversation that started it.
+
+### Reading a conversation row
+
+A dot or ring on the OpenCode mark shows what's happening in the conversation:
+
+- A green dot means a turn is running.
+- A green ring means the turn has ended, but work it started is still running. This can be a command moved to the background or a subagent.
+- A blue dot means a permission request or question is waiting for you.
+- A red dot means the conversation's work plan has a question for you. A red ring means there's a plan question and a turn is still running. See [Work Plan and Plan Bar](#work-plan-and-plan-bar).
+
+OpenCode Agent Plus shows running turns in this VS Code window, in another VS Code window, in OpenCode's terminal interface, and in OpenCode's background service.
+
+If a conversation is open in another VS Code window or a tab of OpenCode's terminal interface, or is run by `opencode run`, its row is dimmed and starts with an outlined stripe. The status dot stays at full brightness. Hover over the row to see the VS Code window's name or the terminal, folder, and process ID.
+
+If more than one process has the conversation open, the row shows "· N processes", where N is the process count. You can lose turns if two processes write to the same conversation.
+
+OpenCode Agent Plus recognizes the terminal interface when it runs in the conversation's folder and has the conversation open in one of its tabs. On Windows, OpenCode Agent Plus cannot read another process's folder. It recognizes the terminal interface only if you supplied the folder on the command line, as in `opencode C:\projects\app`. It recognizes turns running in OpenCode's background service on every system.
+
+An envelope after the title marks an unread reply. A reply counts as read once OpenCode's terminal interface shows it. When you see a reply in VS Code, OpenCode Agent Plus records it as read in OpenCode so the terminal interface shows the same status.
+
+### Opening and managing conversations
+
+Click a row to open the conversation in an editor tab. If it's already open in another VS Code window, clicking brings it to the front there. If it's open in the terminal interface or run by `opencode run`, you must close it there before opening it in VS Code. Hover over the row to see where to close it.
+
+To start a conversation, select the logo at the left of the New bar, pick OpenCode Agent Plus, then choose New in tab. The conversation opens in an editor tab. Recently closed, at the top of the list, shows conversations whose tabs you closed in this window. Use `Agent Plus: Reopen Closed Conversation` (Ctrl+Shift+T, or Cmd+Shift+T on macOS) to reopen the last one you closed.
+
+With OpenCode 2, you can rename a conversation from its row. To copy a whole conversation into a new tab, right-click its row and choose `Fork Conversation`, the last entry in the menu. See [Forking](#forking).
+
+You can archive and unarchive conversations in the list. Agent Plus keeps the list's archived mark. The first time the list shows a project's OpenCode conversations, Agent Plus marks any that OpenCode had already archived. It does this once per project.
+
+You can delete a conversation only from the Archived section, when no window or other process has it open and nothing in it is running. Before you confirm, the prompt explains that deletion removes the conversation and its subagents' sessions from OpenCode's database. OpenCode Agent Plus also deletes the conversation's work plan and the folder it keeps for that conversation.
+
+### Account & usage
+
+At the top of the list, the OpenCode part of Account & usage shows the provider, model, cost, and token count for the OpenCode conversation you have in front. It also shows the total cost of all your OpenCode conversations since midnight in your time zone.
+
+### When OpenCode is unavailable
+
+If OpenCode Agent Plus cannot find OpenCode, a note above the list includes a `Show Logs` button. On platforms where OpenCode 2.4.1 is available to download, the note also includes a `Download OpenCode` button.
+
+In Restricted Mode, OpenCode Agent Plus does not start, so the list has no OpenCode rows. A note in the list explains that some agents start only in a trusted workspace.
 
 ## Chat Tabs and Windows
 
-Each chat tab shows the OpenCode Agent Plus icon from the activity bar. The icon has a green dot while the conversation is working, a red dot while it waits for your permission or an answer, and no dot when it is idle. Background work has no dot of its own. If a background tab has an unread reply, an envelope appears after its title and disappears when you view the tab.
+Each chat tab shows the OpenCode mark as its icon. The icon has a green dot while the conversation is working, a red dot while it waits for your permission or an answer, and no dot when it is idle. Background work has no dot of its own. If a background tab has an unread reply, an envelope appears after its title and disappears when you view the tab.
 
 On OpenCode 2, you can choose `OpenCode Agent Plus: Rename Conversation` from the tab's context menu or the `...` menu in the editor title bar. For `OpenCode Agent Plus: Fork Conversation`, see [Forking](#forking).
 
