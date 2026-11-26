@@ -25,7 +25,7 @@ const os = require('os');
 
 const SUBCOMMANDS = new Set(['upgrade', 'update', 'uninstall', 'acp', 'api', 'debug', 'auth', 'mcp', 'plugin', 'models', 'stats', 'mini',
   'run', 'session', 'service', 'reload', 'machine', 'pair', 'serve']);
-/* Flags of `opencode` and `opencode run` that take a value, so that the value is not taken for a subcommand. */
+/* Flags of `opencode` and `opencode run` that take a value: the word after one of them is not a subcommand. */
 const WITH_VALUE = new Set(['-s', '--session', '--prompt', '--server', '--log-level', '-m', '--model', '--agent', '--title', '--format',
   '-f', '--file', '-w', '--worktree', '--completions']);
 const RUN_CREATES_WITHIN_MS = 60000;
@@ -33,7 +33,8 @@ const RUN_STARTS_BEFORE_MS = 2000;
 
 const isOpenCode = (argv0) => /^opencode(\.exe)?$/i.test(String(argv0 || '').split(/[\\/]/).pop());
 
-/* An OpenCode process's role and options, read from its argv: { role: 'terminal' | 'run' | 'other', dir, session, continues, fork }. */
+/* An OpenCode process's role and options, read from its argv:
+   { role: 'terminal' | 'run' | 'other', dir, session, continues, fork }. */
 function roleOf(argv) {
   if (!Array.isArray(argv) || !argv.length || !isOpenCode(argv[0])) return null;
   let sub = '';
@@ -166,7 +167,7 @@ function readTabs(stateDir, fs) {
 
 /* ---------- putting them together ---------- */
 
-/* `dir` with the home folder written ~, whether `homes` names the home folder as given or as its real path. */
+/* `dir` with the home folder replaced by ~; `homes` may give the home folder as typed or as its real path. */
 const short = (dir, homes) => {
   for (const h of homes) if (h && (dir === h || dir.startsWith(h + path.sep))) return `~${dir.slice(h.length)}`;
   return dir;
@@ -177,7 +178,7 @@ const when = (ms) => (ms ? new Date(ms).toISOString().replace('T', ' ').slice(0,
  * deps:
  *   platform, proc ('/proc'), fs, execFile, home
  *   stateDir()    Promise of OpenCode's state folder
- *   active()      Promise of the Set of session ids in a turn in the background service
+ *   active()      Promise of the Set of ids of the sessions running a turn in the background service
  *   memory        { get(): object, set(object) } where the sessions `opencode run` created are kept: { id: at }
  *   ours(id)      whether this extension created the session
  */

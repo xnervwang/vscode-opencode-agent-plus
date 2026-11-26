@@ -341,7 +341,7 @@ async function main() {
     console.log(`  step  ${name}`);
     return true;
   };
-  /* Closes the window once the failures are kept, and copies VS Code's logs to <out>/vscode-logs. */
+  /* Closes the window after the failures are saved, then copies VS Code's logs. */
   const closeWindow = async () => {
     await Promise.all(keeping);
     await w.close();
@@ -596,7 +596,7 @@ async function main() {
       // 1. The work plan plugin is in place, and Agent Plus's session list has none of this extension's conversations yet.
       const inPlace = await until(() => ['index.js', 'hooks/plan_common.py', 'hooks/plan_agent.py', 'hooks/inject-work-plan.py'].every((f) => fs.existsSync(path.join(pluginHome, f)))
         && fs.existsSync(path.join(plansDir, 'config.json')), 20000);
-      check(inPlace, "the work plan plugin, its scripts and config.json are in place in the extension's folder");
+      check(inPlace, "the extension's folder has the work plan plugin, its scripts and config.json");
       const ownBar = await page.evaluate(() => [...document.querySelectorAll('.activitybar .action-item [aria-label]')].some((a) => /^OpenCode Agent Plus/.test(a.getAttribute('aria-label'))));
       check(!ownBar, 'the activity bar has no OpenCode Agent Plus container: its conversations are in Agent Plus\'s session list');
       await sessionList.empty({ page, call, ext, check, shot, until, sleep });
