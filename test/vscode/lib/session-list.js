@@ -279,7 +279,8 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     const group = await until(() => h.sl.evaluate(() => { const s = [...document.querySelectorAll('.sl-section[data-kind="group"]')].find((x) => x.querySelector('.sl-head-label').textContent === 'OpenCode work'); return s && s.dataset.key; }), 8000);
     if (group) {
       await h.row(blue).click({ button: 'right' });
-      await h.item('Add to Group').hover();
+      /* A click opens the submenu, beside the menu or, in a narrow side bar, in its place. */
+      await h.item('Add to Group').click();
       await h.item('OpenCode work', true).click();
       check(!!await h.wait((r) => h.find(r, blue, group)), 'Add to Group puts an OpenCode conversation in a group');
       await h.away();
