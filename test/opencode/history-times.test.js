@@ -79,6 +79,8 @@ test('2.x: opening a conversation dates its replay from the export, not from the
   const ends = events.filter((e) => e.type === 'turnEnd');
   const lastDone = Math.max(...exp.messages.filter((m) => m.type === 'assistant' && m.time.created < users[1].time.created).map((m) => m.time.completed || 0));
   assert.equal(ends[0].at, lastDone);
+  assert.equal(s.lastUserAt, users[users.length - 1].time.created, 'the time of its last message, for the conversation lists');
+  assert.equal(s.lastReplyAt, Math.max(...ends.map((e) => e.at)));
 });
 
 test('2.x: a failed export leaves the replay as it was, and says nothing to the user', async (t) => {
@@ -87,6 +89,7 @@ test('2.x: a failed export leaves the replay as it was, and says nothing to the 
   const s = await oc.openSession(BG, { cwd: CWD });
   const events = await s.history();
   assert.ok(events.filter((e) => e.type === 'userMessage').every((e) => e.at >= before));
+  assert.equal(s.lastUserAt, 0, 'without the export the time of its last message is not known');
 });
 
 test('2.x: reload() loads the conversation again with times from a new export, and is refused while a turn runs', async (t) => {

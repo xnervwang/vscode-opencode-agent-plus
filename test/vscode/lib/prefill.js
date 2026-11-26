@@ -85,6 +85,9 @@ async function run(t) {
       where: await page.evaluate(() => { const a = document.activeElement; return { window: document.hasFocus(), active: a ? `${a.tagName}.${String(a.className).slice(0, 80)}` : null }; }).catch(() => null) });
 
   const usersBefore = box1 ? await settled(FIRST) : null;
+  /* Reopened, the conversation dates its last message from OpenCode's export, which may differ from the time this
+     window sent it by a second or so. */
+  const lastOpened = await lastUser(id);
   if (box1) await setBox(box1.f, 'first words');
   const r2 = await prefill(id, SECOND);
   const want = `first words ${SECOND}`;
@@ -95,9 +98,9 @@ async function run(t) {
   await sleep(1500);
   const after = await holding(want);
   const lastAfter = await lastUser(id);
-  check(!!after && !!usersBefore && after.users === usersBefore && lastAfter === lastBefore,
+  check(!!after && !!usersBefore && after.users === usersBefore && lastOpened > 0 && lastAfter === lastOpened,
     'prefill sends nothing: the text stays in the box and the conversation has no new message from the user',
-    { usersBefore, lastBefore, lastAfter, after: after && { value: after.value, users: after.users } });
+    { usersBefore, lastBefore, lastOpened, lastAfter, after: after && { value: after.value, users: after.users } });
   await shot('15-prefill', { features: ['prefill'],
     expect: `The chat tab in front, its message box holding "${want}" with the caret after it; the conversation above ends as before, with no new message from the user.`,
     part: '#workbench\\.parts\\.editor' });

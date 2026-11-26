@@ -1113,6 +1113,13 @@ function createOpenCode(opts = {}) {
       const filled = look ? times.fillUsage(times.fillTimes(events, metas, look), metas, look) : { events, metas };
       h.events = filled.events;
       h.metas = filled.metas;
+      /* The conversation lists show when its last message and reply were; only the export dates them. */
+      if (look) {
+        for (const e of h.events) {
+          if (e.type === 'userMessage' && e.synthetic !== true && e.at > h.lastUserAt) h.lastUserAt = e.at;
+          if (e.type === 'turnEnd' && e.reason !== 'aborted' && e.at > h.lastReplyAt) h.lastReplyAt = e.at;
+        }
+      }
       h.events.push(...h.replay.background);
       if (h.title) h.events.push({ type: 'title', title: h.title });
     } finally {
