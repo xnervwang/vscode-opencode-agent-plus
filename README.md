@@ -52,8 +52,8 @@ In a [Remote-SSH](docs/setup.md#remote-ssh) window, the extension and OpenCode r
 
 | Feature | What it does |
 | --- | --- |
-| [Conversations list](docs/features.md#the-conversations-list) | Agent Plus's Conversations list shows the OpenCode conversations of this window's workspace folders and their git worktrees, what each is doing and where else it is open, and lets you rename, fork, archive or delete them. |
-| [Find Conversation](docs/features.md#the-conversations-list) | `Agent Plus: Find Conversation by Title or ID...` finds an OpenCode conversation by part of its title or session ID. |
+| [Conversations list](docs/features.md#the-conversations-list) | For each OpenCode conversation in this window's workspace folders or their git worktrees, you can see what it's doing and where else it's open, and you can rename, fork, archive or delete it. |
+| [Find Conversation](docs/features.md#the-conversations-list) | If you know part of an OpenCode conversation's title or session ID, use `Agent Plus: Find Conversation by Title or ID...` to find it. |
 | [Tab dots and envelopes](docs/features.md#chat-tabs-and-windows) | A green dot shows that a conversation is working and a red dot that it needs your permission or an answer; an envelope marks an unread reply. |
 | [One window at a time](docs/features.md#chat-tabs-and-windows) | You can take over a conversation that's open in another window; that window then stops any running turn and closes the conversation. |
 

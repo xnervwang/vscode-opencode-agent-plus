@@ -76,10 +76,10 @@ In the Command Palette, search for `OpenCode Agent Plus:` to find these commands
 
 To add an MCP server, run `opencode mcp add` or edit OpenCode's configuration file.
 
-With a chat tab in front, press Cmd+Shift+Esc on macOS, or the Windows or Super key with Shift+Esc on Windows and Linux, to start a new conversation. To reopen a chat tab you closed, press Cmd+Shift+T on macOS or Ctrl+Shift+T on Windows and Linux, which runs `Agent Plus: Reopen Closed Conversation`, or click the conversation in the Recently closed section of Agent Plus's [Conversations list](features.md#the-conversations-list).
+With a chat tab in front, press Cmd+Shift+Esc on macOS, or the Windows or Super key with Shift+Esc on Windows and Linux, to start a new conversation. Use `Agent Plus: Reopen Closed Conversation` (Cmd+Shift+T on macOS or Ctrl+Shift+T on Windows and Linux) to reopen the last conversation whose tab you closed, or click a conversation in the Recently closed section of Agent Plus's [Conversations list](features.md#the-conversations-list) to reopen it.
 
 Choose Add to Conversation from the editor's context menu to put a reference to the open file or its selected lines in the input box of the chat tab in front, or from the Explorer's context menu to add references to the files you selected there.
 
 When the editor reports an error or warning, choose Fix with OpenCode Agent Plus from its quick fixes to append a draft naming the file, line and problem after any text in that input box. In a chat tab, the keys for `OpenCode Agent Plus: Focus the Message Box` (Cmd+Esc on macOS, Windows+Esc on Windows, or Super+Esc on Linux) take you back to the file editor that was in front last.
 
-Rename Conversation is a menu action outside the Command Palette: [rename a conversation from its tab or editor title menu](features.md#chat-tabs-and-windows), or from its row in Agent Plus's [Conversations list](features.md#the-conversations-list), where you also archive and delete conversations.
+Rename Conversation is not in the Command Palette. Choose it from [the chat tab's context menu or the editor title's `...` menu](features.md#chat-tabs-and-windows), or from a row's menu in Agent Plus's [Conversations list](features.md#the-conversations-list), where you can also archive or delete the conversation.

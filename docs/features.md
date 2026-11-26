@@ -66,7 +66,7 @@ Under the message box, a pill shows your model followed by the effort in grey. T
 
 Connect a provider… and Reload the model list stay below the filter. The models scroll separately beneath them, grouped by provider and sorted by name within each group. Amazon Bedrock offers many models across geographies: Global, US, EU, APAC, JP, AU, India, Canada and GovCloud. Each geography has its own model ID prefix, such as `global.`, `us.` or `eu.`. Many models also have an ID without a prefix, shown as In-Region. Each model has one row with the geography omitted from its name and the available geographies in grey on the right.
 
-Click a row to show one row per geography, each with its model ID in grey. Click a geography to select it. For a model with one variant, click the model row to select it. Your current model appears in bold with a check mark, with its row unfolded when the list opens. Up and Down move between rows. Enter selects the highlighted model or unfolds its row. With the filter empty, Right unfolds the highlighted row and Left folds it. Esc closes the list and returns you to the message box.
+Click a row to show one row per geography, each with its model ID in grey. Click the row for the geography you want. If the model has only one variant, clicking the model row selects it directly. Your current model appears in bold with a check mark, with its row unfolded when the list opens. Up and Down move between rows. Enter selects the highlighted model or unfolds its row. With the filter empty, Right unfolds the highlighted row and Left folds it. Esc closes the list and returns you to the message box.
 
 ### Providers and Free Models
 
@@ -84,7 +84,7 @@ If you switch to a model that does not support your chosen effort, it uses its d
 
 The last row of text in each reply starts with the time it arrived, followed by figures such as `2m10s · ctx 33% · $0.42 · grok-4.7 (US) low`. If the turn ends with something other than text, the figures appear on their own line.
 
-The duration, model and effort are for that reply. A Bedrock model's name ends with the geography of its ID, such as (US) or (India). The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the figures to see the same values with labels.
+The duration, model and effort are for that reply. If a Bedrock model ID has a geography prefix, the model name ends with that geography in parentheses, such as (US) or (India). The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the figures to see the same values with labels.
 
 ## Context, Compaction and Retries
 
@@ -152,7 +152,7 @@ On OpenCode 2, you can rewind an idle conversation to just before one of your me
 
 Forking in OpenCode 1 and 2 creates a copy of the whole conversation and opens it in a new tab. On OpenCode 2, hover over one of your messages and choose Fork from here to copy only the conversation before that message into a new tab, with the message's text in its input box.
 
-Choose Fork Conversation from the menu of the conversation's row in Agent Plus's [Conversations list](#the-conversations-list), on the chat tab or on the chat page. You can also use the editor title's `...` menu or run `OpenCode Agent Plus: Fork Conversation` from the Command Palette with the chat tab active.
+Right-click the conversation row in Agent Plus's [Conversations list](#the-conversations-list), the chat tab or the chat page, then choose Fork Conversation. You can also use the editor title's `...` menu or run `OpenCode Agent Plus: Fork Conversation` from the Command Palette with the chat tab active.
 
 ## Subagents and Background Work
 
@@ -168,13 +168,13 @@ On Linux, the background pill also counts detached commands, which the conversat
 
 ## The Conversations List
 
-Open Conversations from its icon in the activity bar. VS Code installs Agent Plus with OpenCode Agent Plus because OpenCode Agent Plus depends on it. Agent Plus provides the Conversations list; OpenCode Agent Plus has no activity bar icon or list view of its own.
+Open Conversations from its icon in the activity bar. When you install OpenCode Agent Plus, VS Code also installs Agent Plus as a dependency. Agent Plus provides the Conversations list; OpenCode Agent Plus has no activity bar icon or list view of its own.
 
 Each row starts with its agent's logo. Look for the OpenCode mark to find your OpenCode conversations. If you use Claude Code Plus or Codex Plus, their Claude Code or Codex conversations appear in the same list.
 
 ### Finding a conversation
 
-The list includes OpenCode conversations you started in any of this window's workspace folders or their subfolders. It also includes conversations in linked Git worktrees of a workspace folder's repository, wherever the worktrees are. This includes worktrees OpenCode creates under its own data folder. For a conversation in a linked worktree, the worktree's name appears after the title.
+The list includes OpenCode conversations you started in any of this window's workspace folders or their subfolders. The list also shows conversations in linked Git worktrees of a workspace folder's repository, wherever they are on disk, including worktrees OpenCode creates under its own data folder. For a conversation in a linked worktree, the worktree's name appears after the title.
 
 Search the list by conversation title or by the Git branch of the conversation's folder. You can also use `Agent Plus: Find Conversation by Title or ID...` to find a conversation by part of its title or session ID.
 
@@ -182,7 +182,7 @@ Agent Plus hides background conversations by default. These include subagent ses
 
 ### Reading a conversation row
 
-Each row shows what the conversation is doing, whether it's open somewhere else, and whether it has an unread reply.
+The Conversations list shows turns running in this or another VS Code window, OpenCode's terminal interface or OpenCode's background service.
 
 A dot or ring on the OpenCode mark shows the conversation's state:
 
@@ -192,13 +192,11 @@ A dot or ring on the OpenCode mark shows the conversation's state:
 - A red dot means the conversation's work plan has a question for you. See [Work Plan and Plan Bar](#work-plan-and-plan-bar).
 - A red ring means there's a plan question and a turn is still running.
 
-OpenCode Agent Plus shows running turns in this VS Code window, in another VS Code window, in OpenCode's terminal interface, and in OpenCode's background service.
-
 If a conversation is open in another VS Code window or a tab of OpenCode's terminal interface, or is run by `opencode run`, its row is dimmed and starts with an outlined stripe. The status dot stays at full brightness. Hover over the row to see the VS Code window's name or the terminal, folder, and process ID.
 
-If more than one process has the conversation open, the row shows "· N processes", where N is the process count. You can lose turns if two processes write to the same conversation.
+If more than one process has the conversation open, the row shows "· N processes". You can lose turns if two processes write to the same conversation.
 
-OpenCode Agent Plus recognizes the terminal interface when it runs in the conversation's folder and has the conversation open in one of its tabs. On Windows, OpenCode Agent Plus cannot read another process's folder. It recognizes the terminal interface only if you supplied the folder on the command line, as in `opencode C:\projects\app`. It recognizes turns running in OpenCode's background service on every system.
+OpenCode Agent Plus recognizes the terminal interface when it runs in the conversation's folder and has the conversation open in one of its tabs. On Windows, OpenCode Agent Plus cannot read another process's folder. It recognizes the terminal interface only if you supplied the folder on the command line, as in `opencode C:\projects\app`. On Windows, macOS and Linux, OpenCode Agent Plus also detects turns running in OpenCode's background service.
 
 An envelope after the title marks an unread reply. A reply counts as read once OpenCode's terminal interface shows it. When you see a reply in VS Code, OpenCode Agent Plus records it as read in OpenCode so the terminal interface shows the same status.
 
@@ -206,13 +204,13 @@ An envelope after the title marks an unread reply. A reply counts as read once O
 
 Click a row to open the conversation in an editor tab. If it's already open in another VS Code window, clicking brings it to the front there. If it's open in the terminal interface or run by `opencode run`, you must close it there before opening it in VS Code. Hover over the row to see where to close it.
 
-To start a conversation, select the logo at the left of the New bar, pick OpenCode Agent Plus, then choose New in tab. The conversation opens in an editor tab. Recently closed, at the top of the list, shows conversations whose tabs you closed in this window. Use `Agent Plus: Reopen Closed Conversation` (Ctrl+Shift+T, or Cmd+Shift+T on macOS) to reopen the last one you closed.
+To start a conversation, click the logo on the left of the New bar, choose OpenCode Agent Plus from the menu, then click New in tab. The conversation opens in an editor tab. Recently closed, at the top of the list, shows conversations whose tabs you closed in this window. Use `Agent Plus: Reopen Closed Conversation` (Ctrl+Shift+T, or Cmd+Shift+T on macOS) to reopen the last one you closed.
 
 With OpenCode 2, hover over a conversation's row and click Rename, or right-click the row and choose Rename. To copy a whole conversation into a new tab, right-click its row and choose `Fork Conversation`, the last entry in the menu. See [Forking](#forking).
 
 ### Archiving and deleting conversations
 
-To move a conversation to the Archived section, hover over its row and click Archive or right-click the row and choose Archive; to move it back, click Unarchive on its row in the Archived section. Agent Plus keeps the list's archived mark. The first time the list shows a project's OpenCode conversations, Agent Plus marks any that OpenCode had already archived. It does this once per project.
+To move a conversation to the Archived section, hover over its row and click Archive or right-click the row and choose Archive; to move it back, click Unarchive on its row in the Archived section. Agent Plus records which conversations are archived in the list. The first time the list shows a project's OpenCode conversations, Agent Plus marks any that OpenCode had already archived.
 
 To delete a conversation, right-click its row in the Archived section and choose `Delete...` to open the confirmation prompt; this works only when no window or other process has the conversation open and nothing in it is running. Before you confirm, the prompt explains that deletion removes the conversation and its subagents' sessions from OpenCode's database. OpenCode Agent Plus also deletes the conversation's work plan and the folder it keeps for that conversation.
 
