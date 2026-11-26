@@ -59,14 +59,14 @@ async function run(t) {
   check(XDG.every((k, i) => hostEnv.xdg[i] === t.xdgEnv[k]), 'the extension host, and so every opencode it runs (--version too), has this run\'s four XDG folders', hostEnv.xdg);
 
   // D2. Agent Plus's session list says OpenCode was not found, and the notification offers the download.
-  const sl = await sessionList.missing({ page, call, ext, check, shot, until, sleep }, { hint: server.DOWNLOAD_HINT });
+  const sl = await sessionList.missing({ page, call, ext, check, shot, until, sleep });
   const offer = await until(async () => (await toasts()).find((x) => x.includes(OFFER)) || null, 30000);
   const button = page.locator('.notifications-toasts .notification-toast', { hasText: OFFER }).locator('.monaco-button', { hasText: 'Download OpenCode' }).first();
   const hasButton = await button.waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
   check(!!offer && hasButton, 'a notification offers to download OpenCode 2.4.1, with a Download OpenCode button', { offer, hasButton, toasts: await toasts() });
   await page.mouse.move(900, 500);
   await shot('d01-not-found', { features: ['OpenCode not found', 'download offer'],
-    expect: `The side bar shows Agent Plus's session list with a note above it, starting with the OpenCode mark: "OpenCode was not found. …" with Download OpenCode and Show Logs buttons. At the bottom right a notification says "${OFFER} (125 MB)? If you install OpenCode yourself, that one is used instead." with a "Download OpenCode" button. No conversation is open.` });
+    expect: `The side bar shows Agent Plus's session list with a note above it, starting with the OpenCode mark: "OpenCode was not found. Install OpenCode 2 with npm install -g @opencode/cli and reload the window, or download it with the button here." with Download OpenCode and Show Logs buttons. At the bottom right a notification says "${OFFER} (125 MB)? If you install OpenCode yourself, that one is used instead." with a "Download OpenCode" button. No conversation is open.` });
 
   // D3. The button downloads it from GitHub, with the percentage in a notification that can be cancelled.
   const seen = [];

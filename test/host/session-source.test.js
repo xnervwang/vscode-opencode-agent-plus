@@ -275,14 +275,14 @@ test('today starts at midnight in the user\'s time zone', () => {
   assert.equal(startOfDay(t, 'UTC'), Date.UTC(2026, 10, 26, 0, 0));
 });
 
-test('no OpenCode: no rows and a notice with a download button; another failure: the error and the logs; a good reading clears it', async () => {
+test('no OpenCode: no rows and a short note with a download button; another failure: the error and the logs; a good reading clears it', async () => {
   const listError = { current: Object.assign(new Error('OpenCode was not found. Install it with npm.'), { code: 'notFound' }) };
   const { source } = setup({ records: [rec('ses_a')], listError });
   let told = 0;
   source.onDidChangeSessionsNotice(() => told++);
   assert.equal(source.sessionsNotice(), null);
   assert.deepEqual(await source.listSessions({ folders: ['/w/p'] }), { sessions: [], cursor: null }, 'nothing to list is not a failed list');
-  assert.deepEqual(source.sessionsNotice(), { text: 'OpenCode was not found. Install it with npm.',
+  assert.deepEqual(source.sessionsNotice(), { text: 'OpenCode was not found. Install OpenCode 2 with `npm install -g @opencode/cli` and reload the window, or download it with the button here.',
     actions: [{ label: 'Download OpenCode', command: 'x.downloadOpenCode', arguments: [] }, { label: 'Show Logs', command: 'x.showLogs', arguments: [] }] });
   assert.equal(told, 1);
   listError.current = new Error('session.list was not JSON');
@@ -295,4 +295,6 @@ test('no OpenCode: no rows and a notice with a download button; another failure:
   const nowhere = setup({ listError: { current: Object.assign(new Error('OpenCode was not found.'), { code: 'notFound' }) }, canDownload: false }).source;
   await nowhere.listSessions({ folders: ['/w/p'] });
   assert.deepEqual(nowhere.sessionsNotice().actions.map((a) => a.label), ['Show Logs'], 'no download for a platform without a build');
+  assert.match(nowhere.sessionsNotice().text, /or set the path of the one you have in opencodeAgentPlus\.opencode\.path\.$/);
+  assert.ok(nowhere.sessionsNotice().text.length <= 300, 'the note fits the 300 characters the list gives it');
 });

@@ -107,9 +107,13 @@ function createSessionSource(deps) {
   function noteFailure(e) {
     const text = String((e && e.message) || e).replace(/\s+/g, ' ').trim();
     const logs = commands.logs ? [{ label: 'Show Logs', command: commands.logs, arguments: [] }] : [];
+    /* The note has room for 300 characters: the whole message, which says where else to look, is in the log. */
     if (e && e.code === 'notFound') {
-      const download = commands.download && deps.canDownload && deps.canDownload() ? [{ label: 'Download OpenCode', command: commands.download, arguments: [] }] : [];
-      setNotice({ text: text.slice(0, 300), actions: [...download, ...logs] });
+      const can = !!(commands.download && deps.canDownload && deps.canDownload());
+      const download = can ? [{ label: 'Download OpenCode', command: commands.download, arguments: [] }] : [];
+      setNotice({ text: `OpenCode was not found. Install OpenCode 2 with \`npm install -g @opencode/cli\` and reload the window, ${can
+        ? 'or download it with the button here.' : 'or set the path of the one you have in opencodeAgentPlus.opencode.path.'}`, actions: [...download, ...logs] });
+      log(text);
       return true;
     }
     setNotice({ text: `Couldn't list OpenCode's conversations: ${text}`.slice(0, 300), actions: logs });

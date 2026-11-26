@@ -377,17 +377,17 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
 }
 
 /* With no OpenCode to find: the note above the list says so, with a button to download it. */
-async function missing(ctx, { hint }) {
+async function missing(ctx) {
   const { check, shot } = ctx;
   const h = create(ctx);
   await h.show();
   if (!h.sl) { check(false, "Agent Plus's session list opens"); return null; }
   const notes = await ctx.until(async () => { const n = await h.notice(); return n.find((x) => /OpenCode was not found/.test(x.text)) || null; }, 30000);
-  check(!!notes && notes.text.includes(hint) && notes.buttons.includes('Download OpenCode') && notes.buttons.includes('Show Logs'),
+  check(!!notes && /reload the window, or download it with the button here\.$/.test(notes.text) && notes.buttons.includes('Download OpenCode') && notes.buttons.includes('Show Logs'),
     'the session list says above its rows that OpenCode was not found, with Download OpenCode and Show Logs buttons', notes || await h.notice());
   await h.away();
   await shot('02-sessions-no-opencode', { features: ['session list notice'],
-    expect: 'Agent Plus\'s session list with a note above its rows, starting with the OpenCode mark: "OpenCode was not found. Install OpenCode 2 with …", with Download OpenCode and Show Logs buttons; no OpenCode conversation rows.',
+    expect: 'Agent Plus\'s session list with a note above its rows, starting with the OpenCode mark: "OpenCode was not found. Install OpenCode 2 with npm install -g @opencode/cli and reload the window, or download it with the button here.", whole and not cut off, with Download OpenCode and Show Logs buttons; no OpenCode conversation rows.',
     part: SIDEBAR });
   return h;
 }
