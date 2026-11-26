@@ -586,7 +586,7 @@ async function main() {
       await call('await vscode.workspace.getConfiguration().update("workbench.colorTheme", arg, vscode.ConfigurationTarget.Global); return true;', theme);
       return until(() => page.evaluate((c) => document.querySelector('.monaco-workbench').classList.contains(c), cls), 20000);
     };
-    /* The chat tabs open, as opencodeagentplus-session:/<id>, and one of them brought to the front. */
+    /* Lists the open chat tabs as opencodeagentplus-session:/<id>, and brings one of them to the front. */
     const chatUris = () => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat").map((t) => "opencodeagentplus-session:/" + t.input.uri.path.split("/")[1]);`);
     const front = (uri) => call(`const t = vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && "opencodeagentplus-session:/" + x.input.uri.path.split("/")[1] === arg);
       await vscode.commands.executeCommand("vscode.openWith", t.input.uri, "opencodeAgentPlus.chat", { viewColumn: t.group.viewColumn, preview: false });

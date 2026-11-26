@@ -45,7 +45,7 @@ const context = {
 const OFFER = 'OpenCode was not found. Download OpenCode 2.4.1 from GitHub (';
 
 let api;
-test('no OpenCode: the list says how to get one, with a button, and the download is offered once', async () => {
+test('no OpenCode: the list\'s note says how to install it and has a download button, and the download is offered once', async () => {
   control.state.answers.push([OFFER, undefined]);
   api = extension.activate(context);
   await api.test.registered;

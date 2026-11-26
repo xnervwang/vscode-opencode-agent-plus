@@ -31,7 +31,7 @@ test('the vscode workflow builds the pinned Agent Plus and installs the pinned t
   assert.match(VSCODE, /workflow_call:\n\s+inputs:\n\s+upstream:/);
 });
 
-test('run by hand, the vscode workflow can run each system more than once', () => {
+test('dispatched by hand, the vscode workflow can repeat the run on each system', () => {
   assert.match(VSCODE, /times:\n[\s\S]*?options: \['1', '2', '3', '5'\]/);
   assert.match(VSCODE, /round: \$\{\{ fromJSON\(/);
   assert.match(VSCODE, /name: vscode-\$\{\{ runner\.os \}\}\$\{\{ matrix\.round > 1 && format\('-\{0\}', matrix\.round\) \|\| '' \}\}/);

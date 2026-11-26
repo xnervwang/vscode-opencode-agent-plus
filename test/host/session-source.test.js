@@ -226,7 +226,7 @@ test('actions: what the source can do, and each one carried out or refused with 
   assert.match((await old.runSessionAction('rename', ['ses_a'], { title: 'x' })).results[0].reason, /OpenCode 2/);
 });
 
-test('a turn running elsewhere stops a delete, and the core is told nothing it cannot use', async () => {
+test('a turn running elsewhere stops a delete with a reason, and nothing is removed', async () => {
   const { source, calls } = setup({ records: [rec('ses_r', { busy: true })], active: ['ses_r'] });
   const r = (await source.runSessionAction('delete', ['ses_r'], {})).results[0];
   assert.equal(r.outcome, 'refused');

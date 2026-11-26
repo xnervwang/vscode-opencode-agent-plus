@@ -49,8 +49,8 @@ class ChatEditorProvider {
     const subs = [];
     subs.push(panel.onDidDispose(() => { gone = true; }));
     if (!id) { panel.webview.html = page('This tab has no valid conversation id.'); return; }
-    /* The title goes on the tab before the conversation opens, and stays when it cannot (another window has it, or
-       opening failed): VS Code saves a tab's title for the next window, and without one it names the tab after its
+    /* The title goes on the tab before the conversation opens, and stays there when the conversation cannot open
+       (another window has it, or opening failed): VS Code saves a tab's title for the next window, and without one it names the tab after its
        resource. */
     let known = '';
     try { known = (this.deps.titleOf && this.deps.titleOf(id)) || ''; } catch (_) { known = ''; }

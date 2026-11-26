@@ -40,7 +40,7 @@ test('a run with an option of its own is a single step, and a pattern naming ano
   assert.strictEqual(chosen('', 'restricted'), null);
 });
 
-test('a pattern that matches no step, or is not a regular expression, is refused', () => {
+test('a pattern that is not a regular expression, or that matches no step, throws', () => {
   assert.throws(() => chosen('no-such-step'), /matches none of the steps/);
   assert.throws(() => chosen('('), /is not a regular expression/);
 });

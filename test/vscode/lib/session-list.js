@@ -283,7 +283,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
       /* A click opens the submenu, beside the menu or, in a narrow side bar, in its place. */
       await h.item('Add to Group').click();
       await h.item('OpenCode work', true).click();
-      check(!!await h.wait((r) => h.find(r, blue, group)), 'Add to Group puts an OpenCode conversation in a group');
+      check(!!await h.wait((r) => h.find(r, blue, group)), 'an OpenCode conversation can be added to a group');
       await h.away();
       await shot('06f-sessions-group', { features: ['groups'],
         expect: `Sections in this order: OPENCODE WORK (a folder icon, count 1) holding "${T.blue}", then UNGROUPED with the other OpenCode conversations, then ARCHIVED; each section header is a band with a line above and below.`,

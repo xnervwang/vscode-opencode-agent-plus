@@ -88,7 +88,7 @@ test('a listener added before the module loads gets its session changes once it 
   b.onDidChangeSessions((id) => heard.push(id));
   assert.strictEqual(emit, null, 'nothing loaded yet');
   await b.listSessions();
-  assert.ok(emit, 'subscribed as the module loaded');
+  assert.ok(emit, 'the backend subscribes when the module loads');
   emit('ses_x');
   assert.deepStrictEqual(heard, ['ses_x']);
   b.listen();

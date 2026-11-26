@@ -140,7 +140,7 @@ test('a change during a read of the backend\'s sessions starts another read afte
     return [{ id: 'ses_own1', title: 'Own one', cwd: '/w', lastActiveAt: 5 }, { id: 'ses_fork1', title: 'Own one (fork)', cwd: '/w', lastActiveAt: 6 }]; } } });
   l.attach(null);
   await settle(5);
-  assert.strictEqual(calls, 1, 'the first reading has begun');
+  assert.strictEqual(calls, 1, 'the first read has started');
   l.refresh();
   await settle(5);
   assert.strictEqual(calls, 1, 'not read twice at once');

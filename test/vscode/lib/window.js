@@ -121,8 +121,8 @@ async function frameWith(page, selector, ms = 30000) {
   }, ms, 300);
 }
 
-/* The chat page's model picker in frame `f`, read from the page: its two actions and each group's model ids. The
-   list is drawn whether or not the picker is open. */
+/* Reads the model picker of the chat page in frame `f`: its two actions and the model ids of each group. The list
+   is drawn whether or not the picker is open. */
 function modelChoices(f) {
   return f.evaluate(() => ({
     actions: [...document.querySelectorAll('#modelMenu .model-action')].map((r) => [r.dataset.action, r.querySelector('.menu-name').textContent]),

@@ -216,7 +216,7 @@ function createSessionSource(deps) {
   const platform = deps.platform || process.platform;
   const same = (a, b) => within(a, b, platform) && within(b, a, platform);
 
-  /* The folders to list: the window's, and the linked worktrees of their repositories that are not among them. */
+  /* The window's folders, plus the linked worktrees of their repositories that are not already among them. */
   async function scope(folders) {
     let trees = [];
     if (deps.git) {

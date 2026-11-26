@@ -204,7 +204,7 @@ function createSessionIndex(deps) {
       else await fromPrivate([['sessionID', id]], { operation: 'session.view', data: { idle } });
       cache = null;
     },
-    /* OpenCode's statistics of every session's activity from `from` to `to` (epoch milliseconds): cost, tokens. */
+    /* OpenCode's cost and token totals for all sessions from `from` to `to` (epoch milliseconds). */
     async stats(from, to, timeZone) {
       const own = await store();
       if (own) return own.stats(from, to, timeZone);

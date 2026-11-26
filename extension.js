@@ -639,10 +639,10 @@ function start(context, log, gate, channel) {
   /*
    * Until its page loads, VS Code names a chat tab restored after a reload by the last part of its resource, so the
    * resource carries the title (agentplus-source uriOf). A conversation's title comes after its tab opened (OpenCode
-   * names a new one after its first reply) or changes (a rename), so the tab is opened again under its title: beside
-   * itself, where the old one closes, and only while it is in front and the conversation idle, which a page reload
-   * then disturbs least. The draft in its box goes along; the conversation stays open throughout. The window tests
-   * turn it on only where they check it, since it replaces the page the other steps hold.
+   * names a new one after its first reply) or changes when it is renamed, so the tab is opened again under its title:
+   * beside itself, where the old one closes, and only while it is in front and the conversation idle, which a page
+   * reload then disturbs least. The draft in its box goes along; the conversation stays open throughout. The window
+   * tests turn it on only where they check it, since it replaces the page the other steps hold.
    */
   let retitling = !process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL;
   let loadingTabs = false;
@@ -980,8 +980,8 @@ function start(context, log, gate, channel) {
   let stateSoon = null;
   const stateChanged = () => { if (!stateSoon) stateSoon = setTimeout(() => { stateSoon = null; windows.write(); }, 250); };
   subs.push(manager.onDidChange(stateChanged), { dispose: () => { clearTimeout(stateSoon); windows.dispose(); } });
-  /* The conversations this window shows, in the window entry Agent Plus reads to tell what another window has open
-     (src/shared/window-entries.js), written when they change and every half minute besides. */
+  /* The window entry Agent Plus reads to see what other windows have open (src/shared/window-entries.js): this
+     window's open conversations, written when they change and every half minute. */
   const writeEntry = windowEntries.publisher(workplan.planDir(), () => ({ name: vscode.workspace.name || '',
     folders: (vscode.workspace.workspaceFolders || []).map((f) => f.uri.fsPath), sessions: manager.ids().filter((id) => manager.panelOf(id)) }), { log });
   const entryTimer = setInterval(() => writeEntry(), 30000);
