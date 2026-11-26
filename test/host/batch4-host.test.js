@@ -235,3 +235,21 @@ test('the pick matches on the id and the folder, and opens the one picked; closi
   assert.equal(await none, '');
   assert.deepEqual(opened, ['c']);
 });
+
+test('a change while the backend\'s sessions are read is read again once that reading ends', async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let calls = 0;
+  const { l } = make({ deps: { own: async () => { calls++; if (calls === 1) { await gate; return [{ id: 'ses_own1', title: 'Own one', cwd: '/w', lastActiveAt: 5 }]; }
+    return [{ id: 'ses_own1', title: 'Own one', cwd: '/w', lastActiveAt: 5 }, { id: 'ses_fork1', title: 'Own one (fork)', cwd: '/w', lastActiveAt: 6 }]; } } });
+  l.attach(null);
+  await settle(5);
+  assert.strictEqual(calls, 1, 'the first reading has begun');
+  l.refresh();
+  await settle(5);
+  assert.strictEqual(calls, 1, 'not read twice at once');
+  release();
+  await settle(30);
+  assert.strictEqual(calls, 2, 'read again after');
+  assert.deepStrictEqual(l.list().map((c) => c.sessionId).sort(), ['ses_fork1', 'ses_own1']);
+});

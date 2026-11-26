@@ -67,7 +67,7 @@ function createConversationLinks(deps) {
   const enabled = () => { try { return deps.on() !== false; } catch (_) { return false; } };
   const active = () => { try { return deps.active() === true; } catch (_) { return false; } };
   const listeners = new Set();
-  let core = null, sub = null, coreList = [], ownList = [], ownRead = false, reading = null;
+  let core = null, sub = null, coreList = [], ownList = [], ownRead = false, reading = null, again = false;
   let list = [], key = '', rev = 0, closed = false, wasOn = null;
 
   const fire = () => { for (const fn of [...listeners]) { try { fn(); } catch (e) { log(`conversation links: ${(e && e.message) || e}`); } } };
@@ -85,12 +85,18 @@ function createConversationLinks(deps) {
     coreList = Array.isArray(got) ? got.slice() : [];
     recompute();
   };
+  /* A change that comes while the sessions are being read may be missing from that reading: it is read again after. */
   const readOwn = () => {
-    if (reading) return reading;
+    if (reading) { again = true; return reading; }
     ownRead = true;
     reading = Promise.resolve().then(() => deps.own()).then((rows) => { ownList = ownEntries(rows); },
       (e) => log(`conversation links: listing the backend's sessions failed: ${(e && e.message) || e}`))
-      .then(() => { reading = null; if (!closed) recompute(); });
+      .then(() => {
+        reading = null;
+        if (closed) return;
+        recompute();
+        if (again) { again = false; readOwn(); }
+      });
     return reading;
   };
   const unhook = () => { if (sub) { try { sub.dispose(); } catch (_) { /* gone */ } sub = null; } };
