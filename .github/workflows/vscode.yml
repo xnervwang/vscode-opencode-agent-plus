@@ -5,14 +5,29 @@
 # Runs the window tests of test/vscode/run.js on Linux, macOS and Windows, with test/vscode/fake-backend.js in place of
 # OpenCode. Each system downloads the VS Code version set in run.js, installs this extension and Agent Plus, which it
 # depends on, from .vsix files built once on Linux, and runs the tests once as usual and once in Restricted Mode. Runs
-# against a real model need credentials and stay on a developer's machine.
+# against a real model need credentials and stay on a developer's machine. The results folder of each system is kept
+# whether the run passed or not: the screenshots of every step, VS Code's logs, and for each check that failed what the
+# window held then (its failures/ folder).
 name: vscode
 
 on:
   push:
     branches: [main]
   pull_request:
+  # By hand: one system or all three, and with `steps` only the window test steps whose names match that regular
+  # expression, with the steps they rely on (test/vscode/lib/steps.js). Used to try a fix of one failure on the system it
+  # failed on, from a branch.
   workflow_dispatch:
+    inputs:
+      os:
+        description: The system to run on
+        type: choice
+        options: [all, ubuntu-latest, macos-latest, windows-latest]
+        default: all
+      steps:
+        description: A regular expression of window test step names to run; empty runs them all
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -50,9 +65,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON(inputs.os && inputs.os != 'all' && format('["{0}"]', inputs.os) || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
+    env:
+      OPENCODE_AGENT_PLUS_UI_STEPS: ${{ inputs.steps }}
     steps:
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
