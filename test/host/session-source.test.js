@@ -282,7 +282,7 @@ test('no OpenCode: no rows and a short note with a download button; another fail
   source.onDidChangeSessionsNotice(() => told++);
   assert.equal(source.sessionsNotice(), null);
   assert.deepEqual(await source.listSessions({ folders: ['/w/p'] }), { sessions: [], cursor: null }, 'nothing to list is not a failed list');
-  assert.deepEqual(source.sessionsNotice(), { text: 'OpenCode was not found. Install OpenCode 2 with `npm install -g @opencode/cli` and reload the window, or download it with the button here.',
+  assert.deepEqual(source.sessionsNotice(), { text: 'OpenCode was not found. Install OpenCode 2 with npm install -g @opencode/cli and reload the window, or download it with the button here.',
     actions: [{ label: 'Download OpenCode', command: 'x.downloadOpenCode', arguments: [] }, { label: 'Show Logs', command: 'x.showLogs', arguments: [] }] });
   assert.equal(told, 1);
   listError.current = new Error('session.list was not JSON');

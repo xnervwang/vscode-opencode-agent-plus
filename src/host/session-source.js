@@ -111,7 +111,8 @@ function createSessionSource(deps) {
     if (e && e.code === 'notFound') {
       const can = !!(commands.download && deps.canDownload && deps.canDownload());
       const download = can ? [{ label: 'Download OpenCode', command: commands.download, arguments: [] }] : [];
-      setNotice({ text: `OpenCode was not found. Install OpenCode 2 with \`npm install -g @opencode/cli\` and reload the window, ${can
+      /* The list draws the note as plain text. */
+      setNotice({ text: `OpenCode was not found. Install OpenCode 2 with npm install -g @opencode/cli and reload the window, ${can
         ? 'or download it with the button here.' : 'or set the path of the one you have in opencodeAgentPlus.opencode.path.'}`, actions: [...download, ...logs] });
       log(text);
       return true;
