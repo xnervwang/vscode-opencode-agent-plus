@@ -225,7 +225,7 @@ test('2.x: mode and effort come from configOptions; setting one keeps the value 
   assert.equal(start.effort, 'low', 'the turn says which effort it ran with');
   const view = vm.reduceAll(events, vm.initialState(), 1);
   const figures = view.items.find((it) => it.kind === 'figures');
-  assert.match(figures.text, /grok-4\.7 low$/);
+  assert.match(figures.text, /grok-4\.7 \(US\) low$/);
 });
 
 test('2.x: a setting changed while a turn runs is sent before the next message', async (t) => {
@@ -264,7 +264,7 @@ test('2.x: an effort picked just before a message applies to that turn, though O
   assert.deepEqual(sets, [['model', GROK], ['effort', 'low']], 'sent once');
   assert.ok(methods.lastIndexOf('session/set_config_option') < methods.indexOf('session/prompt'), 'set before the message went');
   const figures = vm.reduceAll(events, vm.initialState(), 1).items.find((it) => it.kind === 'figures');
-  assert.match(figures.text, /grok-4\.7 low$/);
+  assert.match(figures.text, /grok-4\.7 \(US\) low$/);
 });
 
 test('2.x: two settings picked at once are each sent once, in the order picked', async (t) => {

@@ -76,7 +76,7 @@ If you switch to a model that does not support your chosen effort, it uses its d
 
 ### Reply Figures
 
-The last row of text in each reply starts with the time it arrived, followed by figures such as `2m10s · ctx 33% · $0.42 · grok-4.7 low`. If the turn ends with something other than text, the figures appear on their own line. The duration, model and effort are for that reply. The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the figures to see the same values with labels.
+The last row of text in each reply starts with the time it arrived, followed by figures such as `2m10s · ctx 33% · $0.42 · grok-4.7 (US) low`. If the turn ends with something other than text, the figures appear on their own line. The duration, model and effort are for that reply. A Bedrock model's name ends with the geography of its ID, such as (US) or (India), as in the model list. The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the figures to see the same values with labels.
 
 ## Context, Compaction and Retries
 

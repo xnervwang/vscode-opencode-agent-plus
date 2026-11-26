@@ -103,9 +103,9 @@ test('the figures under a reply name the effort after the model; the default eff
     { type: 'turnEnd', turnId: 't2', reason: 'endTurn', at: 6000 },
   ], s, 5);
   const figures = s.items.filter((it) => it.kind === 'figures');
-  assert.equal(figures[0].text, '2s · grok-4.7 high');
+  assert.equal(figures[0].text, '2s · grok-4.7 (US) high');
   assert.equal(figures[0].effort, 'high');
-  assert.equal(figures[1].text, '2s · grok-4.7');
+  assert.equal(figures[1].text, '2s · grok-4.7 (US)');
 });
 
 test('a turn the agent began itself is announced; a retry shows until its attempt starts', () => {

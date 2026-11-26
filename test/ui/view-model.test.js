@@ -167,8 +167,8 @@ test('reply figures: duration, context share, cost so far and model', () => {
   assert.equal(f.durationMs, 130000);
   assert.equal(f.contextPct, 33);
   assert.ok(Math.abs(f.costUsd - 0.42) < 1e-9);
-  assert.equal(f.model, 'grok-4.7');
-  assert.equal(f.text, '2m10s · ctx 33% · $0.42 · grok-4.7');
+  assert.equal(f.model, 'grok-4.7 (US)');
+  assert.equal(f.text, '2m10s · ctx 33% · $0.42 · grok-4.7 (US)');
 
   const s2 = vm.reduceAll([
     { type: 'turnStart', turnId: 't2', at: T0 + 200000 },
@@ -178,7 +178,7 @@ test('reply figures: duration, context share, cost so far and model', () => {
   const f2 = s2.items[s2.items.length - 1];
   assert.ok(Math.abs(f2.turnCostUsd - 0.08) < 1e-9, 'the turn cost is its own');
   assert.ok(Math.abs(f2.costUsd - 0.5) < 1e-9, 'the shown cost is the conversation so far');
-  assert.equal(f2.text, '5s · ctx 35% · $0.50 · grok-4.7');
+  assert.equal(f2.text, '5s · ctx 35% · $0.50 · grok-4.7 (US)');
 });
 
 test('figures leave out what is unknown: no price, no context window', () => {
@@ -220,7 +220,7 @@ test('head reports the context ring and the title', () => {
   assert.equal(h.contextPct, 86);
   assert.equal(h.contextText, '172.0k of 200.0k tokens');
   assert.equal(h.costText, '$1.50');
-  assert.equal(h.model.short, 'grok-4.7');
+  assert.equal(h.model.short, 'grok-4.7 (US)');
   assert.equal(h.turnStartedAt, T0);
 });
 
@@ -261,9 +261,9 @@ test('a saved session is restored with its turns, tool cards and figures', () =>
   assert.equal(tool.summary, 'a.js');
   const f1 = s.items[5];
   assert.equal(f1.durationMs, 8000, 'a restored turn ends at its last record');
-  assert.equal(f1.model, 'grok-4.7');
+  assert.equal(f1.model, 'grok-4.7 (US)');
   assert.equal(f1.contextUsed, 9500);
-  assert.equal(f1.text, '8s · ctx 5% · $0.03 · grok-4.7');
+  assert.equal(f1.text, '8s · ctx 5% · $0.03 · grok-4.7 (US)');
   assert.equal(s.items[6].text, 'thanks\n[1 image]');
   assert.equal(s.items[8].model, 'v3.2', 'the model record changes the model of later turns');
   assert.equal(s.items[8].durationMs, 2000);
@@ -283,8 +283,11 @@ test('formatting helpers', () => {
   assert.equal(vm.fmtDuration(3723000), '1h02m');
   assert.equal(vm.fmtCost(0.004), '$0.004');
   assert.equal(vm.fmtCost(12.345), '$12.35');
-  assert.equal(vm.shortModel('us.xai.grok-4.7'), 'grok-4.7');
-  assert.equal(vm.shortModel('global.anthropic.claude-opus-5-5-v1:0'), 'claude-opus-5-5');
+  assert.equal(vm.shortModel('us.xai.grok-4.7'), 'grok-4.7 (US)');
+  assert.equal(vm.shortModel('global.anthropic.claude-opus-5-5-v1:0'), 'claude-opus-5-5 (Global)');
+  assert.equal(vm.shortModel('amazon-bedrock/in.openai.gpt-5.6-luna'), 'gpt-5.6-luna (India)');
+  assert.equal(vm.shortModel('us-gov.anthropic.claude-sonnet-5'), 'claude-sonnet-5 (GovCloud)');
+  assert.equal(vm.shortModel('openai.gpt-5.6-luna'), 'gpt-5.6-luna');
   assert.equal(vm.shortModel('qwen.qwen3-coder-30b-a3b-v1:0'), 'qwen3-coder-30b-a3b');
   assert.equal(vm.shortModel('openai.gpt-oss-120b-1:0'), 'gpt-oss-120b');
   assert.equal(vm.shortModel('moonshotai.kimi-k2.5'), 'kimi-k2.5');
@@ -355,11 +358,11 @@ test('short model names for OpenCode and Bedrock ids', () => {
     s = vm.reduce(s, { type: 'turnEnd', turnId: 't', reason: 'endTurn', at: 2 }, 2);
     return s.items.find((i) => i.kind === 'figures').model;
   };
-  assert.equal(short('amazon-bedrock/us.xai.grok-4.7'), 'grok-4.7');
+  assert.equal(short('amazon-bedrock/us.xai.grok-4.7'), 'grok-4.7 (US)');
   assert.equal(short('openai/gpt-5.1'), 'gpt-5.1');
   assert.equal(short('anthropic/claude-sonnet-4-5'), 'claude-sonnet-4-5');
   assert.equal(short('amazon-bedrock/deepseek.v3.2'), 'v3.2');
-  assert.equal(short('us.anthropic.claude-haiku-4-5-20251001-v1:0'), 'claude-haiku-4-5-20251001');
+  assert.equal(short('us.anthropic.claude-haiku-4-5-20251001-v1:0'), 'claude-haiku-4-5-20251001 (US)');
 });
 
 test('a usage event that carries the context window gives the share from the first turn', () => {

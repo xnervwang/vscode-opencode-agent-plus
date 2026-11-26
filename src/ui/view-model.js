@@ -35,7 +35,9 @@ const CHILD_TEXT = 4000;
 /* Shown on a turn OpenCode starts by itself: after a background task finishes, or when a background subagent asks for
    permission. */
 const UNSOLICITED_NOTE = 'OpenCode started this turn on its own, for a background subagent or command.';
-const REGION_PREFIX = /^(us|eu|apac|ap|ca|jp|au|us-gov|global)\./;
+/* The geographies of Bedrock's cross-Region model ids, named as OpenCode's model list names them. */
+const REGIONS = { us: 'US', eu: 'EU', apac: 'APAC', jp: 'JP', au: 'AU', in: 'India', ca: 'Canada', 'us-gov': 'GovCloud', global: 'Global' };
+const REGION_PREFIX = /^(us-gov|us|eu|apac|jp|au|in|ca|global)\./;
 
 function initialState() {
   return {
@@ -85,14 +87,18 @@ function fmtTokens(n) {
   return String(Math.round(n));
 }
 
-/* `amazon-bedrock/us.xai.grok-4.7` -> `grok-4.7`, `qwen.qwen3-coder-30b-a3b-v1:0` -> `qwen3-coder-30b-a3b`: OpenCode's
-   provider part, a Bedrock region, a vendor prefix and a version suffix go. A vendor prefix has only letters and
-   hyphens, so the dot in `gpt-5.1` stays. */
+/* `amazon-bedrock/us.xai.grok-4.7` -> `grok-4.7 (US)`, `qwen.qwen3-coder-30b-a3b-v1:0` -> `qwen3-coder-30b-a3b`:
+   OpenCode's provider part, a vendor prefix and a version suffix go, and a Bedrock geography moves to the end, since
+   the same model under another geography may not be callable from the Region OpenCode uses. A vendor prefix has only
+   letters and hyphens, so the dot in `gpt-5.1` stays. */
 function shortModel(id) {
   if (!id) return '';
   let s = String(id);
-  s = s.slice(s.lastIndexOf('/') + 1).replace(REGION_PREFIX, '').replace(/^[a-z][a-z-]*\./, '');
-  return s.replace(/-v\d+(:\d+)?$/, '').replace(/-\d+:\d+$/, '').replace(/:\d+$/, '');
+  s = s.slice(s.lastIndexOf('/') + 1);
+  const region = REGION_PREFIX.exec(s);
+  s = s.replace(REGION_PREFIX, '').replace(/^[a-z][a-z-]*\./, '');
+  s = s.replace(/-v\d+(:\d+)?$/, '').replace(/-\d+:\d+$/, '').replace(/:\d+$/, '');
+  return region ? `${s} (${REGIONS[region[1]]})` : s;
 }
 
 function contextPct(used, window) {
