@@ -35,8 +35,9 @@ function processAlive(pid) {
 /* Whether `dir` is `folder` or below it. Windows paths compare without case. */
 function within(dir, folder, platform = process.platform) {
   if (!dir || !folder) return false;
+  const P = platform === 'win32' ? path.win32 : path.posix;
   const norm = (p) => {
-    let s = path.normalize(String(p)).replace(/[\\/]+$/, '');
+    let s = P.normalize(String(p)).replace(/[\\/]+$/, '');
     if (platform === 'win32') s = s.replace(/\//g, '\\').toLowerCase();
     return s;
   };

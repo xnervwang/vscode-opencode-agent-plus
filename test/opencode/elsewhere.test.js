@@ -45,7 +45,9 @@ function fakeProc(t, procs) {
   return root;
 }
 
-test('Linux: the OpenCode processes, with their folder, terminal and start time, from /proc', (t) => {
+const LINUX_ONLY = { skip: process.platform === 'win32' && 'a fake /proc needs POSIX symbolic links; the reader runs on Linux only' };
+
+test('Linux: the OpenCode processes, with their folder, terminal and start time, from /proc', LINUX_ONLY, (t) => {
   const proc = fakeProc(t, [
     { pid: 10, argv: ['/opt/opencode', 'run', 'hi'], cwd: '/w/p', tty: 'pts/3', ticks: 250 },
     { pid: 11, argv: ['/usr/bin/bash'], cwd: '/w' },
@@ -104,7 +106,7 @@ function setup(t, { procs = [], tabs = {}, active = [], ours = [] } = {}) {
 
 const rec = (id, cwd, createdAt, extra = {}) => ({ id, cwd, createdAt, parentId: '', ...extra });
 
-test('a tab of a terminal interface that runs in its folder is open there, idle or in a turn; a tab left by one that exited is not', async (t) => {
+test('a tab of a terminal interface that runs in its folder is open there, idle or in a turn; a tab left by one that exited is not', LINUX_ONLY, async (t) => {
   const { e } = setup(t, { procs: [{ pid: 20, argv: ['/opt/opencode'], cwd: '/w/p', tty: 'pts/10', ticks: 100 }], tabs: { '/w/p': ['ses_a'], '/w/q': ['ses_q'] }, active: ['ses_a'] });
   const reading = await e.scan();
   const places = e.placesOf(rec('ses_a', '/w/p', 1), reading);
@@ -122,7 +124,7 @@ test('a turn in the background service with no terminal interface showing it is 
   assert.deepEqual(places.map((p) => [p.kind, p.running]), [['other', true]]);
 });
 
-test('a session created in its folder just after an opencode run started is that run\'s, and stays background after it ends', async (t) => {
+test('a session created in its folder just after an opencode run started is that run\'s, and stays background after it ends', LINUX_ONLY, async (t) => {
   const start = 1700000000000 + 5000;
   const { e, memory } = setup(t, { procs: [{ pid: 30, argv: ['/opt/opencode', 'run', 'go'], cwd: '/w/p', ticks: 500 }], ours: ['ses_ours'] });
   const reading = await e.scan();
@@ -139,7 +141,7 @@ test('a session created in its folder just after an opencode run started is that
   assert.deepEqual(later.placesOf(records[2], await later.scan()), [], 'nothing left running once the run is gone');
 });
 
-test('an opencode run that continues a session (-s, -c) marks nothing; one with --fork marks the copy it makes', async (t) => {
+test('an opencode run that continues a session (-s, -c) marks nothing; one with --fork marks the copy it makes', LINUX_ONLY, async (t) => {
   const start = 1700000000000 + 5000;
   const records = [rec('ses_new', '/w/p', start + 500)];
   const cont = setup(t, { procs: [{ pid: 31, argv: ['/opt/opencode', 'run', '-s', 'ses_old', 'more'], cwd: '/w/p', ticks: 500 }] });
