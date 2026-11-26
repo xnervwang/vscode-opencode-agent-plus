@@ -1187,11 +1187,11 @@ async function main() {
           const beforeAsk = await figures();
           await chat.fill('#input', askText);
           await chat.press('#input', 'Enter');
-          /* Sent before waitTurn, which answers the request the moment it sees it. */
+          /* Sent before waitTurn, which answers the request the moment it sees it. A model may think for minutes first. */
           const asked = await until(async () => {
             for (const b of await chat.$$('button[data-decision="allowOnce"]')) if (await b.isVisible()) return true;
             return null;
-          }, 120000, 200);
+          }, 300000, 200);
           if (asked) refused = await ext('return api.test.source.deliverAnswer(arg, "a message from the steward", { deliveryId: "window-test-1" });', sessionId);
           await waitTurn(beforeAsk, '14');
           check(!!refused && refused.outcome === 'notReceived' && /^\S+ is waiting for approval in its window$/.test(refused.reason || ''),
