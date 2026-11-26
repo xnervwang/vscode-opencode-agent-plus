@@ -4,8 +4,7 @@
 
 'use strict';
 /*
- * Agent Plus's prefill: the text put after what the message box holds, the chat panel's round trip with its page, and
- * the source's answers, which come within ten seconds and are never a rejection.
+ * Agent Plus's prefill: where the text goes in the message box, and the source's answers.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -27,7 +26,7 @@ function source(more = {}) {
   return ap.createAgentPlusSource({ manager, planDir: () => '/p', reveal: async () => true, openHere: async () => true, trusted: () => true, ...more }).source;
 }
 
-test('the text goes in after what the box holds, a space between unless that ends in white space', () => {
+test('the text goes after what the box holds, with a space between unless the box\'s text ends in white space', () => {
   const t = 'About row 3 (Write the docs): ';
   assert.equal(C.prefillText('', t), t);
   assert.equal(C.prefillText('see also', t), `see also ${t}`);
@@ -91,7 +90,7 @@ test('the chat panel hands the text to its page, waiting for it to load, and res
   chat.dispose();
 });
 
-test('with no answer from its page the chat panel resolves with null, and closing it settles what waits', async () => {
+test('with no answer from its page the chat panel resolves with null, and closing it resolves the prefills still waiting with false', async () => {
   const { fakePanel, chat } = panel();
   fakePanel.fromPage({ type: 'ready' });
   assert.equal(await chat.prefill('x', 30), null);

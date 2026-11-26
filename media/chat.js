@@ -2069,7 +2069,6 @@
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
     } else if (m.type === 'prefill') {
-      /* Agent Plus's prefill: the text goes in for the user to go on writing, and nothing is sent. */
       const want = C.prefillText(input.value, typeof m.text === 'string' ? m.text : '');
       input.value = want;
       autosize();

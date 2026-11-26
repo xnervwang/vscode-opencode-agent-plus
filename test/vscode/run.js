@@ -42,8 +42,8 @@
  * --steward runs test/vscode/lib/steward.js instead, with the real backend and OpenCode 2: a stand-in for Claude Code Plus's
  * source names two stewards for the conversation, the model hands messages to the one each turn calls for, and then the
  * stand-in names none.
- * --title-order runs test/vscode/lib/title-order.js instead, with the fake backend and Claude Code and Codex installed
- * from the Marketplace (or from the .vsix files given): their editor title buttons and this extension's sit together.
+ * --title-order runs test/vscode/lib/title-order.js instead, on the fake backend, with Claude Code and Codex installed;
+ * it checks where their editor title buttons and this extension's land.
  * --download runs test/vscode/lib/download.js instead, with the real backend and no OpenCode to find (no --opencode, no
  * setting, PATH without a folder holding one): the notification's button downloads OpenCode from GitHub.
  * Exits non-zero if a check fails. Needs playwright-core (found through --deps or NODE_PATH). --fonts gives VS Code a

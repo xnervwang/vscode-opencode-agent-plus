@@ -4,9 +4,8 @@
 
 'use strict';
 /*
- * The model lists: each provider's models under its name, OpenCode's own free models left out by
- * opencodeAgentPlus.openCodeModels (auto once another provider is listed, hide always), and with hide OpenCode told
- * to leave its own provider out.
+ * The model lists: each provider's models under its name, and OpenCode's own free models left out by
+ * opencodeAgentPlus.openCodeModels.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -37,7 +36,7 @@ test('show lists them always, hide never, and the model in use stays listed', ()
   assert.deepEqual(ids(visibleModels([...FREE, ...BEDROCK], 'auto', 'opencode/qwen4-max-free')), ['opencode/qwen4-max-free', ...ids(BEDROCK)]);
 });
 
-test('each model is listed under its provider\'s name, OpenCode\'s own under where they run', () => {
+test('each model is listed under its provider\'s name, OpenCode\'s own under a heading that says they run on opencode.ai', () => {
   assert.equal(groupOf(BEDROCK[0]), 'Amazon Bedrock');
   assert.equal(groupOf(FREE[0]), "OpenCode's free models (opencode.ai)");
   assert.equal(groupOf({ id: 'x/y', providerId: 'x' }), 'x');
@@ -59,7 +58,7 @@ test('the command palette\'s model list has a heading for each provider and leav
     ["OpenCode's free models (opencode.ai)", 'Amazon Bedrock']);
 });
 
-test('hide has OpenCode leave out its own provider, and a change of the setting starts OpenCode again', async () => {
+test('hide turns off OpenCode\'s own provider, and changing the setting restarts OpenCode', async () => {
   const { vscode, control } = fake.create();
   const restarts = [];
   const cfg = createProviderConfig({ vscode, secrets: control.secrets, restart: async (o) => restarts.push(o), baseEnv: {} });

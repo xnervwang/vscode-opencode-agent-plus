@@ -261,8 +261,6 @@
     return [n('images', 'image'), n('selections', 'selection')].filter(Boolean).join(' and ');
   }
 
-  /* The message box with `text` put in for the user to go on writing: after what the box holds, with a space between
-     when that does not end in white space. */
   function prefillText(value, text) {
     const v = String(value || '');
     const t = String(text || '');

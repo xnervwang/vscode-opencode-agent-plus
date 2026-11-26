@@ -431,12 +431,12 @@
           "type": "string",
           "enum": ["auto", "show", "hide"],
           "enumDescriptions": [
-            "List them only while no other provider is connected.",
+            "List them while no other provider is connected.",
             "Always list them.",
-            "Never list them, and have OpenCode leave them out."
+            "Leave them out, and turn off OpenCode's own provider."
           ],
           "default": "auto",
-          "description": "Whether the model lists include OpenCode's own free models, which run on opencode.ai. The model a conversation uses stays listed."
+          "description": "Whether the model lists of chat tabs and of Choose Model for New Conversations include OpenCode's own free models, which run on opencode.ai. When auto or hide leaves them out, a chat tab still lists the free model its conversation uses, and with auto the command still lists the one in opencodeAgentPlus.model."
         },
         "opencodeAgentPlus.autosave": {
           "type": "boolean",

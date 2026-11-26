@@ -21,7 +21,6 @@
 const brand = require('../brand');
 
 const SECRET_KEY = `${brand.prefix}.bedrock.apiKey`;
-/* OpenCode's own provider: its free models, run on opencode.ai. */
 const OPENCODE_PROVIDER = 'opencode';
 const SECTION = brand.prefix;
 const OUR_WAY = `Or set "${brand.displayName} › Bedrock: Profile" and "Region" in the settings, or run "${brand.displayName}: Set Amazon Bedrock API Key".`;

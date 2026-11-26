@@ -317,7 +317,6 @@ function start(context, log, gate, channel) {
     log,
   });
   subs.push(links, vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration(`${brand.prefix}.conversationLinks`)) links.settingChanged(); }));
-  /* Which of OpenCode's own models the chat pages list follows the setting at once. */
   subs.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration(`${brand.prefix}.openCodeModels`)) for (const c of chats) c.postModels();
   }));
@@ -449,14 +448,10 @@ function start(context, log, gate, channel) {
     return mentions.refFor(file, { folders: folderPaths(), ...sel });
   };
 
-  /* Text for the message box of a conversation whose tab is about to open, put in once its page is set up. */
   const drafts = new Map();
 
   /*
-   * Agent Plus's prefill: brings conversation `id` to the front in this window, opening its tab as openSession() does,
-   * and puts `text` in its message box after what the box holds, the caret at its end; nothing is sent. Resolves with
-   * { outcome: 'drafted' } once the page has it in the box, 'uncertain' when the page gave no answer by `deadline`, or
-   * 'notReceived' with the reason.
+   * Agent Plus's prefill: brings conversation `id` to the front in this window, opening its tab as openSession() does.
    */
   async function prefill(id, text, deadline) {
     const chatOf = () => [...chats].find((c) => c.conversation && c.conversation.id === id) || null;
@@ -465,13 +460,13 @@ function start(context, log, gate, channel) {
       const opened = await openSession(id).catch(() => false);
       if (!opened) return { outcome: 'notReceived', reason: 'the conversation could not be opened in this window' };
       while (!(chat = chatOf()) && Date.now() < deadline - 200) await new Promise((r) => setTimeout(r, 100));
-      if (!chat) return { outcome: 'notReceived', reason: 'its tab opened, but its chat page was not ready in time' };
+      if (!chat) return { outcome: 'notReceived', reason: 'the tab opened, but its chat page was not ready in time' };
     }
     chat.panel.reveal(chat.panel.viewColumn, false);
     const ok = await chat.prefill(text, Math.max(0, deadline - Date.now()));
     if (ok === true) return { outcome: 'drafted' };
-    if (ok === false) return { outcome: 'notReceived', reason: 'the chat page could not put the text in its message box' };
-    return { outcome: 'uncertain', reason: 'the chat page did not confirm the text in time' };
+    if (ok === false) return { outcome: 'notReceived', reason: 'the chat page did not take the text' };
+    return { outcome: 'uncertain', reason: 'the chat page did not answer within the deadline' };
   }
 
   /* Fork from here: OpenCode copies the history before the user message `target` into a new conversation, which opens

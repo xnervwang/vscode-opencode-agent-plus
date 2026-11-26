@@ -73,7 +73,6 @@ const CHILD_STATUS = Object.freeze({ created: 'running', running: 'running', com
 /* The events of a subagent's own stream that its card shows. */
 const CHILD_EVENTS = new Set(['text', 'reasoning', 'toolCall', 'toolResult']);
 const SUBAGENT_TOOLS = new Set(['subagent', 'task']);
-/* Provider ids OpenCode is to leave out (its `disabled_providers`), from a launch option. */
 const providerList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(x)) : []);
 
 /* Opening a conversation waits this long for its export after session/load has answered. */

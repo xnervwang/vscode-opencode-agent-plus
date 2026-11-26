@@ -5,8 +5,8 @@
 'use strict';
 /*
  * Agent Plus's prefill, through the source's prefill(): it opens a conversation whose tab is closed, brings it to the
- * front and puts the text in its message box with the caret at the end, after whatever the box already holds, and
- * sends nothing. An id with no conversation behind it gets notReceived.
+ * front and puts the text in its message box after whatever the box already holds, and sends nothing. An id with no
+ * conversation behind it gets notReceived.
  */
 const SCHEME = 'opencodeagentplus-session:';
 const FIRST = 'About row 1 (list the files): ';
@@ -20,7 +20,6 @@ async function run(t) {
   const tabOf = 'vscode.window.tabGroups.all.flatMap((g) => g.tabs).find((x) => x.input instanceof vscode.TabInputCustom && x.input.uri.toString() === arg)';
   const close = (uri) => call(`const t = ${tabOf}; if (t) await vscode.window.tabGroups.close(t); return true;`, uri);
   const inFront = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.toString() : "";');
-  /* The message box of every chat page loaded: its text, caret, whether it has the focus, and the page's user messages. */
   const boxes = async () => {
     const out = [];
     for (const f of page.frames()) {
@@ -37,7 +36,7 @@ async function run(t) {
     return out;
   };
   const holding = async (text) => (await boxes()).find((b) => b.value === text) || null;
-  /* A box whose text ends with `text`: a conversation reopened shows the draft it was closed with before it. */
+  /* A reopened conversation's box starts with the draft it was closed with, so this matches the end of its text. */
   const ending = async (text) => (await boxes()).find((b) => b.value.endsWith(text)) || null;
   const setBox = (f, text) => f.evaluate((v) => {
     const i = document.getElementById('input');
@@ -46,18 +45,16 @@ async function run(t) {
   }, text);
   const prefill = (id, text) => ext('return api.test.source.prefill(arg.id, arg.text);', { id, text }, 20000);
 
-  /* A conversation the user has written in, so that a message sent by mistake would show as one more. */
   const listed = async () => (await ext('return api.test.source.listAllConversations();')) || [];
   const lastUser = async (id) => ((await listed()).find((c) => c.sessionId === id) || {}).lastUserAt || 0;
   const written = async () => (await listed()).filter((c) => c.lastUserAt > 0 && c.activity === 'stopped').sort((a, b) => b.lastUserAt - a.lastUserAt)[0];
   let pick = await written();
   if (!pick) {
-    /* Only conversations nobody has written in are left by now: one of them gets a message first. */
     const blank = (await listed()).find((c) => c.activity === 'stopped');
     if (blank) await ext('return api.test.source.deliverAnswer(arg, "Reply with only the word four.", { deliveryId: "window-test-prefill" });', blank.sessionId);
     pick = blank ? await until(async () => { const c = (await listed()).find((x) => x.sessionId === blank.sessionId); return c && c.lastUserAt > 0 && c.activity === 'stopped' ? c : null; }, real ? 120000 : 30000) : null;
   }
-  if (!pick) { check(false, 'a conversation with messages in it for the prefill checks', await listed()); return; }
+  if (!pick) { check(false, 'the window has a conversation with messages in it', await listed()); return; }
   const id = pick.sessionId, target = `${SCHEME}/${id}`, lastBefore = pick.lastUserAt;
   if ((await chatUris()).includes(target)) {
     await front(target);
@@ -66,7 +63,7 @@ async function run(t) {
   }
   await close(target);
   await until(async () => (!(await chatUris()).includes(target) ? true : null), 10000);
-  /* The page's count of the user's messages once it has stopped changing, the history replayed. */
+  /* The page's count of the user's messages, once the history it replays has stopped adding to it. */
   const settled = async (text) => {
     let last = -1;
     return until(async () => {
@@ -83,7 +80,7 @@ async function run(t) {
   const r1 = await prefill(id, FIRST);
   const box1 = await until(() => ending(FIRST), 15000);
   check(!!r1 && r1.outcome === 'drafted' && !!box1 && (await inFront()) === target && box1.start === box1.value.length && box1.end === box1.value.length && box1.focused,
-    "prefill opens a conversation whose tab is closed, brings it to the front and puts the text in its message box with the caret at the end and the focus in the box",
+    "prefill opens a conversation whose tab is closed, brings it to the front and puts the text in its message box, which has the focus, with the caret at the end",
     { r1, box1: box1 && { ...box1, f: undefined }, front: await inFront() });
 
   const usersBefore = box1 ? await settled(FIRST) : null;
@@ -98,17 +95,17 @@ async function run(t) {
   const after = await holding(want);
   const lastAfter = await lastUser(id);
   check(!!after && !!usersBefore && after.users === usersBefore && lastAfter === lastBefore,
-    'prefill sends nothing: the text stays in the box and the conversation gains no message',
+    'prefill sends nothing: the text stays in the box and the conversation has no new message from the user',
     { usersBefore, lastBefore, lastAfter, after: after && { value: after.value, users: after.users } });
   await shot('15-prefill', { features: ['prefill'],
-    expect: `The chat tab in front, its message box holding "${want}" with the caret after it; the log above ends as it did before, with no new message of the user's.`,
+    expect: `The chat tab in front, its message box holding "${want}" with the caret after it; the conversation above ends as before, with no new message from the user.`,
     part: '#workbench\\.parts\\.editor' });
   if (after) await setBox(after.f, '');
 
   const started = Date.now();
   const r3 = await prefill(MISSING, FIRST);
   check(!!r3 && r3.outcome === 'notReceived' && !(await ending(FIRST)),
-    'prefill on an id with no conversation behind it answers notReceived and puts the text in no message box', { r3, ms: Date.now() - started });
+    'prefill on an id that names no conversation answers notReceived, and no message box gets the text', { r3, ms: Date.now() - started });
   console.log(`  note  prefill on an id with no conversation answered after ${Date.now() - started} ms`);
   await close(`${SCHEME}/${MISSING}`);
 }

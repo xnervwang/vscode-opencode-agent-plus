@@ -62,9 +62,11 @@ If you send a message while a turn is running, it waits in a "Queued" row until 
 
 ## Models, Modes and Reply Figures
 
-In the row of buttons under the input box, one pill shows the model followed by the effort in grey. Click the model to open a drop-down list of all the models OpenCode offers, grouped by provider. The Effort drop-down lets you choose how much the model reasons. Effort appears only when OpenCode offers it for the model you choose.
+In the row of buttons under the input box, one pill shows the model followed by the effort in grey. Click the model to open a drop-down list of the models OpenCode offers, grouped by provider. The Effort drop-down lets you choose how much the model reasons. Effort appears only when OpenCode offers it for the model you choose.
 
-Before you connect a provider, OpenCode offers only its own free models, listed as "OpenCode's free models", and shows Connect a provider… at the top of the model list. Once you connect a provider, Connect a provider… appears among the last entries in the model list; whenever you select it, it runs OpenCode's sign-in command, `opencode auth login`, in a VS Code terminal. Over Remote-SSH, the terminal runs on the remote machine and saves your credentials there; when you close the terminal, OpenCode restarts and the chat tabs refresh their model lists. The model list puts each provider's models under the provider's name. Once another provider is connected, OpenCode's free models, which run on opencode.ai, are no longer listed; `opencodeAgentPlus.openCodeModels` keeps them listed or hides them always.
+Before you connect a provider, OpenCode offers only its own free models, listed as "OpenCode's free models", and shows Connect a provider… at the top of the model list. Once you connect a provider, Connect a provider… appears among the last entries in the model list; whenever you select it, it runs OpenCode's sign-in command, `opencode auth login`, in a VS Code terminal. Over Remote-SSH, the terminal runs on the remote machine and saves your credentials there; when you close the terminal, OpenCode restarts and the chat tabs refresh their model lists.
+
+By default (`opencodeAgentPlus.openCodeModels` set to `auto`), the list shows OpenCode's free models (which run on opencode.ai) until you connect another provider; `show` always lists them, and `hide` leaves them out even before you connect another provider, but with either `auto` or `hide`, a free model your conversation already uses stays in that conversation's model list.
 
 ### Modes and Model Changes
 
@@ -180,15 +182,19 @@ A conversation can be open in only one VS Code window at a time. If you open it 
 
 ## Work Plan and Plan Bar
 
-If OpenCode Agent Plus finds [Python](setup.md#python-for-the-work-plan), it installs a work plan plugin for the OpenCode 2 process it starts. The plugin lets the model track what still needs to be done in your conversation. In Agent Plus, you can read the plan in the Work plan view and see which of your OpenCode Agent Plus conversations are working, waiting or idle in the Conversations view. The pen at the end of a row in the Work plan view brings the conversation to the front with `About row N (title): ` in its message box, after anything you already typed there, for you to finish and send.
+If OpenCode Agent Plus finds [Python](setup.md#python-for-the-work-plan), it installs a work plan plugin for the OpenCode 2 process it starts. The plugin lets the model track what still needs to be done in your conversation. In Agent Plus, you can read the plan in the Work plan view and see which of your OpenCode Agent Plus conversations are working, waiting or idle in the Conversations view.
 
-The plan bar above the input box (`opencodeAgentPlus.planBar`) shows the plan's open rows, the row in progress when there is one, and a yellow count of this conversation's questions waiting for your answer. Click the bar to open the Work plan view, or click the yellow count to go to those questions in Agent Plus's Answer view.
+The plan bar above the input box (`opencodeAgentPlus.planBar`) shows the plan's open rows, the row in progress when there is one, and a yellow count of the plan's rows waiting for your answer. Click the bar to open the Work plan view, or click the yellow count to go to their questions in Agent Plus's Answer view.
 
 When the [Token Mode](#token-mode) enables work plans, each message includes the open rows, and the model gets tools to update the plan (`add_row`, `set_row`, `set_status`, `set_summary`). Reminders to update the plan arrive with the next message. During compaction, the work plan plugin asks the model to include the plan's location and open rows in the summary. If any rows remain open after compaction, the next message instructs the model to read the plan before continuing.
 
 OpenCode Agent Plus stores plans in `~/.opencode-agent-plus/plans/` on the machine where OpenCode runs. Deleting a conversation also removes its plan (see [The Conversations List](#the-conversations-list)).
 
 On OpenCode 1, Agent Plus shows "Work plans need OpenCode 2" above the plan. Click the message to open the OpenCode path setting.
+
+### Writing About a Row
+
+Click the pen at the end of any row in the Work plan view to bring the plan's conversation to the front. OpenCode Agent Plus appends `About row N (title): `, with the row's number and title filled in, to any text in the message box. Finish the message and send it when you're ready. The pen needs a version of Agent Plus later than 1.7.0.
 
 ### Claude Code Plus Stewards
 

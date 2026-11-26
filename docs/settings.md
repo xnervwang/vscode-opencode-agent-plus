@@ -9,7 +9,7 @@ You can change these settings under OpenCode Agent Plus in the VS Code Settings 
 | Setting | Default | What it does |
 |---|---|---|
 | `opencodeAgentPlus.model` | Empty | Sets the [model for new conversations](setup.md#installing-opencode-agent-plus). Use `provider/model`, such as `amazon-bedrock/us.xai.grok-4.7`. If you leave it empty, OpenCode Agent Plus asks you to choose a model when you send your first message. |
-| `opencodeAgentPlus.openCodeModels` | `auto` | Whether the model lists include OpenCode's own free models, which run on opencode.ai: `auto` lists them only while no other provider is connected, `show` always, and `hide` never, with OpenCode leaving them out. The model a conversation uses stays listed. |
+| `opencodeAgentPlus.openCodeModels` | `auto` | Whether the model lists of chat tabs (each conversation's editor tab) and of `OpenCode Agent Plus: Choose Model for New Conversations` include OpenCode's own free models, which run on opencode.ai: `auto` lists them while no other provider is connected, `show` always, and `hide` leaves them out and turns off OpenCode's own provider. When `auto` or `hide` leaves them out, a chat tab still lists the free model its conversation uses, and with `auto` the command still lists the one in `opencodeAgentPlus.model`. |
 | `opencodeAgentPlus.autosave` | On | Saves edited files before a message is sent or a [permission request](features.md#permission-prompts) is allowed, so that OpenCode works with the text you see in the editor. |
 | `opencodeAgentPlus.attachOpenFile` | On | Sends a [reference to the file open in the editor](features.md#files-and-selections-from-the-editor) with your messages. When off, only the lines you select in the file are sent automatically, if `opencodeAgentPlus.attachSelection` is on. |
 | `opencodeAgentPlus.attachSelection` | On | Sends the lines you select in the editor with your messages. When off, add them by clicking the [pill under the input box](features.md#files-and-selections-from-the-editor) or with Alt+K. |
@@ -31,7 +31,7 @@ You can change these settings under OpenCode Agent Plus in the VS Code Settings 
 
 ### Settings That Restart OpenCode
 
-**Let a running turn finish before you change the OpenCode path, permission rules, environment variables, todo list setting, Bedrock profile, Region or stored Bedrock API key.** Changing any of them restarts OpenCode, which ends a running turn with an error. The other settings take effect without a restart.
+**Let a running turn finish before you change the OpenCode path, permission rules, environment variables, todo list setting, Bedrock profile, Region or stored Bedrock API key, or switch `opencodeAgentPlus.openCodeModels` from `auto` or `show` to `hide` or from `hide` to `auto` or `show`.** Changing any of them restarts OpenCode, which ends a running turn with an error. The other settings take effect without a restart.
 
 ## Turning Features Off
 
@@ -61,7 +61,7 @@ In the Command Palette, search for `OpenCode Agent Plus:` to find these commands
 | `OpenCode Agent Plus: Fork Conversation` | Copies the conversation into a new tab. Available when a chat tab is active. |
 | `OpenCode Agent Plus: Find Conversation…` | Finds a conversation by title, session ID or folder. |
 | `OpenCode Agent Plus: Clear Recently Closed` | Clears the Recently closed group in the Conversations view. |
-| `OpenCode Agent Plus: Choose Model for New Conversations` | Lists the models OpenCode offers, under a heading for each provider, and saves your choice in `opencodeAgentPlus.model`. |
+| `OpenCode Agent Plus: Choose Model for New Conversations` | Lists the models OpenCode offers, grouped by provider, and saves your choice in `opencodeAgentPlus.model`. |
 | `OpenCode Agent Plus: Test OpenCode Connection` | Checks whether OpenCode is installed and reports [model counts or Bedrock credential errors](setup.md#checking-the-connection) when available. |
 | `OpenCode Agent Plus: Download OpenCode 2.4.1` | Downloads [OpenCode 2.4.1](setup.md#installing-opencode) from GitHub into `~/.opencode-agent-plus/opencode/2.4.1/`. An OpenCode you install yourself is used first. |
 | `OpenCode Agent Plus: Set Amazon Bedrock API Key` | Saves your Bedrock API key in VS Code's secret storage. |

@@ -7,7 +7,7 @@
  * run.js --title-order: with Claude Code and Codex installed beside this extension, a text file's editor title bar has
  * their buttons and this extension's New Conversation button next to each other, in that order. VS Code sorts the
  * buttons (test/host/title-order.test.js says how); this run sees where they land. The window test's helper adds a
- * button with an order of 97, as GitLens's buttons have, which this extension's button has to come before. The run
+ * button with order 97, the order GitLens gives its buttons; this extension's button must come before it. The run
  * needs both extensions from the Marketplace, or --claude-code and --codex naming their .vsix files, so CI does not
  * run it.
  */
@@ -28,7 +28,6 @@ async function run(t) {
   const file = path.join(folder, 'title-order.txt');
   fs.writeFileSync(file, 'An editor whose title bar has the buttons.\n');
   await call('await vscode.commands.executeCommand("workbench.action.closeAllEditors"); const d = await vscode.workspace.openTextDocument(arg); await vscode.window.showTextDocument(d, { preview: false }); return true;', file);
-  /* The buttons of the active editor group's title bar, left to right, by the label VS Code gives each. */
   const labels = () => page.evaluate(() => {
     const bar = document.querySelector('.editor-group-container.active .title .editor-actions');
     return bar ? [...bar.querySelectorAll('.action-item .action-label')].map((a) => a.getAttribute('aria-label') || a.title || '').filter(Boolean) : [];
@@ -37,10 +36,10 @@ async function run(t) {
   const list = shown || await labels();
   const claude = list.findIndex(isClaude), codex = list.findIndex(isCodex), ours = list.findIndex((x) => x.startsWith(OURS)), ordered = list.findIndex(isOrdered);
   check(claude >= 0 && codex === claude + 1 && ours === codex + 1 && ordered > ours,
-    'in a text file\'s title bar the Claude Code, Codex and New OpenCode Conversation buttons are next to each other, in that order, before a button with an order', list);
+    'in a text file\'s title bar the Claude Code and Codex buttons and this extension\'s New Conversation button come one after another, in that order, all before a button that sets its own sort order', list);
   await sleep(300);
   await shot('title-order', { features: ['editor title buttons'],
-    expect: 'The right end of a text file\'s tab row: the Claude Code button (the Claude mark), then the Codex button, then the OpenCode mark of this extension\'s New Conversation button, next to each other, then a compare-changes icon (the test\'s stand-in for a button with an order), then the split editor and "..." buttons.',
+    expect: 'The right end of a text file\'s tab row: side by side, the Claude Code button (the Claude mark), the Codex button and this extension\'s New Conversation button (the OpenCode mark), then a compare-changes icon, then the split editor and "..." buttons. The compare-changes icon is a button the test adds, which sets its own sort order.',
     part: '.editor-group-container.active .title .editor-actions' });
 }
 

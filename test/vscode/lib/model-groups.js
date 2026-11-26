@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * The chat page's model list: each provider's models under its name, and OpenCode's own free models left out while
- * another provider is listed (opencodeAgentPlus.openCodeModels auto, the default), listed under their own heading with
- * show, and left out again with hide. The fake backend lists one such model beside its own.
+ * The chat page's model list: each provider's models under its name. With opencodeAgentPlus.openCodeModels at auto,
+ * the default, OpenCode's own free models are left out while another provider is listed; show puts them under their
+ * own heading, and hide leaves them out again. The fake backend lists one such model beside its own.
  */
 const FREE_GROUP = "OpenCode's free models (opencode.ai)";
 
@@ -15,7 +15,7 @@ async function run(t) {
   const { page, call, check, until, frameWith, real } = t;
   const conf = (value) => call('await vscode.workspace.getConfiguration("opencodeAgentPlus").update("openCodeModels", arg, vscode.ConfigurationTarget.Global); return true;', value);
   const f = await frameWith(page, '#model', 20000);
-  if (!f) { check(false, 'a chat page with a model list for the model list checks'); return; }
+  if (!f) { check(false, 'the window has a chat page with a model list'); return; }
   const groups = () => f.evaluate(() => [...document.querySelectorAll('#model optgroup')].map((g) => ({ label: g.label, ids: [...g.querySelectorAll('option')].map((o) => o.value) })));
   const current = () => f.evaluate(() => document.getElementById('model').dataset.current || '');
   const free = (gs, now) => gs.flatMap((g) => g.ids).filter((id) => id.startsWith('opencode/') && id !== now);

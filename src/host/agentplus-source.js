@@ -102,8 +102,8 @@ function emitter() {
  *   logo()             { light, dark } Uris, or null
  *   reveal(sessionId)  Promise<boolean>: bring its tab in this window to the front
  *   openHere(sessionId)  Promise<boolean>: open it in this window
- *   prefill(sessionId, text, deadline)  optional: Promise<{ outcome, reason? }>, putting `text` in its message box
- *                      without sending it (the 'prefill' feature); `deadline` is the Date.now() to answer by
+ *   prefill(sessionId, text, deadline)  optional, and needed for the 'prefill' feature: Promise<{ outcome, reason? }>;
+ *                      puts `text` in its message box without sending it, answering by `deadline`, a Date.now() value
  *   trusted()          whether the workspace is trusted
  *   hidden(sessionId)  optional: true for a session not to list (a subagent's, open in a tab restored from before)
  *   allConversations() optional: every window's conversations on this machine
@@ -198,8 +198,7 @@ function createAgentPlusSource(deps) {
 
     canDeliver(sessionId) { return trusted() && deps.manager.has(sessionId); },
 
-    /* Puts `text` in the conversation's message box, as it is, without sending it. Settles within PREFILL_MS and never
-       rejects: 'uncertain' when that time runs out. */
+    /* Never rejects, as Agent Plus requires. */
     prefill(sessionId, text) {
       if (!canPrefill) return Promise.resolve({ outcome: 'notReceived', reason: 'this window cannot fill in a message box' });
       if (!trusted()) return Promise.resolve({ outcome: 'notReceived', reason: 'the workspace is not trusted' });
@@ -207,9 +206,9 @@ function createAgentPlusSource(deps) {
       if (typeof text !== 'string' || !text) return Promise.resolve({ outcome: 'notReceived', reason: 'there is no text to put in' });
       const deadline = Date.now() + PREFILL_MS;
       let timer = null;
-      const late = new Promise((resolve) => { timer = setTimeout(() => resolve({ outcome: 'uncertain', reason: 'the message box did not answer in time' }), PREFILL_MS); });
+      const late = new Promise((resolve) => { timer = setTimeout(() => resolve({ outcome: 'uncertain', reason: 'this window took too long' }), PREFILL_MS); });
       const doing = Promise.resolve().then(() => deps.prefill(sessionId, text, deadline)).then(
-        (r) => (r && ['drafted', 'notReceived', 'uncertain'].includes(r.outcome) ? r : { outcome: 'uncertain', reason: 'no answer about the message box' }),
+        (r) => (r && ['drafted', 'notReceived', 'uncertain'].includes(r.outcome) ? r : { outcome: 'uncertain', reason: 'an unexpected answer from this window\'s chat tab' }),
         (e) => ({ outcome: 'notReceived', reason: String((e && e.message) || e).slice(0, 200) }));
       return Promise.race([doing, late]).finally(() => clearTimeout(timer));
     },

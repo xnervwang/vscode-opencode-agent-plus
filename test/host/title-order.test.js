@@ -7,7 +7,7 @@
  * Where the editor title bar puts the New Conversation button: right after the Claude Code and Codex buttons. VS Code
  * sorts an editor title bar's buttons by group, the navigation group first, then within a group by the order after
  * "@" (none counts as 0), then by command title (MenuService.compareMenuItems in the workbench). The Claude Code and
- * Codex buttons give no order, so this one gives none either, and its title sorts after theirs.
+ * Codex buttons have no order, so this one has none either, and its title sorts after theirs.
  * test/vscode/lib/title-order.js checks the same in a window with both extensions installed.
  */
 const test = require('node:test');
@@ -39,8 +39,6 @@ function ours() {
   return { group: entry.group, title: command.title };
 }
 
-/* The buttons beside it, as their extensions contribute them: Claude Code's, then Codex's own or Codex Plus's (which
-   takes its place), and a GitLens one that gives an order. */
 const CLAUDE = { group: 'navigation', title: 'Claude Code: Open' };
 const CODEX = { group: 'navigation', title: 'Open Codex Sidebar' };
 const CODEX_PLUS = { group: 'navigation', title: 'Codex Plus: New Codex Conversation in a Tab' };
@@ -50,7 +48,7 @@ test('the button is in the navigation group with no order of its own', () => {
   assert.equal(ours().group, 'navigation');
 });
 
-test('it sorts right after the Claude Code and Codex buttons, before buttons that give an order', () => {
+test('it sorts right after the Claude Code and Codex buttons, before buttons that set a sort order', () => {
   for (const codex of [CODEX, CODEX_PLUS]) {
     const me = ours();
     const sorted = [GITLENS, me, codex, CLAUDE].sort(compare);

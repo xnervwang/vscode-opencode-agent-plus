@@ -35,7 +35,7 @@
  * links those ('paths' { results: [{ path, ok }] }). A relative path counts only inside a workspace folder or the
  * conversation's folder, an absolute one anywhere; answers are kept for a while in FILE_CACHE, which the paths listed in
  * `fresh` skip. 'openFile' { path, line } opens one beside the chat, at that line, after checking it again.
- *   visibleModels  (list, current) => the models the page lists, of those OpenCode offers (src/host/models.js)
+ *   visibleModels  (list, current) => src/host/models.js visibleModels
  *   connectProvider   opens OpenCode's sign-in for a model provider; the model list offers it (reloadModels() lists
  *              the models again afterwards)
  *   composer   () => { ctrlEnter, attachFile, attachSelection }, the settings of the message box; settingsChanged()
@@ -48,7 +48,7 @@
  *   readRange  (path, startLine, endLine) => text or null: lines of a file named with @<path>#L.. in a message
  *
  * compose({ refs, draft }) puts @ references or a draft into the message box, after any text already there, and
- * focuses it; before the page has loaded, it waits. prefill(text, ms) does the same for Agent Plus's prefill and
+ * focuses it; before the page has loaded, it waits. prefill(text, ms) does the same when Agent Plus asks, and
  * resolves with the page's answer ('prefill' { id, text } out, 'prefilled' { id, ok } back).
  *
  * The plan bar's fragment brings its own style element, so the page's policy lets inline styles in. A diff opened from
@@ -234,7 +234,6 @@ class ChatPanel {
     this.readRange = typeof opts.readRange === 'function' ? opts.readRange : null;
     /* Messages for the page held until it has loaded: compose, prefill and focus. */
     this.waiting = [];
-    /* Prefills waiting for the page's answer, by id. */
     this.prefills = new Map();
     this.prefillSeq = 0;
     this.detachedTimer = null;
@@ -457,11 +456,6 @@ ${hl}<script src="${media('kit.js')}"></script>
     if (this.ready) this.post(msg); else this.waiting.push(msg);
   }
 
-  /*
-   * Puts `text` in the message box after what it holds (a space between when that does not end in one), focuses it
-   * with the caret at the end, and sends nothing. Resolves with the page's answer: true when the box has the text,
-   * false when the page could not put it there, null when no answer came within `ms`.
-   */
   prefill(text, ms) {
     if (this.disposed || typeof text !== 'string' || !text) return Promise.resolve(false);
     const id = `p${++this.prefillSeq}`;

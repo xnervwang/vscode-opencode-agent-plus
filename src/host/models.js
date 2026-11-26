@@ -12,15 +12,10 @@ const brand = require('../brand');
 
 const SECTION = brand.prefix;
 const fullId = (m) => (String(m.id).includes('/') || !m.providerId ? m.id : `${m.providerId}/${m.id}`);
-/* OpenCode's own provider, whose free models run on opencode.ai. */
 const OPENCODE = 'opencode';
 const providerOf = (m) => (m && m.providerId) || (String((m && m.id) || '').split('/')[0]) || '';
 const MODES = ['auto', 'show', 'hide'];
 
-/*
- * The models to list for opencodeAgentPlus.openCodeModels `mode`: 'auto' leaves OpenCode's own free models out once a
- * model of another provider is listed, 'hide' leaves them out always, 'show' never. The model in use, `current`, stays.
- */
 function visibleModels(list, mode, current) {
   const l = Array.isArray(list) ? list : [];
   const m = MODES.includes(mode) ? mode : 'auto';
@@ -29,7 +24,6 @@ function visibleModels(list, mode, current) {
   return l.filter((x) => providerOf(x) !== OPENCODE || (current && fullId(x) === current));
 }
 
-/* The heading a model is listed under: its provider's name, and for OpenCode's own models where they run. */
 const groupOf = (m) => (providerOf(m) === OPENCODE ? "OpenCode's free models (opencode.ai)" : (m && (m.vendor || m.providerId)) || 'Other');
 const matches = (m, name) => !!name && (fullId(m) === name || m.id === name || m.invokeId === name);
 
@@ -57,7 +51,6 @@ function createModels({ vscode, listModels, defaultModel }) {
       vscode.window.showWarningMessage('OpenCode has not listed any models yet. Open a conversation once, or connect a provider in OpenCode (opencode auth login), then try again.');
       return null;
     }
-    /* Under a heading for each provider, in the order the providers first appear. */
     const groups = new Map();
     for (const m of l) {
       const g = groupOf(m);
