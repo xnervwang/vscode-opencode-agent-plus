@@ -26,6 +26,7 @@ You can change these settings under OpenCode Agent Plus in the VS Code Settings 
 | `opencodeAgentPlus.conversationLinks` | On | Turns mentions of other conversations into [links in replies](features.md#links-and-images-in-replies). |
 | `opencodeAgentPlus.focusView` | Off | Shows only your messages, the last reply of each turn and the permission requests and questions waiting for your answer ([Focus view](features.md#focus-view)). |
 | `opencodeAgentPlus.pinPrompt` | On | Keeps your message [pinned at the top](features.md#pinned-message) while you scroll through its reply. |
+| `opencodeAgentPlus.loadRestoredTabs` | Off | After a reload, or when the window opens, loads the OpenCode conversations in background tabs too, instead of each one when you first click its tab. Each tab comes to the front for a moment, then the tab you had in front comes back. |
 | `opencodeAgentPlus.conversationBrief` | On | In Custom token mode, lets the model keep a [conversation brief](features.md#conversation-brief). |
 | `opencodeAgentPlus.tellOpenCodeYourTimeZone` | On | In Custom token mode, tells the model [your time zone](setup.md#remote-ssh) when it differs from the OpenCode machine's time zone. |
 

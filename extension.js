@@ -81,6 +81,7 @@ const mentions = require('./src/host/mentions');
 const { registerFixActions, COMMAND: FIX_COMMAND } = require('./src/host/fix-actions');
 const autoEditing = require('./src/host/auto-edit');
 const detaching = require('./src/host/detached');
+const loadTabs = require('./src/shared/load-tabs');
 const fs = require('fs');
 const childProcess = require('child_process');
 const { createSessionIndex } = require('./src/opencode/session-index');
@@ -650,12 +651,13 @@ function start(context, log, gate, channel) {
    * turn it on only where they check it, since it replaces the page the other steps hold.
    */
   let retitling = !process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL;
+  let loadingTabs = false;
   const renaming = new Set();
   async function retitleTab(id) {
     const title = titleOf(id);
     const tab = chatTabs(id).find((t) => t.isActive && t.group.isActive);
     const s = manager.snapshot(id);
-    if (!retitling || renaming.has(id) || !title || !tab || !s || s.activity === 'working' || s.activity === 'waiting') return;
+    if (!retitling || loadingTabs || renaming.has(id) || !title || !tab || !s || s.activity === 'working' || s.activity === 'waiting') return;
     if (ap.nameOfUri(tab.input.uri) === ap.tabName(title)) return;
     renaming.add(id);
     try {
@@ -676,6 +678,28 @@ function start(context, log, gate, channel) {
   subs.push(vscode.window.tabGroups.onDidChangeTabs((e) => {
     for (const t of (e && e.changed) || []) if (ap.isChatTab(t) && t.isActive) retitleSoon(ap.sessionOfUri(t.input.uri));
   }));
+
+  /*
+   * opencodeAgentPlus.loadRestoredTabs: each chat tab VS Code restored behind another is shown for a moment, which
+   * builds its page and opens its conversation (src/shared/load-tabs.js), a few seconds after the start so that the
+   * window has settled. The tabs are not opened again under their titles meanwhile: that would move them under the
+   * positions the loading goes through.
+   */
+  async function loadRestored() {
+    if (vscode.workspace.getConfiguration(brand.prefix).get('loadRestoredTabs', false) !== true) return 0;
+    loadingTabs = true;
+    let n = 0;
+    try {
+      n = await loadTabs.loadAll({ groups: vscode.window.tabGroups.all, front: vscode.window.tabGroups.activeTabGroup, isTab: ap.isChatTab,
+        exec: (...a) => vscode.commands.executeCommand(...a), sleep: (ms) => new Promise((r) => setTimeout(r, ms)) });
+    } finally {
+      loadingTabs = false;
+    }
+    if (n) log(`loaded ${n} chat tab(s) VS Code restored behind another`);
+    return n;
+  }
+  const loadTimer = setTimeout(() => { loadRestored().catch((e) => log(`loading the restored chat tabs failed: ${(e && e.message) || e}`)); }, 8000);
+  subs.push({ dispose: () => clearTimeout(loadTimer) });
 
   /* Starts a conversation and opens its tab; resolves with its id, or '' when that failed. */
   async function newConversationId() {
@@ -1029,6 +1053,8 @@ function start(context, log, gate, channel) {
       /* For tests: the program the sign-in terminal runs in place of the OpenCode found ('' to run that one), and how many
          times the sign-in ran. */
       loginProgram: (p) => { loginProgram = String(p || ''); return true; }, logins: () => ({ ...logins }),
+      loadRestored: () => loadRestored(),
+      chatPages: () => [...chats].map((c) => c.conversation && c.conversation.id).filter(Boolean),
       retitleTabs: (on) => {
         retitling = on !== false;
         if (retitling) for (const t of vscode.window.tabGroups.all.flatMap((g) => g.tabs)) if (ap.isChatTab(t) && t.isActive) retitleSoon(ap.sessionOfUri(t.input.uri));

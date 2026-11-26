@@ -32,6 +32,11 @@
       "sha256": "b1fcc195202ee74242541f8b7db8729100d0ca3a59661e03e64d59587b426c36"
     },
     {
+      "path": "src/shared/load-tabs.js",
+      "from": "shared/host/load-tabs.js",
+      "sha256": "82611d16e2aa1fde553a27dc6ffaeb2b548fb6baf3c830143e324144d850ed29"
+    },
+    {
       "path": "src/shared/token-mode.js",
       "from": "src/token-mode.js",
       "sha256": "83fd03f44579844674e6733ed24161a483355da11728f81a8667e12813911174"

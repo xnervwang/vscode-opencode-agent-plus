@@ -1735,6 +1735,27 @@ async function main() {
     await shot('07-after-reload', { features: ['reload', 'restored history'],
       expect: 'After the reload the editor area is split in two again. On the left, two chat tabs; the one in front shows the same conversation as before: its messages, the tool rows on the line down the left and its last reply. On the right, a third chat tab with "Reply with only the word charlie." and the reply "charlie".',
       part: '#workbench\\.parts\\.editor' });
+    /* With opencodeAgentPlus.loadRestoredTabs on, a reload also loads the chat tab behind the first one, a few seconds
+       after the start, and the first is in front again afterwards. */
+    if (reloadTabs[1]) {
+      const setLoad = (v) => call('await vscode.workspace.getConfiguration("opencodeAgentPlus").update("loadRestoredTabs", arg, vscode.ConfigurationTarget.Global); return true;', v);
+      const behindId = reloadTabs[1].id;
+      await setLoad(true);
+      await w.reload();
+      await until(() => ext('return !!(api && api.test);'), 60000);
+      const early = ((await ext('return api.test.chatPages();')) || []).includes(behindId);
+      const loaded = await until(async () => { const l = (await ext('return api.test.chatPages();')) || []; return l.includes(behindId) ? l : null; }, 40000, 500);
+      /* The page is made as the tab comes to the front, before the loading puts the first tab back. */
+      let front = null;
+      await until(async () => {
+        front = await call(`const g = vscode.window.tabGroups.all.find((x) => x.viewColumn === 1); const t = g && g.activeTab;
+          return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.path.split("/")[1] : null;`);
+        return front === sessionId || null;
+      }, 10000, 300);
+      check(!!loaded && front === sessionId,
+        'with opencodeAgentPlus.loadRestoredTabs on, a reload loads the chat tab behind another without a click, and the tab that was in front is in front again', { early, loaded, front });
+      await setLoad(false);
+    }
     await gapCi.closeTabs(call, reloadTabs.slice(1));
     await sleep(800);
 

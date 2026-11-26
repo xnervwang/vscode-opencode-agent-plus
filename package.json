@@ -523,6 +523,11 @@
           "scope": "application",
           "markdownDescription": "Focus view: show only your messages and the last reply of each turn, hiding tool calls, thinking, subagents and the work in progress. Requests waiting for you still show. Toggle it with the Focus button under the message box or Ctrl+Alt+F in a chat tab."
         },
+        "opencodeAgentPlus.loadRestoredTabs": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "After a reload, or when the window opens, load the OpenCode conversations in background tabs too, instead of each one when you first click its tab. Each tab comes to the front for a moment, then the tab you had in front comes back."
+        },
         "opencodeAgentPlus.pinPrompt": {
           "type": "boolean",
           "default": true,
