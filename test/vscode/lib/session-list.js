@@ -391,6 +391,15 @@ async function missing(ctx) {
   await shot('02-sessions-no-opencode', { features: ['session list notice'],
     expect: 'Agent Plus\'s session list with a note above its rows, starting with the OpenCode mark: "OpenCode was not found. Install OpenCode 2 with npm install -g @opencode/cli and reload the window, or download it with the button here.", shown whole, with Download OpenCode and Show Logs buttons; no OpenCode conversation rows.',
     part: SIDEBAR });
+  /* With no OpenCode there are no figures, and OpenCode's part of Account & usage says so rather than being left out. */
+  const part = () => h.sl.evaluate(() => { const a = document.querySelector('.sl-section[data-key="account"]'); return a && !a.classList.contains('sl-hidden') ? a.innerText : null; });
+  if (!(await part())) await h.expand('Account & usage').catch(() => {});
+  const said = await ctx.until(async () => { const t = await part(); return t && /OpenCode/.test(t) && /Not found/.test(t) ? t : null; }, 20000);
+  check(!!said, "with OpenCode not found, Account & usage still has OpenCode's part, one row saying OpenCode was not found", said || await part());
+  await h.away();
+  await shot('02c-sessions-no-opencode-account', { features: ['Account & usage'],
+    expect: 'The ACCOUNT & USAGE section at the top of the list, expanded, with an OpenCode block headed by its mark that has one row: "OpenCode" and "Not found". No provider, model or cost rows.',
+    part: SIDEBAR });
   return h;
 }
 

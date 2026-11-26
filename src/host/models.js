@@ -34,11 +34,11 @@ const matches = (m, name) => !!name && (fullId(m) === name || m.id === name || m
  *   defaultModel()    optional: Promise of a ModelInfo or a model name, or null
  */
 function createModels({ vscode, listModels, defaultModel }) {
-  let last = [];
+  let last = [], listed = false;
 
   function list() {
     const p = Promise.resolve().then(() => listModels());
-    p.then((l) => { if (Array.isArray(l)) last = l; }, () => {});
+    p.then((l) => { if (Array.isArray(l)) { last = l; listed = true; } }, () => {});
     return p;
   }
 
@@ -99,6 +99,8 @@ function createModels({ vscode, listModels, defaultModel }) {
     forNew,
     /* Uses the last list, without asking OpenCode again. */
     cached: (name) => last.find((m) => matches(m, name)) || null,
+    /* Whether a list was read, and how many models it had, without asking OpenCode again. */
+    state: () => ({ listed, count: last.length }),
     fullId,
   };
 }

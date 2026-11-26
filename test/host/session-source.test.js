@@ -13,7 +13,7 @@ const { createSessionSource, startOfDay } = require('../../src/host/session-sour
 const rec = (id, extra = {}) => ({ id, title: `Title ${id}`, cwd: '/w/p', parentId: '', createdAt: 100, lastActiveAt: 300, lastReplyAt: 300, viewedAt: 0,
   archivedAt: 0, busy: false, cost: 0.25, tokens: { input: 1200, output: 30, reasoning: 0, cacheRead: 5000, cacheWrite: 0 }, model: 'amazon-bedrock/x.grok', outcome: 'succeeded', ...extra });
 
-function setup({ records = [], here = {}, far = [], places = {}, known = {}, holders = {}, active = [], activeRef = null, canRename = true, canFork = true, listError = null, canDownload = true, git = null, noted } = {}) {
+function setup({ modelsState = null, statsError = null, records = [], here = {}, far = [], places = {}, known = {}, holders = {}, active = [], activeRef = null, canRename = true, canFork = true, listError = null, canDownload = true, git = null, noted } = {}) {
   const calls = [];
   const timers = [];
   let readings = 0;
@@ -38,7 +38,8 @@ function setup({ records = [], here = {}, far = [], places = {}, known = {}, hol
     remove: async (id) => calls.push(['remove', id]),
     canFork: () => canFork, fork: async (id) => calls.push(['fork', id]),
     markViewed: async (id, idle) => calls.push(['view', id, idle]),
-    stats: async (from, to, tz) => { calls.push(['stats', tz]); return { cost: 3.5 }; },
+    stats: async (from, to, tz) => { calls.push(['stats', tz]); if (statsError) throw statsError; return { cost: 3.5 }; },
+    ...(modelsState ? { models: () => modelsState } : {}),
     providerName: (p) => (p === 'amazon-bedrock' ? 'Amazon Bedrock' : p),
     timeZone: () => 'America/Los_Angeles',
     canDownload: () => canDownload,
@@ -253,7 +254,7 @@ test('Account & usage, given at once from the last reading: the provider and mod
   source.onDidChangeAccountInfo(() => { told++; });
   const first = source.accountInfo({ sessionId: 'ses_a' });
   assert.ok(!first || typeof first.then !== 'function', 'not a promise: Agent Plus does not wait for it');
-  assert.equal(first, null, 'nothing read yet');
+  assert.deepEqual(first.rows.map((r) => [r.label, r.value]), [['Usage', 'Reading']], 'nothing read yet, which the part says');
   for (let i = 0; i < 50 && !told; i++) await new Promise((r) => setTimeout(r, 5));
   assert.equal(told, 1, 'the core is told once the reading finishes');
   const info = source.accountInfo({ sessionId: 'ses_a' });
@@ -266,6 +267,29 @@ test('Account & usage, given at once from the last reading: the provider and mod
   assert.equal(told, 1, 'and nothing new to tell');
   const none = source.accountInfo({ sessionId: '' });
   assert.deepEqual(none.rows.map((r) => r.label), ['Today, all conversations']);
+});
+
+test('with nothing else to show, Account & usage still has OpenCode\'s part, whose one row says why', async () => {
+  const read = async (source) => {
+    source.accountInfo({ sessionId: '' });
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 5));
+    return (source.accountInfo({ sessionId: '' }).rows || []).map((r) => [r.label, r.value]);
+  };
+  const listError = { current: Object.assign(new Error('OpenCode was not found.'), { code: 'notFound' }) };
+  const lost = setup({ listError, statsError: new Error('no OpenCode'), modelsState: { listed: true, count: 0 } }).source;
+  let told = 0;
+  lost.onDidChangeAccountInfo(() => { told++; });
+  await lost.listSessions({ folders: ['/w'] });
+  assert.deepEqual(await read(lost), [['OpenCode', 'Not found']], 'OpenCode not found comes first');
+  listError.current = null;
+  await lost.listSessions({ folders: ['/w'] });
+  assert.deepEqual(await read(lost), [['Provider', 'No provider configured']], 'found again, a model list with no model says no provider is set up');
+  assert.ok(told >= 2, 'and the core is told each time it changes');
+  assert.deepEqual(await read(setup({ statsError: new Error('broken'), modelsState: { listed: true, count: 3 } }).source), [['Usage', 'Not available']],
+    'with providers but no statistics, the usage is not available');
+  assert.deepEqual(await read(setup({ statsError: new Error('broken') }).source), [['Usage', 'Not available']], 'a model list not read yet claims nothing about providers');
+  assert.deepEqual(await read(setup({ modelsState: { listed: true, count: 0 } }).source), [['Today, all conversations', '$3.50']],
+    'with today\'s cost there is data, which is drawn as before');
 });
 
 test('today starts at midnight in the user\'s time zone', () => {

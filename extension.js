@@ -923,6 +923,7 @@ function start(context, log, gate, channel) {
     fork: async (id) => { const f = await backend.forkSession(id); folders.set(f.id, f.cwd); log(`forked ${id} as ${f.id}`); return openSession(f.id); },
     markViewed: (id, idle) => sessionIndex.view(id, idle),
     stats: (from, to, zone) => sessionIndex.stats(from, to, zone),
+    models: () => models.state(),
     providerName: (id) => PROVIDER_NAMES[id] || id,
     timeZone: () => timeZone,
     canDownload: () => require('./src/opencode/download').available(),

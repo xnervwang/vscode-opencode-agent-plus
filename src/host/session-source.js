@@ -83,6 +83,7 @@ const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n /
  *   fork(id)         Promise: opens a copy of the conversation
  *   markViewed(id, idle)  optional Promise: OpenCode's record that the turn that ended at `idle` was seen
  *   stats(from, to, timeZone)  optional Promise of OpenCode's session statistics for that span
+ *   models()                 optional: { listed, count } of the last model list, without asking OpenCode again
  *   providerName(id) optional: a provider id's display name
  *   timeZone()       optional: the user's IANA time zone
  *   canDownload()    optional: whether OpenCode can be downloaded for this platform
@@ -109,6 +110,7 @@ function createSessionSource(deps) {
     const logs = commands.logs ? [{ label: 'Show Logs', command: commands.logs, arguments: [] }] : [];
     /* The note has room for 300 characters: the whole message, which says where else to look, is in the log. */
     if (e && e.code === 'notFound') {
+      if (!missing) { missing = true; retellAccount(); }
       const can = !!(commands.download && deps.canDownload && deps.canDownload());
       const download = can ? [{ label: 'Download OpenCode', command: commands.download, arguments: [] }] : [];
       /* The list draws the note as plain text. */
@@ -129,6 +131,13 @@ function createSessionSource(deps) {
   let account = { id: null, at: 0, record: null };
   let accountReading = null;
   let accountKey = '';
+  /* OpenCode was not found on the last listing; the last reading of today's statistics failed. */
+  let missing = false, statsFailed = false;
+  /* Tells the core when Account & usage would read differently. */
+  function retellAccount() {
+    const k = JSON.stringify(accountOf(account.id));
+    if (k !== accountKey) { accountKey = k; accountChanged.fire(); }
+  }
 
   const fire = () => changed.fire();
 
@@ -173,15 +182,24 @@ function createSessionSource(deps) {
         const zone = deps.timeZone ? deps.timeZone() : '';
         const day = startOfDay(t, zone);
         if (today.day !== day || t - today.at > 60000) {
-          try { today = { day, at: t, stats: await deps.stats(day, t, zone) }; } catch (e) { log(`reading OpenCode's statistics failed: ${e.message}`); }
+          try { today = { day, at: t, stats: await deps.stats(day, t, zone) }; statsFailed = false; } catch (e) { statsFailed = true; log(`reading OpenCode's statistics failed: ${e.message}`); }
         }
       }
       account = { id: sessionId, at: now(), record };
     })().catch((e) => log(`reading Account & usage failed: ${e.message}`)).finally(() => {
       accountReading = null;
-      const k = JSON.stringify(accountOf(account.id));
-      if (k !== accountKey) { accountKey = k; accountChanged.fire(); }
+      retellAccount();
     });
+  }
+
+  /* The one row Account & usage has when nothing else can be said, saying why: the part is never left out, so that no
+     part reads the same as no such feature. */
+  function stateRow() {
+    const m = typeof deps.models === 'function' ? deps.models() || {} : {};
+    if (missing) return { label: 'OpenCode', value: 'Not found', tooltip: 'Install OpenCode 2, or set opencodeAgentPlus.opencode.path to the one you have' };
+    if (m.listed && !m.count) return { label: 'Provider', value: 'No provider configured', tooltip: 'Connect one from the model picker in a chat tab' };
+    if (statsFailed) return { label: 'Usage', value: 'Not available', tooltip: 'OpenCode did not give its statistics; Show Logs says why' };
+    return { label: 'Usage', value: account.at ? 'Nothing recorded today' : 'Reading' };
   }
 
   /* The OpenCode rows of Account & usage, built from the last reading. */
@@ -203,7 +221,7 @@ function createSessionSource(deps) {
         { label: 'Tokens', value: `${count(r.tokens.input)} in · ${count(r.tokens.output)} out`, tooltip: `Cache read ${count(r.tokens.cacheRead)}, cache write ${count(r.tokens.cacheWrite)}, reasoning ${count(r.tokens.reasoning)}` },
       ],
     } : undefined;
-    if (!rows.length && !conversation) return null;
+    if (!rows.length && !conversation) rows.push(stateRow());
     return { rows: rows.slice(0, 12), bars: [], links: [], ...(conversation ? { conversation } : {}) };
   }
 
@@ -289,6 +307,7 @@ function createSessionSource(deps) {
       throw e;
     }
     setNotice(null);
+    if (missing) { missing = false; retellAccount(); }
     if (typeof deps.noted === 'function') { try { deps.noted(records); } catch (e) { log(`noting OpenCode's records failed: ${e.message}`); } }
     const known = deps.elsewhere.noteRuns(records, reading);
     const far = await others();

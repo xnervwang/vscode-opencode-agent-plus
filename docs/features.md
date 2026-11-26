@@ -225,7 +225,7 @@ To delete a conversation, right-click its row in the Archived section and choose
 
 ### Account & usage
 
-For the OpenCode conversation you have in front, the OpenCode part of Account & usage at the top of the list shows the provider, model, cost, and token count. It also shows the total cost of all your OpenCode conversations since midnight in your time zone.
+For the OpenCode conversation you have in front, the OpenCode part of Account & usage at the top of the list shows the provider, model, cost, and token count. It also shows the total cost of all your OpenCode conversations since midnight in your time zone. When there is nothing to show, the part keeps one row that says why: OpenCode was not found, no provider is configured, or OpenCode's usage figures are not available.
 
 ### When OpenCode is unavailable
 
