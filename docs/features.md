@@ -68,9 +68,11 @@ Connect a provider… and Reload the model list stay below the filter. The model
 
 Click a row to show one row per geography, each with its model ID in grey. Click a geography to select it. For a model with one variant, click the model row to select it. Your current model appears in bold with a check mark, with its row unfolded when the list opens. Up and Down move between rows. Enter selects the highlighted model or unfolds its row. With the filter empty, Right unfolds the highlighted row and Left folds it. Esc closes the list and returns you to the message box.
 
-Before connecting, you see only OpenCode's free models, under "OpenCode's free models". Connect a provider… runs `opencode auth login` in a VS Code terminal. Over Remote-SSH, the terminal runs remotely and saves your credentials there. Closing it restarts OpenCode and refreshes the chat tabs' model lists. OpenCode 2 counts Bedrock as connected without testing credentials if its starting environment contains `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `AWS_CONTAINER_CREDENTIALS_FULL_URI`. The extension passes the profile from `opencodeAgentPlus.bedrock.profile` as `AWS_PROFILE`. OpenCode then lists its entire built-in Bedrock catalog, which can include models your account and Region cannot call.
+### Providers and Free Models
 
 By default (`opencodeAgentPlus.openCodeModels` set to `auto`), the list shows OpenCode's free models (which run on opencode.ai) until you connect another provider; `show` always lists them, and `hide` leaves them out even before you connect another provider, but with either `auto` or `hide`, a free model your conversation already uses stays in that conversation's model list.
+
+Connect a provider… runs `opencode auth login` in a VS Code terminal, where you follow the prompts to pick a provider and enter its credentials. Over Remote-SSH, the terminal runs remotely and saves your credentials there. Closing it restarts OpenCode and refreshes the chat tabs' model lists. OpenCode 2 counts Bedrock as connected without testing credentials if its starting environment contains `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `AWS_CONTAINER_CREDENTIALS_FULL_URI`. The extension passes the profile from `opencodeAgentPlus.bedrock.profile` as `AWS_PROFILE`. OpenCode then lists its entire built-in Bedrock catalog, which can include models your account and Region cannot call.
 
 ### Modes and Model Changes
 
@@ -80,7 +82,9 @@ If you switch to a model that does not support your chosen effort, it uses its d
 
 ### Reply Figures
 
-The last row of text in each reply starts with the time it arrived, followed by figures such as `2m10s · ctx 33% · $0.42 · grok-4.7 (US) low`. If the turn ends with something other than text, the figures appear on their own line. The duration, model and effort are for that reply. A Bedrock model's name ends with the geography of its ID, such as (US) or (India), as in the model list. The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the figures to see the same values with labels.
+The last row of text in each reply starts with the time it arrived, followed by figures such as `2m10s · ctx 33% · $0.42 · grok-4.7 (US) low`. If the turn ends with something other than text, the figures appear on their own line.
+
+The duration, model and effort are for that reply. A Bedrock model's name ends with the geography of its ID, such as (US) or (India). The percentage shows how much of the context window is in use, and the cost is the total OpenCode reports for the conversation so far. Hover over the figures to see the same values with labels.
 
 ## Context, Compaction and Retries
 
@@ -154,7 +158,7 @@ Choose Fork Conversation from the menu of the conversation's row in Agent Plus's
 
 A pill with a green dot in the row of buttons under the input box counts running subagents and any shell commands still running in the background. For example, you might see "1 subagent, 1 command running". Click the pill to open a list above the input box. Each item shows its kind, command or title, process ID and start time. Selecting an item scrolls the conversation to its row. OpenCode Agent Plus checks whether a background command is still running only when a turn starts or ends or when you open the list.
 
-In OpenCode 2, look below the tool row that started a subagent. The Subagent box there shows its title, status and latest output. Expand "Its steps (n)", where n counts all of the subagent's steps, to see the last 60 entries, including tool calls and text. Subagent conversations stay out of the Conversations view, `OpenCode Agent Plus: Find Conversation…` and Agent Plus. On OpenCode 1, OpenCode Agent Plus does not distinguish subagent conversations from other conversations.
+In OpenCode 2, look below the tool row that started a subagent. The Subagent box there shows its title, status and latest output. Expand "Its steps (n)", where n counts all of the subagent's steps, to see the last 60 entries, including tool calls and text. Agent Plus's Conversations list hides subagent sessions by default along with other background conversations (see [Finding a conversation](#finding-a-conversation) to show them), and replies omit subagent sessions from their links to other conversations. On OpenCode 1, OpenCode Agent Plus does not distinguish subagent conversations from other conversations.
 
 A subagent or background command finishing can trigger a new turn. The page shows a separate turn with the line "OpenCode started this turn on its own, for a background subagent or command." During the turn, the conversation appears as working. If you aren't viewing it when the reply arrives, the reply counts as unread. The turn's cost is still unknown when it ends; the next time OpenCode reports usage, that cost is added to the conversation cost you see in the figures on each reply.
 
@@ -178,12 +182,15 @@ Agent Plus hides background conversations by default. These include subagent ses
 
 ### Reading a conversation row
 
-A dot or ring on the OpenCode mark shows what's happening in the conversation:
+Each row shows what the conversation is doing, whether it's open somewhere else, and whether it has an unread reply.
+
+A dot or ring on the OpenCode mark shows the conversation's state:
 
 - A green dot means a turn is running.
 - A green ring means the turn has ended, but work it started is still running. This can be a command moved to the background or a subagent.
 - A blue dot means a permission request or question is waiting for you.
-- A red dot means the conversation's work plan has a question for you. A red ring means there's a plan question and a turn is still running. See [Work Plan and Plan Bar](#work-plan-and-plan-bar).
+- A red dot means the conversation's work plan has a question for you. See [Work Plan and Plan Bar](#work-plan-and-plan-bar).
+- A red ring means there's a plan question and a turn is still running.
 
 OpenCode Agent Plus shows running turns in this VS Code window, in another VS Code window, in OpenCode's terminal interface, and in OpenCode's background service.
 
@@ -201,11 +208,13 @@ Click a row to open the conversation in an editor tab. If it's already open in a
 
 To start a conversation, select the logo at the left of the New bar, pick OpenCode Agent Plus, then choose New in tab. The conversation opens in an editor tab. Recently closed, at the top of the list, shows conversations whose tabs you closed in this window. Use `Agent Plus: Reopen Closed Conversation` (Ctrl+Shift+T, or Cmd+Shift+T on macOS) to reopen the last one you closed.
 
-With OpenCode 2, you can rename a conversation from its row. To copy a whole conversation into a new tab, right-click its row and choose `Fork Conversation`, the last entry in the menu. See [Forking](#forking).
+With OpenCode 2, hover over a conversation's row and click Rename, or right-click the row and choose Rename. To copy a whole conversation into a new tab, right-click its row and choose `Fork Conversation`, the last entry in the menu. See [Forking](#forking).
 
-You can archive and unarchive conversations in the list. Agent Plus keeps the list's archived mark. The first time the list shows a project's OpenCode conversations, Agent Plus marks any that OpenCode had already archived. It does this once per project.
+### Archiving and deleting conversations
 
-You can delete a conversation only from the Archived section, when no window or other process has it open and nothing in it is running. Before you confirm, the prompt explains that deletion removes the conversation and its subagents' sessions from OpenCode's database. OpenCode Agent Plus also deletes the conversation's work plan and the folder it keeps for that conversation.
+To move a conversation to the Archived section, hover over its row and click Archive or right-click the row and choose Archive; to move it back, click Unarchive on its row in the Archived section. Agent Plus keeps the list's archived mark. The first time the list shows a project's OpenCode conversations, Agent Plus marks any that OpenCode had already archived. It does this once per project.
+
+To delete a conversation, right-click its row in the Archived section and choose `Delete...` to open the confirmation prompt; this works only when no window or other process has the conversation open and nothing in it is running. Before you confirm, the prompt explains that deletion removes the conversation and its subagents' sessions from OpenCode's database. OpenCode Agent Plus also deletes the conversation's work plan and the folder it keeps for that conversation.
 
 ### Account & usage
 
