@@ -530,7 +530,8 @@ function start(context, log, gate, channel) {
 
   /* Connect a Model Provider. OpenCode is restarted only when no turn in this window is running, since a restart would
      end the turn. */
-  const idleHere = () => manager.list().every((s) => s.activity !== 'working' && s.activity !== 'waiting');
+  /* Restarting OpenCode stops what runs in it, background commands and subagents included. */
+  const idleHere = () => manager.list().every((s) => s.activity !== 'working' && s.activity !== 'waiting' && s.activity !== 'background');
   const whenIdle = () => new Promise((resolve) => {
     if (idleHere()) { resolve(); return; }
     const d = manager.onDidChange(() => { if (idleHere()) { d.dispose(); resolve(); } });
@@ -666,7 +667,7 @@ function start(context, log, gate, channel) {
       icons = files ? Object.fromEntries(Object.entries(files).map(([k, v]) => [k, { light: vscode.Uri.file(v.light), dark: vscode.Uri.file(v.dark) }])) : null;
     }
     if (!icons) return undefined;
-    return icons[activity === 'working' || activity === 'waiting' ? activity : 'stopped'];
+    return icons[['working', 'waiting', 'background'].includes(activity) ? activity : 'stopped'];
   };
   let link = null;
   const editor = new ChatEditorProvider({

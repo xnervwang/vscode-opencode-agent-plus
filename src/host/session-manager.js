@@ -93,12 +93,14 @@ function createSessionManager(deps) {
       sessionId: e.id,
       title: e.title || 'New conversation',
       cwd: e.cwd,
-      activity: e.state,
+      /* A turn over with background work still running: a command moved to the background, or a subagent. */
+      activity: e.state === 'stopped' && e.background.size ? 'background' : e.state,
       unseen: e.unseen,
       lastActiveAt: e.lastActiveAt,
       running: true,
       lastUserAt: e.lastUserAt,
       lastReplyAt: e.lastReplyAt,
+      background: [...e.background.values()].map((b) => ({ ...b })),
     };
     if (e.state === 'waiting') out.waitingFor = e.waitingKind === 'question' ? { kind: 'question' } : { kind: 'permission', tool: e.waitingTool || '' };
     return out;
@@ -138,6 +140,20 @@ function createSessionManager(deps) {
         break;
       case 'title':
         if (typeof ev.title === 'string' && ev.title.trim()) e.title = ev.title.trim(); break;
+      case 'background': {
+        const key = `command:${ev.id}`;
+        if (ev.status === 'running') e.background.set(key, { kind: 'command', title: String(ev.title || ''), pid: num(ev.pid), since: e.background.has(key) ? e.background.get(key).since : at });
+        else if (!e.background.delete(key)) return;
+        break;
+      }
+      case 'subagent': {
+        const key = `subagent:${ev.childId}`;
+        if (ev.status === 'running') {
+          if (e.background.has(key) && e.background.get(key).title === String(ev.title || '')) return;
+          e.background.set(key, { kind: 'subagent', title: String(ev.title || ''), pid: 0, since: e.background.has(key) ? e.background.get(key).since : at });
+        } else if (!e.background.delete(key)) return;
+        break;
+      }
       case 'options':
       case 'commands':
         return;
@@ -159,7 +175,7 @@ function createSessionManager(deps) {
       const info = deps.info ? await deps.info(id, conversation) : conversation;
       if (!info) throw new Error('there is no such conversation');
       const e = {
-        id, conversation, cwd: String(info.cwd || ''), panels: new Set(), asking: new Map(),
+        id, conversation, cwd: String(info.cwd || ''), panels: new Set(), asking: new Map(), background: new Map(),
         state: stateOfInfo(info), waitingTool: toolOfInfo(info), waitingKind: kindOfInfo(info), unseen: false,
         title: typeof info.title === 'string' ? info.title : '',
         lastUserAt: num(info.lastUserAt), lastReplyAt: num(info.lastReplyAt),

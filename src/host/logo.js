@@ -18,8 +18,9 @@ const fs = require('fs');
 const path = require('path');
 
 const COLORS = { light: '#424242', dark: '#c5c5c5' };
-const DOTS = { working: '#22c55e', waiting: '#ef4444' };
-const TAB_STATES = ['stopped', 'working', 'waiting'];
+/* A string is a filled dot; { ring } a ring of that colour, for a turn over with background work still running. */
+const DOTS = { working: '#22c55e', waiting: '#ef4444', background: { ring: '#22c55e' } };
+const TAB_STATES = ['stopped', 'working', 'waiting', 'background'];
 
 function keep(file, body) {
   let old = null;
@@ -30,7 +31,7 @@ function keep(file, body) {
   fs.renameSync(tmp, file);
 }
 
-/* The 24-unit logo in `color`; with `dot` set, a circle of that colour sits at its top right. */
+/* The 24-unit logo in `color`; with `dot` set, a dot or ring (DOTS) sits at its top right. */
 function withDot(svg, color, dot) {
   const body = svg.replace(/currentColor/g, color);
   if (!dot) return body;
@@ -40,7 +41,7 @@ function withDot(svg, color, dot) {
   return `${body.slice(0, open)}
   <defs><mask id="cut"><rect width="24" height="24" fill="white" stroke="none"/><circle cx="19" cy="5" r="6" fill="black" stroke="none"/></mask></defs>
   <g mask="url(#cut)">${body.slice(open, close)}</g>
-  <circle cx="19" cy="5" r="4.5" fill="${dot}" stroke="none"/>
+  ${typeof dot === 'string' ? `<circle cx="19" cy="5" r="4.5" fill="${dot}" stroke="none"/>` : `<circle cx="19" cy="5" r="3.5" fill="none" stroke="${dot.ring}" stroke-width="2"/>`}
 ${body.slice(close)}`;
 }
 
@@ -67,7 +68,7 @@ function logoFiles(extensionPath, storageDir) {
   return out;
 }
 
-/* { stopped, working, waiting }, each { light, dark } file paths; null on the same failures as logoFiles. */
+/* { stopped, working, waiting, background }, each { light, dark } file paths; null on the same failures as logoFiles. */
 function tabIcons(extensionPath, storageDir) {
   let svg;
   try { svg = fs.readFileSync(path.join(extensionPath, 'images', 'sidebar.svg'), 'utf8'); } catch (_) { return null; }

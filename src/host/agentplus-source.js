@@ -54,7 +54,7 @@ function toConversation(s) {
     title: String(s.title || 'New conversation').slice(0, 200),
     cwd: s.cwd || '',
     state: stateOf(s),
-    activity: s.activity === 'working' || s.activity === 'waiting' ? s.activity : 'stopped',
+    activity: ['working', 'waiting', 'background'].includes(s.activity) ? s.activity : 'stopped',
     unseen: !!s.unseen,
     running: s.running !== false,
     lastActiveAt: s.lastActiveAt || 0,

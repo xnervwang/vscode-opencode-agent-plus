@@ -52,7 +52,7 @@ test("opens a conversation with the backend's folder and state", async () => {
   assert.strictEqual(manager.snapshot(A).cwd, '/work/folder');
   assert.strictEqual(made[0].askedFor, A, 'the info is read with the conversation at hand');
   assert.deepStrictEqual(manager.list(), [{ sessionId: A, title: 'New conversation', cwd: '/work/folder', activity: 'stopped', unseen: false,
-    lastActiveAt: 5000, running: true, lastUserAt: 0, lastReplyAt: 0 }]);
+    lastActiveAt: 5000, running: true, lastUserAt: 0, lastReplyAt: 0, background: [] }]);
   assert.deepStrictEqual(changes, [A]);
 });
 
@@ -283,4 +283,26 @@ test('subscribe understands onEvent, a Node EventEmitter and on(fn)', () => {
   off4();
   assert.deepStrictEqual(seen, [['vs', 1], ['node', 2], ['plain', 4], ['both', 5]]);
   assert.strictEqual(typeof subscribe({}, () => {}), 'function');
+});
+
+test('a turn over with a background command or subagent still running is background, and stopped once both end', async () => {
+  const { manager, made } = setup();
+  await manager.open(A);
+  const c = made[0];
+  c.fire({ type: 'turnStart', turnId: 't1', at: 100 });
+  c.fire({ type: 'background', id: 'call_1', kind: 'shell', title: 'npm test', status: 'running', pid: 4321, at: 110 });
+  c.fire({ type: 'subagent', childId: 'ses_child', title: 'Look for the bug', status: 'running' });
+  assert.strictEqual(manager.snapshot(A).activity, 'working', 'a turn runs: working, whatever runs beside it');
+  c.fire({ type: 'turnEnd', reason: 'endTurn', at: 120 });
+  const s = manager.snapshot(A);
+  assert.strictEqual(s.activity, 'background');
+  assert.deepStrictEqual(s.background, [
+    { kind: 'command', title: 'npm test', pid: 4321, since: 110 },
+    { kind: 'subagent', title: 'Look for the bug', pid: 0, since: 5000 },
+  ]);
+  c.fire({ type: 'subagent', childId: 'ses_child', title: 'Look for the bug', status: 'done' });
+  assert.strictEqual(manager.snapshot(A).activity, 'background', 'the command still runs');
+  c.fire({ type: 'background', id: 'call_1', kind: 'shell', title: 'npm test', status: 'done', pid: 4321, at: 130 });
+  assert.strictEqual(manager.snapshot(A).activity, 'stopped');
+  assert.deepStrictEqual(manager.snapshot(A).background, []);
 });

@@ -87,11 +87,12 @@ test('a title that already carries an envelope or a crown shows without them, an
   assert.strictEqual(panel.title, 'Report draft \u{1F4E9}', 'a stopped turn leaves the earlier unread reply unread');
 });
 
-test('tab icons: the logo in each theme colour, a green or red dot for working and waiting, written once', () => {
+test('tab icons: the logo in each theme colour, a green or red dot for working and waiting, a green ring for background work, written once', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-icons-'));
   try {
     const files = tabIcons(ROOT, dir);
-    assert.deepStrictEqual(Object.keys(files), ['stopped', 'working', 'waiting']);
+    assert.deepStrictEqual(Object.keys(files), ['stopped', 'working', 'waiting', 'background']);
+    assert.match(fs.readFileSync(files.background.dark, 'utf8'), new RegExp(`fill="none" stroke="${DOTS.background.ring}"`), 'a ring, not a dot');
     const read = (f) => fs.readFileSync(f, 'utf8');
     assert.doesNotMatch(read(files.stopped.dark), /circle cx="19"/);
     assert.match(read(files.working.dark), new RegExp(`fill="${DOTS.working}"`));
