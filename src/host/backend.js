@@ -72,12 +72,22 @@ function normInfo(s) {
    rejects with, before its caller does (the offer to download OpenCode listens for notFound). */
 function createBackend({ options = {}, load, onError } = {}) {
   let made = null;
+  const listeners = new Set();
+  let hooked = null;
+  const hook = () => {
+    if (hooked) return;
+    const b = get();
+    const fn = (...a) => { for (const l of [...listeners]) { try { l(...a); } catch (_) { /* the others still run */ } } };
+    hooked = typeof b.onDidChangeSessions === 'function' ? b.onDidChangeSessions(fn) : { dispose() {} };
+  };
   const get = () => {
     if (made) return made;
     const mod = load ? load() : require(process.env.OPENCODE_AGENT_PLUS_TEST_BACKEND || '../opencode');
     const factory = mod.createOpenCode || mod.createBackend || mod.create;
     if (typeof factory !== 'function') throw new Error('the agent backend exports no factory');
     made = factory(typeof options === 'function' ? options() : options);
+    /* Those who subscribed before the module was loaded hear its changes from now on. */
+    if (listeners.size) { try { hook(); } catch (_) { /* no changes to hear */ } }
     return made;
   };
   const call = (name, ...args) => Promise.resolve().then(() => {
@@ -88,14 +98,6 @@ function createBackend({ options = {}, load, onError } = {}) {
     if (onError) { try { onError(e); } catch (_) { /* the caller still hears it */ } }
     throw e;
   });
-  const listeners = new Set();
-  let hooked = null;
-  const hook = () => {
-    if (hooked) return;
-    const b = get();
-    const fn = (...a) => { for (const l of [...listeners]) { try { l(...a); } catch (_) { /* the others still run */ } } };
-    hooked = typeof b.onDidChangeSessions === 'function' ? b.onDidChangeSessions(fn) : null;
-  };
 
   return {
     get started() { return !!made; },
