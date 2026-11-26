@@ -575,6 +575,22 @@ function createOpenCode() {
       try { return JSON.parse(fs.readFileSync(path.join(process.env.OPENCODE_AGENT_PLUS_HOME || '/tmp', 'fake-credentials.json'), 'utf8')); } catch (_) { return []; }
     },
     async deleteSession(id) { const c = live.get(id); if (c) c.dispose(); const db = read(); delete db.sessions[id]; write(db); changed(id); },
+    /* The session list's records, in the shape of OpenCode 2's /api session.list rows (src/opencode/session-index.js). A
+       session's turn counts as busy from its last message until its reply; `viewed` is the reply the list was told was
+       seen. */
+    sessionStore: () => ({
+      rows: async () => Object.values(read().sessions).map((s) => {
+        const busy = s.lastUserAt || 0;
+        const idle = s.lastReplyAt || 0;
+        return { id: s.id, title: s.title || undefined, parentID: s.parent || undefined, location: { directory: s.cwd },
+          time: { created: s.createdAt || s.lastActiveAt || 0, updated: s.lastActiveAt || 0, ...(busy ? { busy } : {}), ...(idle ? { idle } : {}),
+            ...(s.viewed ? { viewed: s.viewed } : {}), ...(s.archived ? { archived: s.archived } : {}) },
+          cost: s.cost || 0, tokens: { input: s.tokensIn || 0, output: s.tokensOut || 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          model: s.model ? { id: String(s.model).split('/').slice(1).join('/'), providerID: String(s.model).split('/')[0] } : undefined };
+      }),
+      view: async (id, idle) => { const db = read(); if (db.sessions[id]) { db.sessions[id].viewed = idle; write(db); } },
+      stats: async (from) => ({ cost: Object.values(read().sessions).filter((s) => (s.lastReplyAt || 0) >= from).reduce((n, s) => n + (s.cost || 0), 0) }),
+    }),
     listModels: () => MODELS,
     defaultModel: () => MODELS[0],
     bedrockStatus: () => ({ state: 'notListed', models: 0, opencodeMajor: 1, help: 'The fake backend has no Bedrock.' }),

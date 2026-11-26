@@ -83,7 +83,9 @@ function toRecord(row) {
  *   paths()          Promise of `opencode debug paths` as { state, db, ... }
  *   execFile         child_process.execFile
  *   env              the environment for subcommands, or a function answering it
- *   request          optional (url, { headers, timeout }) => Promise<{ status, body }>, plain HTTP GET
+ *   request          optional (url, { method, headers, body, timeout }) => Promise<{ status, body }>, plain HTTP
+ *   store()          optional: Promise of null, or of a backend's own records ({ rows(), view(id, idle), stats(from, to) },
+ *                    rows in the shape of session.list's), used instead of OpenCode's
  *   fs, platform, log
  */
 function createSessionIndex(deps) {
@@ -125,8 +127,12 @@ function createSessionIndex(deps) {
     });
   }
 
+  const store = () => (typeof deps.store === 'function' ? Promise.resolve().then(() => deps.store()).catch(() => null) : Promise.resolve(null));
+
   /* Every session OpenCode has, newest first, one page after another. */
   async function readAll() {
+    const own = await store();
+    if (own) return ((await own.rows()) || []).map(toRecord).filter(Boolean);
     const svc = await service();
     const rows = [];
     let cursor = '';
@@ -152,6 +158,7 @@ function createSessionIndex(deps) {
   }
 
   async function all() {
+    if (await store()) return readAll();
     const s = await stamp();
     if (cache && s && cache.stamp === s) return cache.rows;
     if (!reading) {
@@ -171,6 +178,7 @@ function createSessionIndex(deps) {
     all,
     /* The ids of the sessions in a turn in the background service, or an empty set when none runs. */
     async active() {
+      if (await store()) return new Set();
       const svc = await service();
       if (!svc) return new Set();
       try {
@@ -185,6 +193,8 @@ function createSessionIndex(deps) {
     stamp,
     /* Marks the turn of `id` that ended at `idle` as seen, as the terminal interface does when it shows it. */
     async view(id, idle) {
+      const own = await store();
+      if (own) { await own.view(id, idle); return; }
       const svc = await service();
       if (svc) await fromService(svc, `/api/session/${encodeURIComponent(id)}/view`, { method: 'POST', body: { idle } });
       else await fromPrivate([['sessionID', id]], { operation: 'session.view', data: { idle } });
@@ -192,6 +202,8 @@ function createSessionIndex(deps) {
     },
     /* OpenCode's statistics of every session's activity from `from` to `to` (epoch milliseconds): cost, tokens. */
     async stats(from, to, timeZone) {
+      const own = await store();
+      if (own) return own.stats(from, to, timeZone);
       const params = [['from', String(Math.floor(from))], ['to', String(Math.floor(to))], ...(timeZone ? [['timezone', timeZone]] : [])];
       const svc = await service();
       const v = svc

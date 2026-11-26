@@ -136,7 +136,7 @@ function createSessionSource(deps) {
       createdAt: r.createdAt,
       lastActiveAt: Math.max(r.lastActiveAt, here ? here.lastUserAt || 0 : 0, here ? here.lastReplyAt || 0 : 0),
       lastReplyAt: Math.max(r.lastReplyAt, here ? here.lastReplyAt || 0 : 0),
-      kind: deps.elsewhere.kindOf(r, known) === 'user' && !r.busy && !r.lastReplyAt && !here ? 'empty' : deps.elsewhere.kindOf(r, known),
+      kind: deps.elsewhere.kindOf(r, known) === 'user' && !r.busy && !r.lastReplyAt && !(here && here.lastUserAt) ? 'empty' : deps.elsewhere.kindOf(r, known),
     };
     if (r.parentId) row.parentId = r.parentId;
     if (r.viewedAt) row.viewedAt = r.viewedAt;

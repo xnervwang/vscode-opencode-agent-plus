@@ -128,6 +128,8 @@ function createBackend({ options = {}, load, onError } = {}) {
     userMessages: (id) => call('userMessages', id),
     mcpList: () => call('mcpList'),
     credentials: () => (made && typeof made.credentials !== 'function' ? Promise.resolve(null) : call('credentials')).catch(() => null),
+    /* A backend that keeps its own session records for the session list (the window tests' fake): { rows, view, stats }. */
+    sessionStore: () => Promise.resolve().then(() => { const b = get(); return typeof b.sessionStore === 'function' ? b.sessionStore() : null; }).catch(() => null),
     dataPaths: () => call('dataPaths'),
     info: () => { try { return made && typeof made.info === 'function' ? made.info() || null : null; } catch (_) { return null; } },
     session: (id, opts) => call(typeof get().session === 'function' ? 'session' : 'openSession', id, opts || {}),

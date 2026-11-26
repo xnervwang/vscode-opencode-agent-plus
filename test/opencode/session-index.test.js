@@ -137,3 +137,17 @@ test('a seen turn and the day\'s statistics go to the background service when it
   await priv.index.stats(1000, 2000, '');
   assert.deepEqual(priv.calls[1], ['api', 'experimental.session.stats', '--param', 'from=1000', '--param', 'to=2000', '--standalone']);
 });
+
+test('a backend with its own records (the window tests\' fake) is read instead of OpenCode, and nothing of OpenCode runs', async (t) => {
+  const { calls, requests, state, db } = setup(t);
+  void state; void db;
+  const viewed = [];
+  const own = { rows: async () => [row('ses_f', '/w/p', { created: 1, busy: 2, idle: 3 })], view: async (id, idle) => viewed.push([id, idle]), stats: async () => ({ cost: 2 }) };
+  const index = createSessionIndex({ found: () => { throw new Error('no OpenCode'); }, paths: async () => ({}), store: async () => own, execFile: () => { throw new Error('ran'); } });
+  assert.deepEqual((await index.list({ folders: ['/w/p'] })).map((r) => r.id), ['ses_f']);
+  assert.deepEqual([...await index.active()], []);
+  await index.view('ses_f', 3);
+  assert.deepEqual(viewed, [['ses_f', 3]]);
+  assert.deepEqual(await index.stats(0, 10, ''), { cost: 2 });
+  assert.equal(calls.length + requests.length, 0);
+});

@@ -864,7 +864,7 @@ function start(context, log, gate, channel) {
 
   /* Agent Plus's session list (src/host/session-source.js): OpenCode's own records of this window's folders, and where
      else they are open. The sessions an `opencode run` created are kept in a file every window reads. */
-  const sessionIndex = createSessionIndex({ found: () => backend.detect(), paths: () => backend.dataPaths(), execFile: childProcess.execFile,
+  const sessionIndex = createSessionIndex({ found: () => backend.detect(), paths: () => backend.dataPaths(), store: () => backend.sessionStore(), execFile: childProcess.execFile,
     env: () => require('./src/opencode/server').subcommandEnv(plan.launch(settings.options()).env), log });
   const runsFile = path.join(paths.root(), 'opencode-runs.json');
   const runs = {
