@@ -194,7 +194,7 @@ On OpenCode 1, Agent Plus shows "Work plans need OpenCode 2" above the plan. Cli
 
 ### Writing About a Row
 
-Click the pen at the end of any row in the Work plan view to bring the plan's conversation to the front. OpenCode Agent Plus appends `About row N (title): `, with the row's number and title filled in, to any text in the message box. Finish the message and send it when you're ready. The pen needs a version of Agent Plus later than 1.7.0.
+Click the pen at the end of any row in the Work plan view to bring the plan's conversation to the front. OpenCode Agent Plus appends `About row N (title): `, with the row's number and title filled in, to any text in the message box. Finish the message and send it when you're ready. The pen needs Agent Plus 1.8.0 or later.
 
 ### Claude Code Plus Stewards
 
