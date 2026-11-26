@@ -105,20 +105,22 @@ function createSessionIndex(deps) {
     return { url: v.url, password: v.password, pid: v.pid };
   }
 
-  async function fromService(svc, apiPath) {
+  async function fromService(svc, apiPath, { method = 'GET', body } = {}) {
     const auth = `Basic ${Buffer.from(`opencode:${svc.password}`).toString('base64')}`;
-    const r = await request(`${svc.url}${apiPath}`, { headers: { authorization: auth }, timeout: SERVICE_TIMEOUT_MS });
-    if (!r || r.status !== 200) throw new Error(`the background service answered ${r ? r.status : 'nothing'}`);
-    return JSON.parse(r.body);
+    const headers = { authorization: auth, ...(body === undefined ? {} : { 'content-type': 'application/json' }) };
+    const r = await request(`${svc.url}${apiPath}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), timeout: SERVICE_TIMEOUT_MS });
+    if (!r || r.status < 200 || r.status >= 300) throw new Error(`the background service answered ${r ? r.status : 'nothing'}`);
+    return r.body ? JSON.parse(r.body) : null;
   }
 
-  function fromPrivate(params) {
+  function fromPrivate(params, { operation = 'session.list', data } = {}) {
     const found = deps.found();
-    const args = ['api', 'session.list', ...params.flatMap(([k, v]) => ['--param', `${k}=${v}`]), '--standalone'];
+    const args = ['api', operation, ...params.flatMap(([k, v]) => ['--param', `${k}=${v}`]), ...(data === undefined ? [] : ['-d', JSON.stringify(data)]), '--standalone'];
     return new Promise((resolve, reject) => {
       deps.execFile(found.path, args, { timeout: 60000, maxBuffer: 64 * 1024 * 1024, env: deps.env || process.env, windowsHide: true }, (err, stdout, stderr) => {
         if (err) { reject(new Error(String(stderr || err.message).trim().slice(0, 300))); return; }
-        try { resolve(JSON.parse(String(stdout))); } catch (e) { reject(new Error(`session.list was not JSON: ${e.message}`)); }
+        const text = String(stdout || '').trim();
+        try { resolve(text ? JSON.parse(text) : null); } catch (e) { reject(new Error(`${operation} was not JSON: ${e.message}`)); }
       });
     });
   }
@@ -180,13 +182,30 @@ function createSessionIndex(deps) {
       }
     },
     service,
+    stamp,
+    /* Marks the turn of `id` that ended at `idle` as seen, as the terminal interface does when it shows it. */
+    async view(id, idle) {
+      const svc = await service();
+      if (svc) await fromService(svc, `/api/session/${encodeURIComponent(id)}/view`, { method: 'POST', body: { idle } });
+      else await fromPrivate([['sessionID', id]], { operation: 'session.view', data: { idle } });
+      cache = null;
+    },
+    /* OpenCode's statistics of every session's activity from `from` to `to` (epoch milliseconds): cost, tokens. */
+    async stats(from, to, timeZone) {
+      const params = [['from', String(Math.floor(from))], ['to', String(Math.floor(to))], ...(timeZone ? [['timezone', timeZone]] : [])];
+      const svc = await service();
+      const v = svc
+        ? await fromService(svc, `/api/experimental/session/stats?${params.map(([k, x]) => `${k}=${encodeURIComponent(x)}`).join('&')}`)
+        : await fromPrivate(params, { operation: 'experimental.session.stats' });
+      return (v && v.data) || null;
+    },
     invalidate() { cache = null; },
   };
 }
 
-function httpGet(url, { headers = {}, timeout = SERVICE_TIMEOUT_MS } = {}) {
+function httpGet(url, { method = 'GET', headers = {}, body, timeout = SERVICE_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
-    const req = httpDefault.get(url, { headers, timeout }, (res) => {
+    const req = httpDefault.request(url, { method, headers, timeout }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
@@ -194,6 +213,7 @@ function httpGet(url, { headers = {}, timeout = SERVICE_TIMEOUT_MS } = {}) {
     });
     req.on('timeout', () => req.destroy(new Error('timed out')));
     req.on('error', reject);
+    req.end(body);
   });
 }
 

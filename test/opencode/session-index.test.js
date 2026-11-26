@@ -122,3 +122,18 @@ test('a service file left by a crashed service, or one naming another host, coun
   const remote = setup(t, { service: { url: 'http://example.test:4321', pid: process.pid, password: 'pw' } });
   assert.equal(await remote.index.service(), null);
 });
+
+test('a seen turn and the day\'s statistics go to the background service when it runs, else to a private server', async (t) => {
+  const svc = setup(t, { service: { url: 'http://127.0.0.1:4321', pid: process.pid, password: 'pw' }, answers: { '/api/experimental/session/stats': { data: { cost: 1.25 } } } });
+  await svc.index.view('ses_a', 300);
+  assert.equal(svc.requests[0].opts.method, 'POST');
+  assert.match(svc.requests[0].url, /\/api\/session\/ses_a\/view$/);
+  assert.equal(svc.requests[0].opts.body, JSON.stringify({ idle: 300 }));
+  assert.deepEqual(await svc.index.stats(1000, 2000, 'America/Los_Angeles'), { cost: 1.25 });
+  assert.match(svc.requests[1].url, /stats\?from=1000&to=2000&timezone=America%2FLos_Angeles$/);
+  const priv = setup(t);
+  await priv.index.view('ses_b', 400);
+  assert.deepEqual(priv.calls[0], ['api', 'session.view', '--param', 'sessionID=ses_b', '-d', '{"idle":400}', '--standalone']);
+  await priv.index.stats(1000, 2000, '');
+  assert.deepEqual(priv.calls[1], ['api', 'experimental.session.stats', '--param', 'from=1000', '--param', 'to=2000', '--standalone']);
+});
