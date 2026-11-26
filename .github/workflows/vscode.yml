@@ -100,7 +100,7 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.os && inputs.os != 'all' && format('["{0}"]', inputs.os) || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
         round: ${{ fromJSON(inputs.times == '5' && '[1, 2, 3, 4, 5]' || inputs.times == '3' && '[1, 2, 3]' || inputs.times == '2' && '[1, 2]' || '[1]') }}
-    name: run (${{ matrix.os }}${{ matrix.round > 1 && format(' #{0}', matrix.round) || '' }})
+    name: "run (${{ matrix.os }}${{ matrix.round > 1 && format(' #{0}', matrix.round) || '' }})"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:

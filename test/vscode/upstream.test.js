@@ -42,3 +42,10 @@ test('against-latest runs the vscode workflow once a day with the latest upstrea
   assert.match(LATEST, /schedule:\n(\s+#.*\n)?\s+- cron: '\d+ \d+ \* \* \*'/);
   assert.match(LATEST, /uses: \.\/\.github\/workflows\/vscode\.yml\n\s+with:\n\s+upstream: latest/);
 });
+
+test('no unquoted workflow value holding an expression has a " #" in it, which YAML reads as the start of a comment', () => {
+  for (const [name, text] of [['vscode.yml', VSCODE], ['against-latest.yml', LATEST]]) {
+    const cut = text.split('\n').filter((l) => /^\s*-?\s*[\w-]+: [^'"\s].*\$\{\{.* #/.test(l));
+    assert.deepStrictEqual(cut, [], name);
+  }
+});
