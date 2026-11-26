@@ -14,7 +14,7 @@ const { createSessionSource, startOfDay } = require('../../src/host/session-sour
 const rec = (id, extra = {}) => ({ id, title: `Title ${id}`, cwd: '/w/p', parentId: '', createdAt: 100, lastActiveAt: 300, lastReplyAt: 300, viewedAt: 0,
   archivedAt: 0, busy: false, cost: 0.25, tokens: { input: 1200, output: 30, reasoning: 0, cacheRead: 5000, cacheWrite: 0 }, model: 'amazon-bedrock/x.grok', outcome: 'succeeded', ...extra });
 
-function setup({ records = [], here = {}, far = [], places = {}, known = {}, holders = {}, active = [], activeRef = null, canRename = true, canFork = true, listError = null, canDownload = true } = {}) {
+function setup({ records = [], here = {}, far = [], places = {}, known = {}, holders = {}, active = [], activeRef = null, canRename = true, canFork = true, listError = null, canDownload = true, git = null } = {}) {
   const calls = [];
   const timers = [];
   let readings = 0;
@@ -32,7 +32,7 @@ function setup({ records = [], here = {}, far = [], places = {}, known = {}, hol
   };
   const manager = { has: (id) => id in here, snapshot: (id) => here[id] || null };
   const source = createSessionSource({
-    index, elsewhere, manager, ours: () => false, holder: (id) => holders[id] || null, otherWindows: async () => far,
+    index, elsewhere, manager, git, platform: 'linux', ours: () => false, holder: (id) => holders[id] || null, otherWindows: async () => far,
     open: async (id, where) => { calls.push(['open', id, where]); return true; },
     create: async (where) => { calls.push(['create', where]); return 'ses_new'; },
     canRename: () => canRename, rename: async (id, t) => calls.push(['rename', id, t]),
@@ -72,6 +72,66 @@ test('rows: the folder\'s sessions with their times, kind, viewed time and the f
   assert.equal(by.ses_kid.actions, undefined, 'a subagent\'s session is not forked on its own');
   assert.equal(by.ses_run.kind, 'background');
   assert.equal(by.ses_new.kind, 'empty', 'never ran a turn');
+});
+
+test('rows: the linked worktrees of the folders\' repositories are listed too, with their names, and every row has its folder\'s branch', async () => {
+  const records = [rec('ses_main'), rec('ses_sub', { cwd: '/w/p/src' }), rec('ses_wt', { cwd: '/data/opencode/worktree/abc123/wt1' }),
+    rec('ses_inner', { cwd: '/w/p/.claude/worktrees/fix/pkg' }), rec('ses_far', { cwd: '/w/other' })];
+  const branches = { '/w/p': 'main', '/w/p/src': 'main', '/data/opencode/worktree/abc123/wt1': '', '/w/p/.claude/worktrees/fix/pkg': 'fix-it' };
+  const git = {
+    worktreesOf: async (dir) => (dir === '/w/p' ? [{ name: 'wt1', dir: '/data/opencode/worktree/abc123/wt1' }, { name: 'fix', dir: '/w/p/.claude/worktrees/fix' }] : []),
+    branchOf: async (dir) => branches[dir] || '',
+  };
+  const { source, calls } = setup({ records, git });
+  const by = Object.fromEntries((await source.listSessions({ folders: ['/w/p'] })).sessions.map((s) => [s.sessionId, s]));
+  assert.deepEqual(calls[0], ['list', ['/w/p', '/data/opencode/worktree/abc123/wt1']], 'a worktree below the folder is listed with it already');
+  assert.deepEqual(Object.keys(by).sort(), ['ses_inner', 'ses_main', 'ses_sub', 'ses_wt']);
+  assert.equal(by.ses_main.branch, 'main');
+  assert.equal(by.ses_main.worktree, undefined, 'the folder itself is no worktree');
+  assert.equal(by.ses_sub.branch, 'main');
+  assert.equal(by.ses_wt.worktree, 'wt1');
+  assert.equal(by.ses_wt.branch, undefined, 'a detached HEAD names no branch');
+  assert.equal(by.ses_inner.worktree, 'fix');
+  assert.equal(by.ses_inner.branch, 'fix-it');
+  assert.deepEqual((await source.importSessions({ folders: ['/w/p'] })).archived, []);
+  assert.deepEqual(calls.filter((c) => c[0] === 'list').pop(), ['list', ['/w/p', '/data/opencode/worktree/abc123/wt1']], 'the import reads the same folders');
+});
+
+test('rows: a window opened on a worktree does not mark it, and a worktree two folders share is listed once', async () => {
+  const records = [rec('ses_a', { cwd: '/w/p-wt' }), rec('ses_b', { cwd: '/w/q' })];
+  const trees = [{ name: 'p-wt', dir: '/w/p-wt' }, { name: 'q', dir: '/w/q' }, { name: 'r', dir: '/w/r' }];
+  const git = { worktreesOf: async () => trees, branchOf: async () => '' };
+  const { source, calls } = setup({ records, git });
+  const rows = (await source.listSessions({ folders: ['/w/p-wt', '/w/q'] })).sessions;
+  assert.deepEqual(calls[0], ['list', ['/w/p-wt', '/w/q', '/w/r']]);
+  assert.ok(rows.every((r) => !r.worktree), 'both are the window\'s own folders');
+});
+
+test('rows: lastUserAt from this window or another one, as they saw it sent, else when OpenCode last began a turn', async () => {
+  const records = [rec('ses_here', { lastTurnAt: 250 }), rec('ses_away', { lastTurnAt: 250 }), rec('ses_closed', { lastTurnAt: 250 }), rec('ses_never')];
+  const here = { ses_here: { activity: 'stopped', lastUserAt: 240, lastReplyAt: 300 } };
+  const far = [{ sessionId: 'ses_away', activity: 'stopped', lastUserAt: 230 }];
+  const { source } = setup({ records, here, far });
+  const by = Object.fromEntries((await source.listSessions({ folders: ['/w/p'] })).sessions.map((s) => [s.sessionId, s]));
+  assert.equal(by.ses_here.lastUserAt, 240, 'not the turn OpenCode began by itself after');
+  assert.equal(by.ses_away.lastUserAt, 230);
+  assert.equal(by.ses_closed.lastUserAt, 250);
+  assert.equal(by.ses_never.lastUserAt, undefined);
+});
+
+test('rows: processes counts this window, another VS Code window holding it and each place elsewhere, from two on', async () => {
+  const term = { kind: 'terminal', label: 'terminal pts/3 in ~/p', detail: ['process 20'], running: false };
+  const run = { kind: 'exec', label: 'opencode run in ~/p', detail: ['process 30'], running: true };
+  const records = [rec('ses_alone'), rec('ses_two'), rec('ses_three'), rec('ses_held'), rec('ses_out')];
+  const here = { ses_alone: { activity: 'stopped' }, ses_two: { activity: 'stopped' }, ses_three: { activity: 'stopped' } };
+  const places = { ses_two: [term], ses_three: [term, run], ses_out: [term] };
+  const { source } = setup({ records, here, places, holders: { ses_held: { name: 'other window' } } });
+  const by = Object.fromEntries((await source.listSessions({ folders: ['/w/p'] })).sessions.map((s) => [s.sessionId, s]));
+  assert.equal(by.ses_alone.processes, undefined);
+  assert.equal(by.ses_two.processes, 2);
+  assert.equal(by.ses_three.processes, 3);
+  assert.equal(by.ses_held.processes, undefined, 'held by one other window and open nowhere else');
+  assert.equal(by.ses_out.processes, undefined, 'one terminal alone');
 });
 
 test('rows page by the core\'s limit, the later pages from the same reading', async () => {

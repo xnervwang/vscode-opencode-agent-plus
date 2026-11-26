@@ -67,6 +67,8 @@ function toRecord(row) {
     createdAt: created,
     lastActiveAt: Math.max(busy, idle) || created,
     lastReplyAt: idle,
+    /* When the last turn began: a message from the user, or OpenCode going on by itself once background work ended. */
+    lastTurnAt: busy,
     viewedAt: num(t.viewed),
     archivedAt: num(t.archived),
     /* A turn that began and has not ended, as OpenCode recorded it; a process that crashed mid-turn leaves this on. */

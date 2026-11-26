@@ -86,6 +86,7 @@ const childProcess = require('child_process');
 const { createSessionIndex } = require('./src/opencode/session-index');
 const { createElsewhere } = require('./src/opencode/elsewhere');
 const { createSessionSource } = require('./src/host/session-source');
+const { createGitInfo } = require('./src/host/git-info');
 const windowEntries = require('./src/shared/window-entries');
 const { writeAtomic } = require('./src/shared/files');
 /* How the Account & usage section names a model provider of OpenCode's. */
@@ -880,7 +881,7 @@ function start(context, log, gate, channel) {
   const elsewhere = createElsewhere({ stateDir: async () => ((await backend.dataPaths()) || {}).state || '', active: () => sessionIndex.active(),
     execFile: childProcess.execFile, memory: runs, ours: (id) => manager.has(id) });
   const sessionSource = createSessionSource({
-    index: sessionIndex, elsewhere, manager,
+    index: sessionIndex, elsewhere, manager, git: createGitInfo(),
     ours: (id) => manager.has(id),
     holder: (id) => locks.holder(id),
     otherWindows: () => windows.readAll(),

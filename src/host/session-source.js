@@ -14,6 +14,12 @@
  *              SCAN_MS while the list asks for rows. The core finds the other VS Code windows itself.
  *   kind       'subagent' for a session with a parent, 'background' for one an `opencode run` created, 'empty' for one
  *              that never ran a turn, else 'user'.
+ *   folders    the window's folders and the folders below them, and the linked worktrees of their repositories, which
+ *              OpenCode keeps under its own data folder: a session moved into one is still this project's, and opens
+ *              here. A row in such a worktree carries its name; every row carries the branch its folder has out.
+ *   lastUserAt from this window or another one when they have the conversation open, as they saw each message sent;
+ *              otherwise when OpenCode last began a turn of it.
+ *   processes  this window, another VS Code window holding it, and each place elsewhere: more than one is a warning.
  *   delete     only what nothing has open and nothing runs: not this window, not another one, not a terminal
  *              interface, not a turn anywhere. The core adds its own rules (archived, not pinned) before it asks.
  *   seen       written back to OpenCode's own record of what was read (/api/session/:id/view), which the terminal
@@ -21,6 +27,8 @@
  *   notice     why the rows could not be read, above the list: OpenCode not found (no rows, with a button to download
  *              it where a build exists for this platform), or the error; gone once a reading succeeds.
  */
+
+const { within } = require('../opencode/session-index');
 
 const SCAN_MS = 10000;
 const DB_POLL_MS = 3000;
@@ -59,6 +67,7 @@ const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n /
  * deps:
  *   index            src/opencode/session-index.js
  *   elsewhere        src/opencode/elsewhere.js
+ *   git              optional: src/host/git-info.js, for branches and worktrees
  *   manager          src/host/session-manager.js
  *   ours(id)         whether this extension created the session
  *   holder(id)       another window that holds the conversation's lock, or null
@@ -149,7 +158,31 @@ function createSessionSource(deps) {
       : `Command still running: ${b.title || 'a command'}${b.pid ? ` (process ${b.pid})` : ''}`).slice(0, 200));
   }
 
-  function rowOf(r, known, far) {
+  const platform = deps.platform || process.platform;
+  const same = (a, b) => within(a, b, platform) && within(b, a, platform);
+
+  /* The folders to list: the window's, and the linked worktrees of their repositories that are not among them. */
+  async function scope(folders) {
+    let trees = [];
+    if (deps.git) {
+      for (const f of folders) {
+        for (const t of await deps.git.worktreesOf(f).catch(() => [])) {
+          if (!folders.some((x) => same(x, t.dir)) && !trees.some((x) => same(x.dir, t.dir))) trees.push(t);
+        }
+      }
+    }
+    const dirs = [...folders, ...trees.filter((t) => !folders.some((f) => within(t.dir, f, platform))).map((t) => t.dir)];
+    return { dirs, trees };
+  }
+
+  /* The worktree a folder is in, the innermost when one is inside another. */
+  function treeOf(cwd, trees) {
+    let best = null;
+    for (const t of trees) if (within(cwd, t.dir, platform) && (!best || t.dir.length > best.dir.length)) best = t;
+    return best ? best.name : '';
+  }
+
+  function rowOf(r, known, far, trees, branches) {
     const here = deps.manager.has(r.id) ? deps.manager.snapshot(r.id) : null;
     const away = far.get(r.id);
     const places = deps.elsewhere.placesOf(r, reading, known);
@@ -162,8 +195,14 @@ function createSessionSource(deps) {
       lastReplyAt: Math.max(r.lastReplyAt, here ? here.lastReplyAt || 0 : 0),
       kind: deps.elsewhere.kindOf(r, known) === 'user' && !r.busy && !r.lastReplyAt && !(here && here.lastUserAt) ? 'empty' : deps.elsewhere.kindOf(r, known),
     };
+    const sent = Math.max(here ? here.lastUserAt || 0 : 0, away ? away.lastUserAt || 0 : 0);
+    if (sent || r.lastTurnAt) row.lastUserAt = sent || r.lastTurnAt;
     if (r.parentId) row.parentId = r.parentId;
     if (r.viewedAt) row.viewedAt = r.viewedAt;
+    const branch = branches.get(r.cwd);
+    if (branch) row.branch = branch.slice(0, 200);
+    const tree = treeOf(r.cwd, trees);
+    if (tree) row.worktree = tree.slice(0, 100);
     const state = here || away;
     if (state && ['working', 'waiting', 'background'].includes(state.activity)) {
       row.activity = state.activity;
@@ -177,6 +216,8 @@ function createSessionSource(deps) {
       row.running = false;
     }
     if (places.length) row.elsewhere = places;
+    const processes = (here ? 1 : 0) + (deps.holder(r.id) ? 1 : 0) + places.length;
+    if (processes > 1) row.processes = processes;
     const hover = backgroundLines(here && here.background);
     if (hover.length) row.hover = hover;
     if (deps.canFork && deps.canFork() && !r.parentId) row.actions = ['fork'];
@@ -186,16 +227,21 @@ function createSessionSource(deps) {
   async function allRows(folders) {
     startWatching();
     if (!reading.at) await rescan().catch(() => {});
+    const { dirs, trees } = await scope(folders);
     let records;
-    try { records = await deps.index.list({ folders }); } catch (e) {
+    try { records = await deps.index.list({ folders: dirs }); } catch (e) {
       if (noteFailure(e)) return [];
       throw e;
     }
     setNotice(null);
     const known = deps.elsewhere.noteRuns(records, reading);
     const far = await others();
+    const branches = new Map();
+    if (deps.git) {
+      for (const cwd of new Set(records.map((r) => r.cwd).filter(Boolean))) branches.set(cwd, await deps.git.branchOf(cwd).catch(() => ''));
+    }
     if (typeof deps.index.stamp === 'function') dbStamp = await deps.index.stamp().catch(() => dbStamp);
-    return records.map((r) => rowOf(r, known, far));
+    return records.map((r) => rowOf(r, known, far, trees, branches));
   }
 
   /* What a conversation has open or running, or '' when nothing does. */
@@ -296,7 +342,7 @@ function createSessionSource(deps) {
     wantSessionDetail() {},
 
     async importSessions({ folders = [] } = {}) {
-      const records = await deps.index.list({ folders });
+      const records = await deps.index.list({ folders: (await scope((Array.isArray(folders) ? folders : []).filter((f) => typeof f === 'string' && f))).dirs });
       return { archived: records.filter((r) => r.archivedAt).map((r) => ({ sessionId: r.id, at: r.archivedAt })), groups: [], pinned: [], colors: {} };
     },
 
