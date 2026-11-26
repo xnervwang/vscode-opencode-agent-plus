@@ -162,6 +162,31 @@ test('after OpenCode restarts, the model it already has is not set a second time
   assert.equal(effortOf(h), 'low');
 });
 
+test('a model chosen while a turn runs is set before the next message, not left for OpenCode to ignore', async (t) => {
+  const { GROK, script } = effortScript();
+  const GLOBAL = 'amazon-bedrock/global.xai.grok-4.7';
+  const reply = script.find((e) => e.on === 'session/set_config_option').reply;
+  const held = [
+    ...script.filter((e) => e.on !== 'session/set_config_option' && e.on !== 'session/prompt'),
+    { on: 'session/set_config_option', reply: { configOptions: reply.configOptions.map((o) => (o.id === 'model' ? { ...o, currentValue: GLOBAL } : o)) } },
+    { on: 'session/prompt', send: [{ waitFor: 'session/cancel' }], reply: { stopReason: 'cancelled' } },
+    { on: 'session/prompt', reply: { stopReason: 'end_turn' } },
+  ];
+  const { oc, agents } = effortSetup(t, held);
+  const h = await oc.openSession(ORIGINAL, { cwd: CWD });
+  assert.equal(h.getModel(), GROK);
+  const first = h.send('Still retrying.');
+  await new Promise((r) => setTimeout(r, 50));
+  await h.setModel(GLOBAL);
+  assert.deepEqual(sets(agents[0]), [], 'not while the turn runs');
+  h.abort();
+  await first;
+  await h.send('On the other model.');
+  const asked = agents[0].received.filter((m) => m.method === 'session/set_config_option' || m.method === 'session/prompt').map((m) => m.method);
+  assert.deepEqual(sets(agents[0]), [`model=${GLOBAL}`]);
+  assert.deepEqual(asked, ['session/prompt', 'session/set_config_option', 'session/prompt'], 'set before the second message');
+});
+
 test('a message with only images is sent without an empty text block', async (t) => {
   const { script } = effortScript();
   const { oc, agents } = effortSetup(t, script);

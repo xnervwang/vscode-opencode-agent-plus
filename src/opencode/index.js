@@ -858,6 +858,8 @@ function createOpenCode(opts = {}) {
       async setModel(model) {
         const v = modelValue(model);
         if (!v) return;
+        /* Chosen during a turn, it can only be set before the next one, which sets it when modelGen is stale. */
+        if (v !== h.model) h.modelGen = 0;
         h.model = v;
         const p = proc;
         if (p && !p.conn.closed && h.loadedGen === p.gen && !h.running) await applyModel(p);
