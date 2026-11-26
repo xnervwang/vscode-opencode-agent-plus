@@ -14,12 +14,12 @@ const { createSessionSource, startOfDay } = require('../../src/host/session-sour
 const rec = (id, extra = {}) => ({ id, title: `Title ${id}`, cwd: '/w/p', parentId: '', createdAt: 100, lastActiveAt: 300, lastReplyAt: 300, viewedAt: 0,
   archivedAt: 0, busy: false, cost: 0.25, tokens: { input: 1200, output: 30, reasoning: 0, cacheRead: 5000, cacheWrite: 0 }, model: 'amazon-bedrock/x.grok', outcome: 'succeeded', ...extra });
 
-function setup({ records = [], here = {}, far = [], places = {}, known = {}, holders = {}, active = [], activeRef = null, canRename = true, canFork = true } = {}) {
+function setup({ records = [], here = {}, far = [], places = {}, known = {}, holders = {}, active = [], activeRef = null, canRename = true, canFork = true, listError = null, canDownload = true } = {}) {
   const calls = [];
   const timers = [];
   let readings = 0;
   const index = {
-    list: async ({ folders }) => { calls.push(['list', folders]); return records.filter((r) => folders.some((f) => r.cwd === f || r.cwd.startsWith(`${f}/`))); },
+    list: async ({ folders }) => { calls.push(['list', folders]); if (listError && listError.current) throw listError.current; return records.filter((r) => folders.some((f) => r.cwd === f || r.cwd.startsWith(`${f}/`))); },
     all: async () => records,
     stamp: async () => 's1',
     invalidate: () => calls.push(['invalidate']),
@@ -42,6 +42,8 @@ function setup({ records = [], here = {}, far = [], places = {}, known = {}, hol
     stats: async (from, to, tz) => { calls.push(['stats', tz]); return { cost: 3.5 }; },
     providerName: (p) => (p === 'amazon-bedrock' ? 'Amazon Bedrock' : p),
     timeZone: () => 'America/Los_Angeles',
+    canDownload: () => canDownload,
+    commands: { download: 'x.downloadOpenCode', logs: 'x.showLogs' },
     now: () => Date.UTC(2026, 10, 26, 8, 30),
     setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearInterval: () => {},
@@ -51,7 +53,7 @@ function setup({ records = [], here = {}, far = [], places = {}, known = {}, hol
 
 test('features name the members the source has', () => {
   const { source } = setup();
-  assert.deepEqual(source.features, ['sessions', 'sessionImport', 'sessionSeen', 'accountInfo']);
+  assert.deepEqual(source.features, ['sessions', 'sessionImport', 'sessionSeen', 'sessionsNotice', 'accountInfo']);
 });
 
 test('rows: the folder\'s sessions with their times, kind, viewed time and the fork action; the core\'s folders are passed on', async () => {
@@ -190,4 +192,26 @@ test('today starts at midnight in the user\'s time zone', () => {
   const t = Date.UTC(2026, 10, 26, 8, 30);
   assert.equal(startOfDay(t, 'America/Los_Angeles'), Date.UTC(2026, 10, 26, 8, 0), 'midnight in Los Angeles is 08:00 UTC in November');
   assert.equal(startOfDay(t, 'UTC'), Date.UTC(2026, 10, 26, 0, 0));
+});
+
+test('no OpenCode: no rows and a notice with a download button; another failure: the error and the logs; a good reading clears it', async () => {
+  const listError = { current: Object.assign(new Error('OpenCode was not found. Install it with npm.'), { code: 'notFound' }) };
+  const { source } = setup({ records: [rec('ses_a')], listError });
+  let told = 0;
+  source.onDidChangeSessionsNotice(() => told++);
+  assert.equal(source.sessionsNotice(), null);
+  assert.deepEqual(await source.listSessions({ folders: ['/w/p'] }), { sessions: [], cursor: null }, 'nothing to list is not a failed list');
+  assert.deepEqual(source.sessionsNotice(), { text: 'OpenCode was not found. Install it with npm.',
+    actions: [{ label: 'Download OpenCode', command: 'x.downloadOpenCode', arguments: [] }, { label: 'Show Logs', command: 'x.showLogs', arguments: [] }] });
+  assert.equal(told, 1);
+  listError.current = new Error('session.list was not JSON');
+  await assert.rejects(source.listSessions({ folders: ['/w/p'] }), /not JSON/, 'a failed list still fails, so the core says so');
+  assert.deepEqual(source.sessionsNotice(), { text: "Couldn't list OpenCode's conversations: session.list was not JSON", actions: [{ label: 'Show Logs', command: 'x.showLogs', arguments: [] }] });
+  listError.current = null;
+  assert.equal((await source.listSessions({ folders: ['/w/p'] })).sessions.length, 1);
+  assert.equal(source.sessionsNotice(), null);
+  assert.equal(told, 3);
+  const nowhere = setup({ listError: { current: Object.assign(new Error('OpenCode was not found.'), { code: 'notFound' }) }, canDownload: false }).source;
+  await nowhere.listSessions({ folders: ['/w/p'] });
+  assert.deepEqual(nowhere.sessionsNotice().actions.map((a) => a.label), ['Show Logs'], 'no download for a platform without a build');
 });

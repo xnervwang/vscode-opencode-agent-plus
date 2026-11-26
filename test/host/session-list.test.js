@@ -48,7 +48,7 @@ test('through extension.js: the session list\'s rows and actions for a conversat
   const api = extension.activate(context);
   await api.test.registered;
   const source = api.test.source;
-  for (const k of ['listSessions', 'onDidChangeSessions', 'runSessionAction', 'describeDeletion', 'wantSessionDetail', 'importSessions', 'noteSeen', 'accountInfo', 'onDidChangeAccountInfo']) {
+  for (const k of ['listSessions', 'onDidChangeSessions', 'runSessionAction', 'describeDeletion', 'wantSessionDetail', 'importSessions', 'noteSeen', 'accountInfo', 'onDidChangeAccountInfo', 'sessionsNotice', 'onDidChangeSessionsNotice']) {
     assert.ok(source[k], `the source has ${k}`);
   }
   assert.deepStrictEqual(source.sessionActions.open, ['tab']);

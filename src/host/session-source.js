@@ -18,6 +18,8 @@
  *              interface, not a turn anywhere. The core adds its own rules (archived, not pinned) before it asks.
  *   seen       written back to OpenCode's own record of what was read (/api/session/:id/view), which the terminal
  *              interface reads.
+ *   notice     why the rows could not be read, above the list: OpenCode not found (no rows, with a button to download
+ *              it where a build exists for this platform), or the error; gone once a reading succeeds.
  */
 
 const SCAN_MS = 10000;
@@ -72,6 +74,8 @@ const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n /
  *   stats(from, to, timeZone)  optional Promise of OpenCode's session statistics for that span
  *   providerName(id) optional: a provider id's display name
  *   timeZone()       optional: the user's IANA time zone
+ *   canDownload()    optional: whether OpenCode can be downloaded for this platform
+ *   commands         { download, logs }: the commands the notice's buttons run
  *   now, setInterval, clearInterval, log
  */
 function createSessionSource(deps) {
@@ -79,6 +83,26 @@ function createSessionSource(deps) {
   const log = (line) => { try { if (deps.log) deps.log(line); } catch (_) { /* not logged */ } };
   const changed = emitter();
   const accountChanged = emitter();
+  const noticeChanged = emitter();
+  let notice = null;
+  const commands = deps.commands || {};
+  function setNotice(next) {
+    if (JSON.stringify(next) === JSON.stringify(notice)) return;
+    notice = next;
+    noticeChanged.fire();
+  }
+  /* The notice for an error reading the rows; true when it means there is nothing to list rather than a failed list. */
+  function noteFailure(e) {
+    const text = String((e && e.message) || e).replace(/\s+/g, ' ').trim();
+    const logs = commands.logs ? [{ label: 'Show Logs', command: commands.logs, arguments: [] }] : [];
+    if (e && e.code === 'notFound') {
+      const download = commands.download && deps.canDownload && deps.canDownload() ? [{ label: 'Download OpenCode', command: commands.download, arguments: [] }] : [];
+      setNotice({ text: text.slice(0, 300), actions: [...download, ...logs] });
+      return true;
+    }
+    setNotice({ text: `Couldn't list OpenCode's conversations: ${text}`.slice(0, 300), actions: logs });
+    return false;
+  }
   let reading = { at: 0, procs: [], tabs: new Map(), active: new Set() };
   let readingKey = '';
   let pages = null;
@@ -162,7 +186,12 @@ function createSessionSource(deps) {
   async function allRows(folders) {
     startWatching();
     if (!reading.at) await rescan().catch(() => {});
-    const records = await deps.index.list({ folders });
+    let records;
+    try { records = await deps.index.list({ folders }); } catch (e) {
+      if (noteFailure(e)) return [];
+      throw e;
+    }
+    setNotice(null);
     const known = deps.elsewhere.noteRuns(records, reading);
     const far = await others();
     if (typeof deps.index.stamp === 'function') dbStamp = await deps.index.stamp().catch(() => dbStamp);
@@ -216,9 +245,11 @@ function createSessionSource(deps) {
   }
 
   const source = {
-    features: ['sessions', 'sessionImport', 'sessionSeen', 'accountInfo'],
+    features: ['sessions', 'sessionImport', 'sessionSeen', 'sessionsNotice', 'accountInfo'],
     onDidChangeSessions: changed.event,
     onDidChangeAccountInfo: accountChanged.event,
+    onDidChangeSessionsNotice: noticeChanged.event,
+    sessionsNotice() { return notice ? { text: notice.text, actions: notice.actions.map((a) => ({ ...a })) } : null; },
 
     async listSessions({ folders = [], cursor = null, limit = 500 } = {}) {
       const max = Math.max(1, Math.min(Number(limit) || 500, 2000));
@@ -318,6 +349,7 @@ function createSessionSource(deps) {
       timers = [];
       changed.clear();
       accountChanged.clear();
+      noticeChanged.clear();
     },
   };
   return source;

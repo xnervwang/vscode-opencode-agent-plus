@@ -237,7 +237,8 @@ function createAgentPlusSource(deps) {
     const s = deps.sessions;
     source.onDidChangeSessions = s.onDidChangeSessions;
     source.onDidChangeAccountInfo = s.onDidChangeAccountInfo;
-    for (const k of ['listSessions', 'runSessionAction', 'describeDeletion', 'wantSessionDetail', 'importSessions', 'noteSeen', 'accountInfo']) {
+    source.onDidChangeSessionsNotice = s.onDidChangeSessionsNotice;
+    for (const k of ['listSessions', 'runSessionAction', 'describeDeletion', 'wantSessionDetail', 'importSessions', 'noteSeen', 'accountInfo', 'sessionsNotice']) {
       source[k] = (...a) => s[k](...a);
     }
     Object.defineProperty(source, 'sessionActions', { get: () => s.sessionActions, enumerable: true });

@@ -208,6 +208,8 @@ function start(context, log, gate, channel) {
     versionKnown = true;
     Promise.resolve().then(() => backend.detect()).then((found) => plan.checkVersion(found.version), () => { versionKnown = false; });
   };
+  /* Set once the session list's source exists (sessionSource below). */
+  let sessionListChanged = () => {};
   async function refound(r) {
     renameKnown = false;
     versionKnown = false;
@@ -215,6 +217,7 @@ function start(context, log, gate, channel) {
     try { found = await backend.detect(); } catch (e) { log(`looking for OpenCode after the download: ${(e && e.message) || e}`); }
     noteRename();
     nudge();
+    sessionListChanged();
     if (found && path.resolve(found.path) !== path.resolve(r.path)) {
       tell(`The downloaded OpenCode is in ${r.path}, but the one at ${found.path} is still used because it is found first.`);
     } else {
@@ -892,9 +895,12 @@ function start(context, log, gate, channel) {
     stats: (from, to, zone) => sessionIndex.stats(from, to, zone),
     providerName: (id) => PROVIDER_NAMES[id] || id,
     timeZone: () => timeZone,
+    canDownload: () => require('./src/opencode/download').available(),
+    commands: { download: `${brand.prefix}.downloadOpenCode`, logs: `${brand.prefix}.showLogs` },
     log,
   });
   subs.push(sessionSource, manager.onDidChange(() => sessionSource.changed()), backend.onDidChangeSessions(() => sessionSource.changed()));
+  sessionListChanged = () => sessionSource.changed();
 
   /* Agent Plus. Everything above works the same when Agent Plus is not installed or turns down this registration. */
   let logo;
