@@ -569,6 +569,11 @@ function createOpenCode() {
     info: () => ({ path: '/fake/opencode', version: { major: 2, minor: 0, patch: 0, text: '2.0.0-fake' }, pid: process.pid, agent: { name: 'fake' } }),
     dataPaths: async () => ({ db: file }),
     mcpList: async () => 'No MCP servers configured (the fake backend has none)',
+    /* The credentials a window test wrote to <OPENCODE_AGENT_PLUS_HOME>/fake-credentials.json, in the shape of the real
+       backend's credentials(); none until it writes one. */
+    credentials: async () => {
+      try { return JSON.parse(fs.readFileSync(path.join(process.env.OPENCODE_AGENT_PLUS_HOME || '/tmp', 'fake-credentials.json'), 'utf8')); } catch (_) { return []; }
+    },
     async deleteSession(id) { const c = live.get(id); if (c) c.dispose(); const db = read(); delete db.sessions[id]; write(db); changed(id); },
     listModels: () => MODELS,
     defaultModel: () => MODELS[0],

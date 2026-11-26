@@ -25,6 +25,7 @@
  *                                them ({ messageId, tracked, files }), commit removes the messages, clear undoes stage
  *   userMessages(id)             Promise of [{ id, text, at }], the user's messages as OpenCode stored them
  *   mcpList()                    Promise of the text `opencode mcp list` prints
+ *   credentials()                optional: Promise of [{ id, name, credentials }] or null when OpenCode cannot say
  *   dataPaths()                  Promise of OpenCode's folders ({ db, data, ... })
  *   info()                       the running OpenCode: { path, version, pid, agent, capabilities }, or null
  *   session(id, { cwd })         Promise of the session object: id, cwd, title, status, waitingTool, waitingKind,
@@ -126,6 +127,7 @@ function createBackend({ options = {}, load, onError } = {}) {
     rewindClear: (id) => call('rewindClear', id),
     userMessages: (id) => call('userMessages', id),
     mcpList: () => call('mcpList'),
+    credentials: () => (made && typeof made.credentials !== 'function' ? Promise.resolve(null) : call('credentials')).catch(() => null),
     dataPaths: () => call('dataPaths'),
     info: () => { try { return made && typeof made.info === 'function' ? made.info() || null : null; } catch (_) { return null; } },
     session: (id, opts) => call(typeof get().session === 'function' ? 'session' : 'openSession', id, opts || {}),

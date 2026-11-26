@@ -48,10 +48,10 @@ const WINDOWS = process.platform === 'win32';
 const MOD = MAC ? 'Meta' : 'Control';
 
 async function run(ctx) {
-  const { page, call, ext, check, shot, until, sleep, frameWith, real, line, folder, out, chatUris, front } = ctx;
+  const { page, call, ext, check, shot, until, sleep, frameWith, real, line, folder, out, chatUris, front, home } = ctx;
   const note = (text) => console.log(`  note  ${text}`);
   const conf = (key, value) => call(`await vscode.workspace.getConfiguration("opencodeAgentPlus").update(arg.key, arg.value, vscode.ConfigurationTarget.Global); return true;`, { key, value });
-  const activeChat = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.path.replace(/^\\//, "") : "";');
+  const activeChat = () => call('const t = vscode.window.tabGroups.activeTabGroup.activeTab; return t && t.input instanceof vscode.TabInputCustom ? t.input.uri.path.split("/")[1] : "";');
   const chatPage = () => frameWith(page, '#input', 20000);
   const userCount = (f) => f.evaluate(() => document.querySelectorAll('#log .msg.user').length);
   const idle = (f) => f.evaluate(() => document.body.dataset.status === 'idle');
@@ -109,10 +109,16 @@ async function run(ctx) {
   const quiet = await until(async () => ((await busy()).length ? null : true), real ? 300000 : 30000);
   if (!quiet) note(`turns still running before the sign-in: ${JSON.stringify(await busy())}`);
   const refreshedBefore = (await ext('return api.test.logins();')).refreshed;
+  /* The fake backend lists the credentials in this file: one before the sign-in, and one more saved while its terminal
+     is open, as a second sign-in to a provider already connected saves. */
+  const creds = path.join(home, 'fake-credentials.json');
+  const credential = (...ids) => fs.writeFileSync(creds, JSON.stringify([{ id: 'fake', name: 'Fake', credentials: ids }]));
+  if (!real) credential('cred_before');
   await pickModel(f, 'connect');
   const term = await until(() => call('const t = vscode.window.terminals.find((x) => x.name === "OpenCode: Connect a Provider"); return t ? { name: t.name, path: t.creationOptions.shellPath, args: t.creationOptions.shellArgs } : null;'), 20000);
   check(!!term && term.path === program && Array.isArray(term.args) && term.args.join(' ') === (standalone ? 'auth login --standalone' : 'auth login'),
     'picking it opens the terminal "OpenCode: Connect a Provider" running the sign-in', term);
+  if (!real) credential('cred_before', 'cred_saved');
   const kept = await f.evaluate(() => document.getElementById('model').dataset.current || '');
   check(kept && kept !== 'connect', 'the model pill still shows the earlier model, not Connect a provider…', kept);
   /* The terminal's process starts through VS Code's pty host, whose node-pty needs glibc 2.28: on an older Linux it never
@@ -132,8 +138,14 @@ async function run(ctx) {
     await call('const t = vscode.window.terminals.find((x) => x.name === "OpenCode: Connect a Provider"); if (t) t.dispose(); return true;');
   }
   const refreshed = await until(async () => { const l = await ext('return api.test.logins();'); return l.refreshed > refreshedBefore ? l : null; }, 120000);
-  const words = (await told()).slice(-3);
-  check(!!refreshed && words.some((w) => /OpenCode (now )?offers|Open a conversation to see/.test(w)), 'once the terminal closes, OpenCode restarts and the models are listed again', { refreshed, words, busy: refreshed ? undefined : await busy() });
+  const outcome = real ? /^The sign-in closed without saving credentials, so nothing changed\./ : /^Saved new credentials for Fake, which was already connected\./;
+  /* The notice follows the restart once OpenCode has listed the credentials again, which takes it a second or more. */
+  const words = (refreshed && await until(async () => { const w = (await told()).slice(-3); return w.some((x) => outcome.test(x)) ? w : null; }, 30000))
+    || (await told()).slice(-3);
+  check(!!refreshed && words.some((w) => outcome.test(w)),
+    real ? 'once the terminal closes, OpenCode restarts, and with no credential saved the notice says nothing changed rather than that the sign-in failed'
+      : 'once the terminal closes, OpenCode restarts, and a credential saved for a provider already connected is reported as saved', { refreshed, words, busy: refreshed ? undefined : await busy() });
+  if (!real) fs.rmSync(creds, { force: true });
   f = await chatPage();
   const listed = f ? await until(() => f.evaluate(() => { const n = document.querySelectorAll('#modelMenu [data-model-id]').length; return document.querySelector('#modelMenu [data-action="connect"]') && n > 1 ? n : null; }), 30000) : null;
   check(!!listed, 'the chat page lists the models again, still with "Connect a provider…"', listed);

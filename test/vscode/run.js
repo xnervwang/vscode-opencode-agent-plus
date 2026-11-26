@@ -1924,7 +1924,7 @@ async function main() {
     }
     await require('./lib/gap-page').run({ page, call, ext, check, shot, until, sleep, frameWith, real, line });
     await require('./lib/retry').run({ page, call, check, shot, until, sleep, frameWith, real });
-    await require('./lib/gap-host').run({ page, call, ext, check, shot, until, sleep, frameWith, real, line, folder: p.folder, out: OUT, chatUris, front });
+    await require('./lib/gap-host').run({ page, call, ext, check, shot, until, sleep, frameWith, real, line, folder: p.folder, out: OUT, chatUris, front, home: p.agentHome });
     await require('./lib/model-groups').run({ page, call, check, until, sleep, shot, frameWith, real });
     await require('./lib/prefill').run({ page, call, ext, check, shot, until, sleep, frameWith, chatUris, front, real });
   } catch (e) {

@@ -70,10 +70,45 @@ function addedProviders(before, after) {
   return out;
 }
 
+const names = (l) => (l.length < 3 ? l.join(' and ') : `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}`);
+
+/*
+ * What to say once the sign-in terminal has closed and OpenCode lists its models again. `before` and `after` are
+ * OpenCode's credentials around the sign-in (backend credentials(): [{ id, name, credentials }]), each null when
+ * OpenCode could not say; `had` the models listed before it and `now` those listed after it. A sign-in that saves a
+ * credential gives it a new id, so a provider with a new id was signed in: connected, when it had no credential and
+ * no models before, and signed in again otherwise. Without both credential lists, only the models are compared, and
+ * no change in them is not taken as a failed sign-in.
+ */
+function loginOutcome({ before, after, had, now }) {
+  const count = Array.isArray(now) ? now.length : 0;
+  const offers = count ? ` OpenCode offers ${count} model${count === 1 ? '' : 's'}.` : '';
+  const added = addedProviders(had, now);
+  if (Array.isArray(before) && Array.isArray(after)) {
+    const old = new Map(before.map((i) => [i.id, new Set(i.credentials)]));
+    const listed = new Set((Array.isArray(had) ? had : []).map((m) => m && m.providerId));
+    const fresh = [];
+    const again = [];
+    for (const i of after) {
+      const was = old.get(i.id);
+      if (!i.credentials.some((c) => !was || !was.has(c))) continue;
+      ((was && was.size) || listed.has(i.id) ? again : fresh).push(i.name);
+    }
+    const said = [];
+    if (fresh.length) said.push(`Connected ${names(fresh)}.`);
+    if (again.length) said.push(`Saved new credentials for ${names(again)}, ${again.length === 1 ? 'which was' : 'which were'} already connected.`);
+    if (said.length) return `${said.join(' ')}${offers}`;
+    if (added.length) return `OpenCode now offers models from ${names(added)}.`;
+    return `The sign-in closed without saving credentials, so nothing changed.${offers}`;
+  }
+  if (added.length) return `OpenCode now offers models from ${names(added)}.`;
+  return count ? `OpenCode restarted and offers ${count} model${count === 1 ? '' : 's'}.` : 'OpenCode restarted.';
+}
+
 /* Whether `list` is not empty and holds only OpenCode's own free models (provider opencode). */
 function onlyFreeModels(list) {
   const l = Array.isArray(list) ? list.filter(Boolean) : [];
   return l.length > 0 && l.every((m) => m.providerId === 'opencode' || String(m.id || '').startsWith('opencode/'));
 }
 
-module.exports = { createProviderLogin, addedProviders, onlyFreeModels, TERMINAL_NAME };
+module.exports = { createProviderLogin, addedProviders, loginOutcome, onlyFreeModels, TERMINAL_NAME };

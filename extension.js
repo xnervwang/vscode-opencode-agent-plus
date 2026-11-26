@@ -74,7 +74,7 @@ const hookSettings = require('./src/shared/hook-settings');
 const tokenMode = require('./src/shared/token-mode');
 const { createTrustGate } = require('./src/host/trust-gate');
 const { createOpenCodeDownload } = require('./src/host/opencode-download');
-const { createProviderLogin, addedProviders } = require('./src/host/provider-login');
+const { createProviderLogin, loginOutcome } = require('./src/host/provider-login');
 /* src/opencode/ is loaded only once OpenCode is needed (Restricted Mode loads none of it). */
 const loginLaunch = (o) => require('./src/opencode/login').loginLaunch(o);
 const mentions = require('./src/host/mentions');
@@ -546,6 +546,8 @@ function start(context, log, gate, channel) {
     },
     done: async () => {
       const before = await models.list().catch(() => []);
+      const credsBefore = await (credsAtStart || Promise.resolve(null));
+      credsAtStart = null;
       if (!idleHere()) {
         tell('OpenCode will restart for the new provider when the turns running in this window have ended.');
         await whenIdle();
@@ -556,16 +558,21 @@ function start(context, log, gate, channel) {
       await models.list().catch(() => null);
       for (const c of chats) c.reloadModels();
       logins.refreshed++;
-      const added = addedProviders(before, list);
-      if (added.length) tell(`OpenCode now offers models from ${added.join(', ')}.`);
-      else if (!manager.ids().length) tell('Open a conversation to see the updated model list.');
-      else tell(`OpenCode offers ${list.length} model${list.length === 1 ? '' : 's'}; no provider was added.`);
+      const said = loginOutcome({ before: credsBefore, after: await backend.credentials(), had: before, now: list });
+      tell(manager.ids().length ? said : `${said} Open a conversation to see the updated model list.`);
     },
     fail,
     log,
   });
   subs.push(login);
-  const connectProvider = () => { logins.opened++; return login.run(); };
+  /* OpenCode's credentials as the terminal opens, to tell afterwards what the sign-in saved. The listing takes about a
+     second, much less than signing in, so it is read while the terminal starts. */
+  let credsAtStart = null;
+  const connectProvider = () => {
+    logins.opened++;
+    if (!login.terminal) credsAtStart = backend.credentials();
+    return login.run();
+  };
 
   async function takeOver(id) {
     if (locks.ownWindow(id)) return takeBack(id);

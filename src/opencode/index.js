@@ -142,6 +142,19 @@ function processAlive(pid) {
 }
 
 /* The fields of `opencode debug paths`: one "<name>  <absolute path>" per line. */
+/* `opencode auth list --format json` as [{ id, name, credentials: [credential ids] }], or null when it is not that
+   listing. Only connections of type credential count. */
+function parseCredentials(text) {
+  let v;
+  try { v = JSON.parse(String(text || '')); } catch (_) { return null; }
+  if (!Array.isArray(v)) return null;
+  return v.filter((i) => i && typeof i.id === 'string').map((i) => ({
+    id: i.id,
+    name: typeof i.name === 'string' && i.name ? i.name : i.id,
+    credentials: (Array.isArray(i.connections) ? i.connections : []).filter((c) => c && c.type === 'credential' && typeof c.id === 'string').map((c) => c.id),
+  }));
+}
+
 function parsePaths(text) {
   const out = {};
   for (const line of String(text || '').replace(ANSI, '').split('\n')) {
@@ -1360,6 +1373,21 @@ function createOpenCode(opts = {}) {
     },
 
     /* What `opencode mcp list` prints: the configured MCP servers and the state of each. */
+    /* The integrations OpenCode keeps credentials for (parseCredentials), or null on OpenCode 1, which has no JSON
+       listing, and when the listing fails; never rejects. Each sign-in adds a credential with an id of its own, also
+       for an integration already signed in (2.4.1, measured). */
+    async credentials() {
+      let found;
+      try { found = foundNow(); } catch (_) { return null; }
+      if (((found.version && found.version.major) || 1) < 2) return null;
+      try {
+        return parseCredentials((await runSub(found, ['auth', 'list', '--format', 'json'], 'authListFailed', { timeout: 60000 })).stdout);
+      } catch (e) {
+        log(`listing OpenCode's credentials failed: ${(e && e.message) || e}`);
+        return null;
+      }
+    },
+
     async mcpList() {
       const found = foundNow();
       const r = await runSub(found, ['mcp', 'list'], 'mcpFailed', { timeout: 60000 });
@@ -1456,4 +1484,4 @@ function createOpenCode(opts = {}) {
   return api;
 }
 
-module.exports = { createOpenCode, modelValue, bedrockHelp, fileBlocks, parsePaths, processAlive, OpenCodeError: server.OpenCodeError };
+module.exports = { createOpenCode, modelValue, bedrockHelp, fileBlocks, parseCredentials, parsePaths, processAlive, OpenCodeError: server.OpenCodeError };
