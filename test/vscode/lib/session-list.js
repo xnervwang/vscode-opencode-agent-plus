@@ -257,7 +257,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     await h.wait((r) => h.find(r, sessionId, 'archived'));
     await h.row(sessionId, 'archived').click({ button: 'right' });
     const hereItems = await h.menu();
-    check(!!hereItems && !hereItems.includes('Delete...'), 'one open in this window cannot be deleted: its menu has no Delete', hereItems);
+    check(!!hereItems && !hereItems.includes('Delete...'), 'the menu of a conversation open in this window has no Delete', hereItems);
     await page.keyboard.press('Escape');
     await h.act(red, 'archive');
     await h.wait((r) => h.find(r, red, 'archived'));

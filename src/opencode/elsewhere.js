@@ -117,7 +117,6 @@ async function macProcesses(execFile) {
   return out;
 }
 
-/* On Windows, Win32_Process through PowerShell gives the id, command line and creation time, but not the folder. */
 async function windowsProcesses(execFile) {
   const script = "Get-CimInstance Win32_Process -Filter \"Name='opencode.exe'\" | Select-Object ProcessId,CommandLine,@{n='Started';e={[DateTimeOffset]$_.CreationDate | ForEach-Object { $_.ToUnixTimeMilliseconds() }}} | ConvertTo-Json -Compress";
   const text = await run(execFile, 'powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]);

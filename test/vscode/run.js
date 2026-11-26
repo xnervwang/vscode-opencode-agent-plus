@@ -305,7 +305,7 @@ async function main() {
 
   const steps = [];
   let failed = 0, passed = 0;
-  /* The window once it is open, and the step under way (`step` below). */
+  /* The window once it opens, and the name of the step under way (set by `step` below). */
   let win = null, stepNow = RUN || 'start';
   /* A failed check saves the window as it was at that moment: <out>/failures/<n>-<step>.png, and beside it a .json with
      the check and each frame's address and visible text. */

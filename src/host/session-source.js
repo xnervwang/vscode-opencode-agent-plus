@@ -92,7 +92,7 @@ const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n /
  */
 function createSessionSource(deps) {
   const now = deps.now || (() => Date.now());
-  const log = (line) => { try { if (deps.log) deps.log(line); } catch (_) { /* not logged */ } };
+  const log = (line) => { try { if (deps.log) deps.log(line); } catch (_) {} };
   const changed = emitter();
   const accountChanged = emitter();
   const noticeChanged = emitter();
@@ -230,7 +230,7 @@ function createSessionSource(deps) {
     return { dirs, trees };
   }
 
-  /* The worktree a folder is in, the innermost when one is inside another. */
+  /* The worktree that holds a folder; with one worktree inside another, the innermost. */
   function treeOf(cwd, trees) {
     let best = null;
     for (const t of trees) if (within(cwd, t.dir, platform) && (!best || t.dir.length > best.dir.length)) best = t;
