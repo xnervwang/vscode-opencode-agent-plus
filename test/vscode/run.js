@@ -1111,7 +1111,9 @@ async function main() {
           await call(`const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(${JSON.stringify(colours)}));
             const ed = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
             ed.selection = new vscode.Selection(1, 0, 1, 33); return true;`);
-          const selLabel = await until(() => chat.evaluate(() => { const b = document.getElementById('addSelection'); return b && !b.hidden ? b.textContent : ''; }), 15000);
+          /* The button may name the file before the selection's lines reach the page. */
+          const selLabel = await until(() => chat.evaluate(() => { const b = document.getElementById('addSelection'); return b && !b.hidden && /:\d/.test(b.textContent) ? b.textContent : ''; }), 15000)
+            || await chat.evaluate(() => { const b = document.getElementById('addSelection'); return b && !b.hidden ? b.textContent : ''; });
           if (selLabel) await chat.click('#addSelection');
           const selChip = await until(() => chat.evaluate(() => [...document.querySelectorAll('#attachments .att-selection')].map((e) => e.textContent).join(' | ')), 10000);
           check(/colours\.txt:2/.test(selLabel || '') && /colours\.txt:2/.test(selChip || ''), 'with text selected in an editor the page offers it, and adding it shows it in the box', { selLabel, selChip });
