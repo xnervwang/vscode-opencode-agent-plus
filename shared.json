@@ -79,7 +79,7 @@
     {
       "path": "opencode-plugin/agent-work-plan/hooks/nudge-work-plan.py",
       "from": "shared/plugin/hooks/nudge-work-plan.py",
-      "sha256": "3356d6dba1b72b1c4ac1c4656d551b38b3fd8dee6eddba3cc171a271ae17f5ca"
+      "sha256": "6d9894abb935de6f47c0cd69139f0b5a4c7fbf09a8bbc96ae4eff92ed6f4b330"
     },
     {
       "path": "opencode-plugin/agent-work-plan/hooks/remind-work-plan.py",
