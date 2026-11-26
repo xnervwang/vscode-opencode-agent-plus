@@ -13,7 +13,7 @@ You need VS Code 1.96 or later and OpenCode on the machine where the extension r
 1. Install OpenCode 2 with `npm install -g @opencode/cli` (npm comes with Node.js). Of the two release lines, OpenCode 1 is enough for chatting, but the work plan and several other features need OpenCode 2. You can also skip this step: once installed, OpenCode Agent Plus offers to download OpenCode 2.4.1 on macOS, Linux and Windows when it can't find OpenCode. See [Installing OpenCode](docs/setup.md#installing-opencode).
 2. Search for OpenCode Agent Plus in the Extensions view and install it, or run `code --install-extension xnervwang.opencode-agent-plus`. VS Code installs Agent Plus along with it. See [Installing OpenCode Agent Plus](docs/setup.md#installing-opencode-agent-plus).
 3. Give OpenCode your provider credentials as described in [Connecting a Model Provider](#connecting-a-model-provider).
-4. Open Agent Plus's Conversations list from its icon in the activity bar, pick OpenCode Agent Plus with the logo at the left of its New bar, choose New in tab, and send your first message.
+4. Open Agent Plus's Conversations list from its icon in the activity bar. In its New bar, click the logo on the left, choose OpenCode Agent Plus, then click New in tab and send your first message.
 
 See [Checking the Connection](docs/setup.md#checking-the-connection).
 

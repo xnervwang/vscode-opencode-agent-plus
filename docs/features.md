@@ -62,11 +62,16 @@ If you send a message while a turn is running, it waits in a "Queued" row until 
 
 ## Models, Modes and Reply Figures
 
-Under the message box, a pill shows your model followed by the effort in grey. The Effort drop-down lets you choose how much the model reasons. It appears only if OpenCode offers effort levels for your model. Click the model to open a list over the message box, the same width as the box. The filter at the top has focus. Each word you type must match part of the model's name, ID, provider or geography. Typing `luna india` leaves only the India variant of GPT-5.6 Luna.
+Under the message box, a pill shows your model followed by the effort in grey. The Effort drop-down lets you choose how much the model reasons. It appears only if OpenCode offers effort levels for your model. Click the model to open a list over the message box, as wide as the box, and start typing in the filter at the top. Each word you type must match part of the model's name, ID, provider or geography. Typing `luna india` leaves only the India variant of GPT-5.6 Luna.
 
 Connect a provider… and Reload the model list stay below the filter. The models scroll separately beneath them, grouped by provider and sorted by name within each group. Amazon Bedrock offers many models across geographies: Global, US, EU, APAC, JP, AU, India, Canada and GovCloud. Each geography has its own model ID prefix, such as `global.`, `us.` or `eu.`. Many models also have an ID without a prefix, shown as In-Region. Each model has one row with the geography omitted from its name and the available geographies in grey on the right.
 
-Click a row to show one row per geography, each with its model ID in grey. Click the row for the geography you want. If the model has only one variant, clicking the model row selects it directly. Your current model appears in bold with a check mark, with its row unfolded when the list opens. Up and Down move between rows. Enter selects the highlighted model or unfolds its row. With the filter empty, Right unfolds the highlighted row and Left folds it. Esc closes the list and returns you to the message box.
+Clicking a row shows one row per geography, each with its model ID in grey. Click the row for the geography you want. If the model has only one variant, clicking the model row selects it directly. Your current model appears in bold with a check mark, with its row unfolded when the list opens. In the list:
+
+- Up and Down move between rows.
+- Enter selects the highlighted model or unfolds its row.
+- With the filter empty, Right unfolds the highlighted row and Left folds it.
+- Esc closes the list and returns you to the message box.
 
 ### Providers and Free Models
 
@@ -170,13 +175,13 @@ On Linux, the background pill also counts detached commands, which the conversat
 
 Open Conversations from its icon in the activity bar. When you install OpenCode Agent Plus, VS Code also installs Agent Plus as a dependency. Agent Plus provides the Conversations list; OpenCode Agent Plus has no activity bar icon or list view of its own.
 
-Each row starts with its agent's logo. Look for the OpenCode mark to find your OpenCode conversations. If you use Claude Code Plus or Codex Plus, their Claude Code or Codex conversations appear in the same list.
+Each row starts with its agent's logo. Look for the OpenCode mark to find your OpenCode conversations. If you also use Claude Code Plus or Codex Plus, their conversations appear in the same list.
 
 ### Finding a conversation
 
 The list includes OpenCode conversations you started in any of this window's workspace folders or their subfolders. The list also shows conversations in linked Git worktrees of a workspace folder's repository, wherever they are on disk, including worktrees OpenCode creates under its own data folder. For a conversation in a linked worktree, the worktree's name appears after the title.
 
-Search the list by conversation title or by the Git branch of the conversation's folder. You can also use `Agent Plus: Find Conversation by Title or ID...` to find a conversation by part of its title or session ID.
+Search the list by conversation title or by the Git branch of the conversation's folder. Run `Agent Plus: Find Conversation by Title or ID...` and enter part of a conversation's title or session ID.
 
 Agent Plus hides background conversations by default. These include subagent sessions, sessions started by `opencode run`, and conversations with no messages yet. Turn off `agentPlus.sessions.hideBackground` to see them. Each subagent session appears indented under the conversation that started it.
 
@@ -196,15 +201,15 @@ If a conversation is open in another VS Code window or a tab of OpenCode's termi
 
 If more than one process has the conversation open, the row shows "· N processes". You can lose turns if two processes write to the same conversation.
 
-OpenCode Agent Plus recognizes the terminal interface when it runs in the conversation's folder and has the conversation open in one of its tabs. On Windows, OpenCode Agent Plus cannot read another process's folder. It recognizes the terminal interface only if you supplied the folder on the command line, as in `opencode C:\projects\app`. On Windows, macOS and Linux, OpenCode Agent Plus also detects turns running in OpenCode's background service.
+OpenCode Agent Plus recognizes the terminal interface when it runs in the conversation's folder and has the conversation open in one of its tabs. On Windows, the extension cannot read another process's working folder, so it recognizes the terminal interface only if you gave the folder on the command line, as in `opencode C:\projects\app`. On Windows, macOS and Linux, OpenCode Agent Plus also detects turns running in OpenCode's background service.
 
-An envelope after the title marks an unread reply. A reply counts as read once OpenCode's terminal interface shows it. When you see a reply in VS Code, OpenCode Agent Plus records it as read in OpenCode so the terminal interface shows the same status.
+An envelope after the title marks an unread reply and disappears once OpenCode's terminal interface shows the reply. When you see a reply in VS Code, OpenCode Agent Plus records it as read in OpenCode so the terminal interface shows the same status.
 
 ### Opening and managing conversations
 
 Click a row to open the conversation in an editor tab. If it's already open in another VS Code window, clicking brings it to the front there. If it's open in the terminal interface or run by `opencode run`, you must close it there before opening it in VS Code. Hover over the row to see where to close it.
 
-To start a conversation, click the logo on the left of the New bar, choose OpenCode Agent Plus from the menu, then click New in tab. The conversation opens in an editor tab. Recently closed, at the top of the list, shows conversations whose tabs you closed in this window. Use `Agent Plus: Reopen Closed Conversation` (Ctrl+Shift+T, or Cmd+Shift+T on macOS) to reopen the last one you closed.
+To start a conversation, click the logo on the left of the New bar, choose OpenCode Agent Plus from the menu, then click New in tab. Recently closed, at the top of the list, shows conversations whose tabs you closed in this window. Use `Agent Plus: Reopen Closed Conversation` (Ctrl+Shift+T, or Cmd+Shift+T on macOS) to reopen the last one you closed.
 
 With OpenCode 2, hover over a conversation's row and click Rename, or right-click the row and choose Rename. To copy a whole conversation into a new tab, right-click its row and choose `Fork Conversation`, the last entry in the menu. See [Forking](#forking).
 
@@ -216,7 +221,7 @@ To delete a conversation, right-click its row in the Archived section and choose
 
 ### Account & usage
 
-At the top of the list, the OpenCode part of Account & usage shows the provider, model, cost, and token count for the OpenCode conversation you have in front. It also shows the total cost of all your OpenCode conversations since midnight in your time zone.
+For the OpenCode conversation you have in front, the OpenCode part of Account & usage at the top of the list shows the provider, model, cost, and token count. It also shows the total cost of all your OpenCode conversations since midnight in your time zone.
 
 ### When OpenCode is unavailable
 
