@@ -1,5 +1,5 @@
 {
-  "core": "unknown",
+  "core": "6c3d6d695ce83a085bdd139013f1e4888f167406",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -114,7 +114,7 @@
     {
       "path": "media/plan-bar.js",
       "from": "shared/page/plan-bar.js",
-      "sha256": "b754bf73392094d6df25f9f209cac2acba72351bb7d588169f94206f190d57b0"
+      "sha256": "f151b05361c866835b79e329266e791f147c22f6bcd9590ca50c6927ec5108f1"
     },
     {
       "path": "media/kit.js",

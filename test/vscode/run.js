@@ -1075,6 +1075,55 @@ async function main() {
             await shot('04b2-plan-bar', { features: ['plan bar'],
               expect: 'Right above the message box, as wide as it, a one-line bar: a list icon and "Plan", a short track coloured by the states of the rows still open (all one colour when the one open row is in progress, empty once every row is done), "1 open", and the row "1 list the files" with its state icon (or a green check and "All rows done"), and an arrow at the right end.',
               part: '#workbench\\.parts\\.editor' });
+            /* A row waiting for the user's answer adds the questions part at the bar's right end, tinted with the colour of
+               the question mark the work plan view gives such a row, its dot a deeper shade: yellow, not the red some themes
+               give the status bar's warning colour. Shot in each kind of theme. */
+            if (!real) {
+              gapCi.writePlan(planFile, [{ title: 'list the files', state: 'doing' },
+                { title: 'pick a name', state: 'waiting', waitingOn: 'user', question: 'Which name should the export command take?' }]);
+              const asking = await until(async () => { const b = await barNow(); return b && /1 to decide/.test(b.text) ? b : null; }, 20000);
+              /* The hue of the questions part's background, of its dot and of the theme's charts.orange (the question mark's
+                 colour), from their computed colours. */
+              const hues = () => chat.evaluate(() => {
+                const hue = (c) => {
+                  const n = (String(c).match(/[\d.]+/g) || []).map(Number);
+                  const [r, g, b] = /^color\(/.test(c) ? n.slice(0, 3) : n.slice(0, 3).map((x) => x / 255);
+                  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+                  if (!d) return null;
+                  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+                  return Math.round(((h * 60) + 360) % 360);
+                };
+                const q = document.querySelector('.apb-q'), dot = document.querySelector('.apb-dot');
+                const probe = document.createElement('span');
+                probe.style.color = 'var(--vscode-charts-orange)';
+                document.body.appendChild(probe);
+                const asked = hue(getComputedStyle(probe).color);
+                probe.remove();
+                return q && dot ? { part: hue(getComputedStyle(q).backgroundColor), dot: hue(getComputedStyle(dot).backgroundColor), asked } : null;
+              });
+              const apart = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+              const red = (h) => h <= 15 || h >= 340;
+              const asQuestion = (h) => !!h && [h.part, h.dot, h.asked].every((x) => x !== null)
+                && apart(h.part, h.asked) <= 12 && apart(h.dot, h.asked) <= 12 && !red(h.part) && !red(h.dot);
+              const looks = [];
+              for (const [theme, cls, name, words] of [['Default Dark Modern', 'vs-dark', '04b3-plan-bar-question-dark', 'the dark theme'],
+                ['Default Light Modern', 'vs', '04b4-plan-bar-question-light', 'the light theme'],
+                ['Default High Contrast', 'hc-black', '04b5-plan-bar-question-hc', 'the dark high contrast theme'],
+                ['Default High Contrast Light', 'hc-light', '04b6-plan-bar-question-hc-light', 'the light high contrast theme']]) {
+                const themed = await setTheme(theme, cls);
+                await sleep(800);
+                const h = await hues();
+                looks.push({ theme, themed: !!themed, hues: h });
+                await shot(name, { features: ['plan bar', 'questions part'],
+                  expect: `In ${words}, the one-line bar right above the message box ends at its right with a rounded pill "1 to decide" whose background is a light tint of the theme's charts orange (amber in the dark, light and dark high contrast themes; the light high contrast theme makes it blue), with a small dot of a deeper shade of it before the words, readable against the tint. Nothing in the pill is red.`,
+                  part: '#workbench\\.parts\\.editor' });
+              }
+              await setTheme('Default Dark Modern', 'vs-dark');
+              check(!!asking && looks.every((l) => l.themed && asQuestion(l.hues)),
+                "a row waiting for the user's answer adds a \"1 to decide\" part to the plan bar in the colour of the work plan's question mark, not red, in the dark, light and both high contrast themes", { asking, looks });
+              gapCi.writePlan(planFile, [{ title: 'list the files', state: 'doing' }]);
+              await until(async () => { const b = await barNow(); return b && !/to decide/.test(b.text) ? b : null; }, 20000);
+            }
             await call('await vscode.commands.executeCommand("workbench.view.explorer"); return true;').catch(() => {});
             await until(() => page.evaluate(() => !/Work plan/i.test(document.getElementById('workbench.parts.sidebar').textContent)), 5000);
             await chat.click('[data-agent-plus-plan-bar]');
