@@ -13,7 +13,7 @@
 
 /* Each step of the run without those options, in order, with the earlier steps it relies on. Behind the fake
    backend only fake-chat's turns record context use and cost, which rewind and fork check on the turns drawn again;
-   compact checks the plan bar, which plan's row brings; a conversation with no message is not listed, so sessions needs
+   compact checks the plan bar, which shows only once plan has added its row; a conversation with no message is not listed, so sessions needs
    opencode's turn. */
 const NEEDS = {
   basics: [],

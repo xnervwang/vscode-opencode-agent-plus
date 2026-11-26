@@ -315,7 +315,6 @@
     })).sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  /* Keeps the variants whose model name, id, geography or group contains every word of `query`. */
   function filterModelFamilies(groups, query) {
     const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return groups;

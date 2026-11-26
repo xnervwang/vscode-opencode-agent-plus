@@ -149,6 +149,6 @@ test("a tab's resource holds the session id, then the title, and the id still re
   assert.strictEqual(u.path, `/${A}/Fix the build \u2215 tests now`);
   assert.strictEqual(sessionOfUri(u), A);
   assert.strictEqual(uriOf(A, '  ').path, `/${A}/New conversation`, 'without a title the resource ends in New conversation');
-  assert.strictEqual(sessionOfUri({ scheme: u.scheme, path: `/${A}` }), A, 'a resource saved without a name still reads back');
+  assert.strictEqual(sessionOfUri({ scheme: u.scheme, path: `/${A}` }), A, 'the id reads back from a resource saved without a title');
   assert.strictEqual(sessionOfUri(uriOf(A)), A);
 });

@@ -87,7 +87,7 @@ function createBackend({ options = {}, load, onError } = {}) {
     if (typeof factory !== 'function') throw new Error('the agent backend exports no factory');
     made = factory(typeof options === 'function' ? options() : options);
     /* Listeners added before the module was loaded are hooked up to it here. */
-    if (listeners.size) { try { hook(); } catch (_) { /* left unhooked */ } }
+    if (listeners.size) { try { hook(); } catch (_) {} }
     return made;
   };
   const call = (name, ...args) => Promise.resolve().then(() => {

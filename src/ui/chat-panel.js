@@ -482,7 +482,7 @@ ${hl}<script src="${media('kit.js')}"></script>
     });
   }
 
-  /* The text in the page's message box, or '' when the page gives none within `ms`. */
+  /* The text in the page's message box, or '' when the page does not answer within `ms`. */
   draftText(ms) {
     if (this.disposed || !this.ready) return Promise.resolve('');
     const id = `d${++this.prefillSeq}`;

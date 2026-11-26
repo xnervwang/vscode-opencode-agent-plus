@@ -79,7 +79,7 @@ test('2.x: opening a conversation dates its replay from the export, not from the
   const ends = events.filter((e) => e.type === 'turnEnd');
   const lastDone = Math.max(...exp.messages.filter((m) => m.type === 'assistant' && m.time.created < users[1].time.created).map((m) => m.time.completed || 0));
   assert.equal(ends[0].at, lastDone);
-  assert.equal(s.lastUserAt, users[users.length - 1].time.created, 'the time of its last message, for the conversation lists');
+  assert.equal(s.lastUserAt, users[users.length - 1].time.created, 'the time of its last message');
   assert.equal(s.lastReplyAt, Math.max(...ends.map((e) => e.at)));
 });
 

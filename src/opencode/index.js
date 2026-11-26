@@ -1381,8 +1381,8 @@ function createOpenCode(opts = {}) {
 
     /* What `opencode mcp list` prints: the configured MCP servers and the state of each. */
     /* The integrations OpenCode keeps credentials for (parseCredentials), or null on OpenCode 1, which has no JSON
-       listing, or when the listing fails. It never rejects. Each sign-in adds a credential with an id of its own, even
-       for an integration already signed in (2.4.1, measured). */
+       listing, or when the listing fails. Each sign-in adds a credential with an id of its own, even for an integration
+       already signed in (2.4.1, measured). */
     async credentials() {
       let found;
       try { found = foundNow(); } catch (_) { return null; }

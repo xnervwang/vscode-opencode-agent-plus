@@ -80,7 +80,8 @@ function createGitInfo({ fs = require('fs'), platform = process.platform, now = 
       const names = await fsp.readdir(base).catch(() => []);
       const out = [];
       for (const name of names) {
-        /* The worktree's own .git file, absolute or, with worktree.useRelativePaths, from this folder. */
+        /* This folder's gitdir file names the worktree's .git file: an absolute path, or one relative to this folder
+           when worktree.useRelativePaths is set. */
         const text = (await fsp.readFile(P.join(base, name, 'gitdir'), 'utf8').catch(() => '')).trim();
         if (!text) continue;
         const tree = P.dirname(P.resolve(P.join(base, name), text));

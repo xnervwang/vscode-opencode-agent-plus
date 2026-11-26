@@ -28,7 +28,6 @@ const SUBCOMMANDS = new Set(['upgrade', 'update', 'uninstall', 'acp', 'api', 'de
 /* Flags of `opencode` and `opencode run` that take a value, so that the value is not taken for a subcommand. */
 const WITH_VALUE = new Set(['-s', '--session', '--prompt', '--server', '--log-level', '-m', '--model', '--agent', '--title', '--format',
   '-f', '--file', '-w', '--worktree', '--completions']);
-/* The session an `opencode run` creates appears within this long of the run's start. */
 const RUN_CREATES_WITHIN_MS = 60000;
 const RUN_STARTS_BEFORE_MS = 2000;
 
@@ -198,7 +197,6 @@ function createElsewhere(deps) {
     return [];
   }
 
-  /* One reading: the OpenCode processes with their roles, the tabs, and the turns of the background service. */
   async function scan() {
     const [procs, stateDir, active] = await Promise.all([
       processes().catch(() => []),
@@ -239,7 +237,6 @@ function createElsewhere(deps) {
     return 'user';
   }
 
-  /* `record`'s `elsewhere` entries, from `reading`. */
   function placesOf(record, reading, known = deps.memory.get() || {}) {
     const out = [];
     const running = reading.active.has(record.id);

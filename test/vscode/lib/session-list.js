@@ -229,7 +229,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     await page.keyboard.type('Renamed from the list');
     await page.keyboard.press('Enter');
     const renamed = await until(async () => (await opencode()).some((s) => s.id === green && s.title === 'Renamed from the list'), 10000);
-    check(!!renamed && !!await h.wait((r) => (h.find(r, green, 'ungrouped') || {}).title === 'Renamed from the list'), 'Rename on a row renames the conversation in OpenCode');
+    check(!!renamed && !!await h.wait((r) => (h.find(r, green, 'ungrouped') || {}).title === 'Renamed from the list'), 'Rename on a row changes the title in OpenCode');
     await h.row(green).click({ button: 'right' });
     const items = await h.menu();
     check(!!items && items.includes('Fork Conversation') && items.includes('Rename') && items.includes('Archive') && !items.includes('Delete...'),
@@ -314,7 +314,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
       expect: `Agent Plus's Find Conversation box at the top, holding part of an OpenCode session id, with one match below: "${T.red}" with OpenCode beside it.`,
       part: '.quick-input-widget' });
     await page.keyboard.press('Enter');
-    check(!!picks && !!await until(async () => ((await h.frontId()) === red) || null, 15000), "Agent Plus's Find Conversation finds an OpenCode conversation by part of its id, and opens it", picks);
+    check(!!picks && !!await until(async () => ((await h.frontId()) === red) || null, 15000), "Agent Plus's Find Conversation matches part of an OpenCode session id and opens the conversation", picks);
     await h.close(red);
     await call('return vscode.commands.executeCommand("opencodeAgentPlus.openConversation", arg);', sessionId);
     await until(async () => ((await h.frontId()) === sessionId) || null, 15000);

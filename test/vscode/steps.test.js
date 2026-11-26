@@ -3,7 +3,7 @@
 // All rights reserved.
 
 'use strict';
-/* The step table of the window test (lib/steps.js) against run.js and the vscode workflow. */
+/* Checks the window test's step table (lib/steps.js) against run.js and the vscode workflow. */
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -45,7 +45,7 @@ test('a pattern that matches no step, or is not a regular expression, is refused
   assert.throws(() => chosen('('), /is not a regular expression/);
 });
 
-test('the vscode workflow takes the system and the steps when run by hand, and hands the steps to run.js', () => {
+test('run by hand, the vscode workflow takes the system and the steps, and passes the steps to run.js', () => {
   assert.match(WORKFLOW, /workflow_dispatch:\n\s+inputs:\n\s+os:[\s\S]*?options: \[all, ubuntu-latest, macos-latest, windows-latest\][\s\S]*?steps:\n[\s\S]*?type: string/);
   assert.match(WORKFLOW, /os: \$\{\{ fromJSON\(inputs\.os && inputs\.os != 'all' && format\('\["\{0\}"\]', inputs\.os\) \|\| '\["ubuntu-latest", "macos-latest", "windows-latest"\]'\) \}\}/);
   assert.match(WORKFLOW, /OPENCODE_AGENT_PLUS_UI_STEPS: \$\{\{ inputs\.steps \}\}/);

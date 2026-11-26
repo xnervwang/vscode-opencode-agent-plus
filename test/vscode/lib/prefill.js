@@ -85,8 +85,8 @@ async function run(t) {
       where: await page.evaluate(() => { const a = document.activeElement; return { window: document.hasFocus(), active: a ? `${a.tagName}.${String(a.className).slice(0, 80)}` : null }; }).catch(() => null) });
 
   const usersBefore = box1 ? await settled(FIRST) : null;
-  /* Reopened, the conversation dates its last message from OpenCode's export, which may differ from the time this
-     window sent it by a second or so. */
+  /* After reopening, the conversation's last-message time comes from OpenCode's export, which can differ from the
+     time this window sent it by a second or so. */
   const lastOpened = await lastUser(id);
   if (box1) await setBox(box1.f, 'first words');
   const r2 = await prefill(id, SECOND);

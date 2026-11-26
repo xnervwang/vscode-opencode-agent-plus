@@ -4,8 +4,7 @@
 
 'use strict';
 /*
- * Tests for src/host/session-source.js, this extension's part of Agent Plus's session list: the rows, their kinds, dots and
- * places, the actions and their refusals, deletion, import, seen and the Account & usage part.
+ * Tests for src/host/session-source.js, this extension's part of Agent Plus's session list.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -108,7 +107,7 @@ test('rows: a window opened on a worktree does not mark it, and a worktree two f
   assert.ok(rows.every((r) => !r.worktree), 'both are the window\'s own folders');
 });
 
-test('rows: lastUserAt from this window or another one, as they saw it sent, else when OpenCode last began a turn', async () => {
+test('rows: lastUserAt is when this window or another one saw the message sent, or else when OpenCode last began a turn', async () => {
   const records = [rec('ses_here', { lastTurnAt: 250 }), rec('ses_away', { lastTurnAt: 250 }), rec('ses_closed', { lastTurnAt: 250 }), rec('ses_never')];
   const here = { ses_here: { activity: 'stopped', lastUserAt: 240, lastReplyAt: 300 } };
   const far = [{ sessionId: 'ses_away', activity: 'stopped', lastUserAt: 230 }];
@@ -256,7 +255,7 @@ test('Account & usage, given at once from the last reading: the provider and mod
   assert.ok(!first || typeof first.then !== 'function', 'not a promise: Agent Plus does not wait for it');
   assert.equal(first, null, 'nothing read yet');
   for (let i = 0; i < 50 && !told; i++) await new Promise((r) => setTimeout(r, 5));
-  assert.equal(told, 1, 'the core is told once the reading is in');
+  assert.equal(told, 1, 'the core is told once the reading finishes');
   const info = source.accountInfo({ sessionId: 'ses_a' });
   assert.deepEqual(info.rows.map((r) => [r.label, r.value]), [['Provider', 'Amazon Bedrock'], ['Model', 'x.grok'], ['Today, all conversations', '$3.50']]);
   assert.deepEqual(info.conversation.rows.map((r) => [r.label, r.value]), [['Cost', '$0.25'], ['Tokens', '1.2K in · 30 out']]);

@@ -5,8 +5,8 @@
 'use strict';
 /*
  * Through extension.js with the window tests' fake backend: a chat page gets the conversations it may link to, and a
- * click on one opens it; a closed chat tab leaves no list of this extension's own behind, and Agent Plus's list
- * deletes a closed conversation.
+ * click on one opens it. Closing a chat tab stores no list of this extension's own, and Agent Plus's list deletes a
+ * closed conversation.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -70,7 +70,7 @@ test('through extension.js: a chat page\'s links to other conversations, and del
   await settle();
   assert.strictEqual(panel.revealed, shown + 1);
 
-  /* Closing the chat tab leaves nothing of its own behind: Agent Plus keeps Recently closed for every agent. */
+  /* Agent Plus keeps Recently closed for every agent, so closing the tab stores nothing here. */
   const tabA = control.chatTab(a);
   control.setTabs([tabA, control.chatTab(b)]);
   const [t0] = control.groups[0].tabs;

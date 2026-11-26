@@ -202,7 +202,7 @@ async function run(t) {
   const h = sessionList.create({ page, call, until, sleep });
   await h.show();
   const noteGone = h.sl && await until(async () => !(await h.notice()).some((n) => /Restricted Mode/.test(n.text)), 30000);
-  /* With OpenCode Agent Plus the only agent, the New bar's logo names it. */
+  /* With OpenCode Agent Plus the only agent, the New bar's agent button is titled after it. */
   const agents = h.sl && await until(() => h.sl.evaluate(() => { const b = document.querySelector('.sl-new-agent'); return b && /OpenCode/.test(b.title) && b.title; }), 30000);
   check(!!noteGone && !!agents, "the session list drops its Restricted Mode note, and its New bar starts OpenCode conversations now", { noteGone, agents });
   const handed = await until(async () => {

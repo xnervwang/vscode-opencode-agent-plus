@@ -39,9 +39,8 @@ function sessionOfUri(uri) {
 
 /*
  * A chat tab's resource: the session id, then the conversation's title when known. VS Code names a tab whose page has
- * never set a title, such as one restored after a reload and not shown since, after the last part of its resource:
- * the title, or NO_TITLE for a conversation that has none yet. Slashes in a title would start a new part, so they are
- * replaced.
+ * never set a title, such as one restored after a reload and not shown since, after the last part of its resource,
+ * which is the title. Slashes in a title would start a new part, so they are replaced.
  */
 const NO_TITLE = 'New conversation';
 const tabName = (title) => String(title || '').replace(/[\\/]/g, '\u2215').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 120);
@@ -241,7 +240,6 @@ function createAgentPlusSource(deps) {
     },
   };
 
-  /* Agent Plus's session list, from src/host/session-source.js: its calls and sessionActions are forwarded, not copied. */
   if (deps.sessions) {
     const s = deps.sessions;
     source.onDidChangeSessions = s.onDidChangeSessions;

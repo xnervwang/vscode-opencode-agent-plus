@@ -48,7 +48,6 @@ function within(dir, folder, platform = process.platform) {
   return d === f || d.startsWith(f.endsWith(sep) ? f : f + sep);
 }
 
-/* The fields of an /api session.list row that the session list uses. */
 function toRecord(row) {
   if (!row || typeof row.id !== 'string' || !row.id) return null;
   const t = row.time || {};
@@ -102,7 +101,7 @@ function createSessionIndex(deps) {
   let cache = null;
   let reading = null;
 
-  /* The background service, when its state file names a process that runs: { url, password, pid }, else null. */
+  /* The background service as { url, password, pid }, or null when none runs. */
   async function service() {
     const p = await deps.paths().catch(() => null);
     if (!p || !p.state) return null;
@@ -196,7 +195,7 @@ function createSessionIndex(deps) {
     },
     service,
     stamp,
-    /* Marks the turn of `id` that ended at `idle` as seen; the terminal interface does the same when it shows the turn. */
+    /* Marks the turn of `id` that ended at `idle` as seen. */
     async view(id, idle) {
       const own = await store();
       if (own) { await own.view(id, idle); return; }

@@ -162,7 +162,7 @@ test('after OpenCode restarts, the model it already has is not set a second time
   assert.equal(effortOf(h), 'low');
 });
 
-test('a model chosen while a turn runs is set before the next message, not left for OpenCode to ignore', async (t) => {
+test('a model chosen while a turn runs is set before the next message', async (t) => {
   const { GROK, script } = effortScript();
   const GLOBAL = 'amazon-bedrock/global.xai.grok-4.7';
   const reply = script.find((e) => e.on === 'session/set_config_option').reply;

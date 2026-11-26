@@ -7,7 +7,8 @@
  * Restricted Mode. Until the workspace is trusted the extension starts no OpenCode and no conversation, writes no file
  * and registers no Agent Plus source. It registers stand-ins that tell the user to trust the workspace: its commands and
  * its chat editor. Once trust is granted they give way to the real ones without a reload, and a chat tab already open is
- * handed to the real chat editor. Agent Plus's session list says itself that some agents start only once trusted.
+ * handed to the real chat editor. Agent Plus's session list shows its own note that some agents start only once the
+ * workspace is trusted.
  *
  * The chat editor is registered here in every case, since VS Code takes one provider per view type; start() hands it
  * the real provider through useEditor().

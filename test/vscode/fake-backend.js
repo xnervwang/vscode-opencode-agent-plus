@@ -28,7 +28,7 @@ const MODELS = [
   { id: 'fake/fake-small', invokeId: 'fake-small', providerId: 'fake', name: 'Fake Small', vendor: 'Test', contextWindow: 32000, maxOutputTokens: 4096, known: false },
   { id: 'fake/fake-large', invokeId: 'fake-large', providerId: 'fake', name: 'Fake Large', vendor: 'Test', contextWindow: 200000, maxOutputTokens: 8192, known: false },
   { id: 'opencode/fake-free', invokeId: 'fake-free', providerId: 'opencode', name: 'Fake Free', vendor: 'OpenCode', contextWindow: 32000, maxOutputTokens: 4096, known: false },
-  /* One model under two Bedrock geographies, which the model picker shows as one row. */
+  /* The same model in two Bedrock geographies, so that the model picker has a row to unfold. */
   { id: 'amazon-bedrock/us.fake.fake-geo', invokeId: 'us.fake.fake-geo', providerId: 'amazon-bedrock', name: 'Fake Geo (US)', vendor: 'Amazon Bedrock', contextWindow: 32000, maxOutputTokens: 4096, known: false },
   { id: 'amazon-bedrock/eu.fake.fake-geo', invokeId: 'eu.fake.fake-geo', providerId: 'amazon-bedrock', name: 'Fake Geo (EU)', vendor: 'Amazon Bedrock', contextWindow: 32000, maxOutputTokens: 4096, known: false },
 ];

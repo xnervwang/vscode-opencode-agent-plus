@@ -88,9 +88,8 @@ function fmtTokens(n) {
 }
 
 /* `amazon-bedrock/us.xai.grok-4.7` -> `grok-4.7 (US)`, `qwen.qwen3-coder-30b-a3b-v1:0` -> `qwen3-coder-30b-a3b`:
-   OpenCode's provider part, a vendor prefix and a version suffix go, and a Bedrock geography moves to the end, since
-   the same model under another geography may not be callable from the Region OpenCode uses. A vendor prefix has only
-   letters and hyphens, so the dot in `gpt-5.1` stays. */
+   the geography stays, at the end, because the same model under another geography may not be callable from the Region
+   OpenCode uses. A vendor prefix has only letters and hyphens, so the dot in `gpt-5.1` stays. */
 function shortModel(id) {
   if (!id) return '';
   let s = String(id);

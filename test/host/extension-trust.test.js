@@ -120,7 +120,7 @@ test('once trust is granted it starts without a reload, and the chat tab already
   assert.ok(api.test.registered, "start() ran and gave the tests' handle its members");
   for (const id of COMMANDS) assert.ok(control.state.unregistered.includes(id), `the stand-in for ${id} is gone`);
   for (const id of COMMANDS) assert.strictEqual(control.state.live.get(id), 1, `${id} is registered once`);
-  assert.deepStrictEqual(Object.keys(control.state.trees), [], 'and still no view of its own');
+  assert.deepStrictEqual(Object.keys(control.state.trees), [], 'and still no tree view');
   assert.ok(fs.existsSync(path.join(HOME, 'opencode-plugin', 'agent-work-plan', 'index.js')), 'the work plan plugin is copied now');
   await api.test.registered;
   assert.strictEqual(sources.length, 1, 'registered with Agent Plus now');

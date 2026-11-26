@@ -3,8 +3,7 @@
 // All rights reserved.
 
 'use strict';
-/* The model picker's rows: the variants of one Bedrock model across geographies share a row, and the filter keeps
-   the variants it matches. */
+/* Tests for the model picker's rows in media/composer.js (modelVariant, modelFamilies, filterModelFamilies). */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const C = require('../../media/composer.js');

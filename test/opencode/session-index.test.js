@@ -92,7 +92,7 @@ test('with no background service it reads a private server page by page, and kee
   assert.ok(!got.some((r) => r.id === 'ses_other'));
 });
 
-test('a database that has not changed is not read again; a write to it is', async (t) => {
+test('the database is read again only after a write to it', async (t) => {
   const pages = [{ data: [row('ses_a', '/w', { created: 1 })], cursor: { next: null } }];
   const { index, calls, db } = setup(t, { pages });
   await index.list({ folders: ['/w'] });

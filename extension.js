@@ -85,7 +85,7 @@ const { createSessionSource } = require('./src/host/session-source');
 const { createGitInfo } = require('./src/host/git-info');
 const windowEntries = require('./src/shared/window-entries');
 const { writeAtomic } = require('./src/shared/files');
-/* How the Account & usage section names a model provider of OpenCode's. */
+/* Display names of OpenCode's provider ids, for the Account & usage section. */
 const PROVIDER_NAMES = Object.freeze({ 'amazon-bedrock': 'Amazon Bedrock', anthropic: 'Anthropic', openai: 'OpenAI', opencode: 'OpenCode', google: 'Google',
   openrouter: 'OpenRouter', 'github-copilot': 'GitHub Copilot', xai: 'xAI', mistral: 'Mistral', deepseek: 'DeepSeek' });
 const COMMANDS = require('./package.json').contributes.commands.map((c) => c.command);
@@ -718,7 +718,7 @@ function start(context, log, gate, channel) {
     const tab = activeTab();
     return ap.isChatTab(tab) ? ap.sessionOfUri(tab.input.uri) : '';
   };
-  /* The titles of conversations not open here now: from OpenCode's session list, and the last of each one open here. */
+  /* Titles of conversations that are not open here: from OpenCode's session list, or the last one each had while open here. */
   const titles = new Map();
   subs.push(manager.onDidChange((e) => { const s = e && manager.snapshot(e.sessionId); if (s && s.named) titles.set(s.sessionId, s.title); }));
   const titleOf = (id) => { const s = manager.snapshot(id); return (s && s.named && s.title) || titles.get(id) || ''; };
@@ -762,7 +762,7 @@ function start(context, log, gate, channel) {
     } catch (e) { log(`could not delete the scratch folder of ${id}: ${e.message}`); }
     nudge();
   });
-  /* The conversations a reply can link to are read again when one open here, or OpenCode's list, changes. */
+  /* The conversations a reply can link to are read again when an open conversation or OpenCode's list changes. */
   const listChanged = new vscode.EventEmitter();
   let soon = null;
   const nudge = () => { if (!soon) soon = setTimeout(() => { soon = null; listChanged.fire(); }, 200); };
@@ -782,7 +782,7 @@ function start(context, log, gate, channel) {
       const id = typeof arg === 'string' ? arg : arg && arg.id;
       return id ? openSession(id) : false;
     }),
-    /* From the chat tab's title bar and its tab's menu. */
+    /* From a chat tab's editor title bar and its tab's context menu. */
     vscode.commands.registerCommand(`${brand.prefix}.renameConversation`, async (arg) => {
       const id = conversationOf(arg);
       if (!id) return false;

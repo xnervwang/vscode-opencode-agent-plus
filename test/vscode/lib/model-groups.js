@@ -50,7 +50,7 @@ async function run(t) {
   await f.fill('#modelMenu .model-filter', multi.name);
   const narrowed = await until(async () => { const st = await state(); return st.families.includes(multi.name) && st.variants.length >= 2 ? st : null; }, 10000);
   check(!!narrowed && narrowed.families.every((n) => n.toLowerCase().includes(multi.name.toLowerCase().split(' ')[0])),
-    "typing in the filter narrows the list, and a model's row shows its geographies unfolded", narrowed || await state());
+    "typing in the filter narrows the list and unfolds the matching model's geographies", narrowed || await state());
   await shot('24-model-picker', { features: ['model picker'], part: '#workbench\\.parts\\.editor',
     expect: `Over the message box, a list as wide as it: a filter box holding "${multi.name}" at the top, then "Connect a provider…" and "Reload the model list", a line, and below it a group heading with the row "${multi.name}" (its geographies in grey on the right) and, indented under it, one row per geography with its model id in grey.` });
   await f.fill('#modelMenu .model-filter', '');

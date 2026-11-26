@@ -33,7 +33,6 @@ const { within } = require('../opencode/session-index');
 
 const SCAN_MS = 10000;
 const DB_POLL_MS = 3000;
-/* How old a reading of Account & usage may be before it is read again. */
 const ACCOUNT_MS = 5000;
 
 function emitter() {
@@ -76,7 +75,7 @@ const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n /
  *   holder(id)       another window that holds the conversation's lock, or null
  *   otherWindows()   optional: Promise of the conversations the other windows on this machine report
  *   open(id, where)  Promise<boolean>: opens it in a tab here
- *   create(where)    Promise<string>: starts a conversation in a tab here and answers its id
+ *   create(where)    Promise<string>: starts a conversation in a tab here and returns its id
  *   canRename()      whether OpenCode can rename (2.x)
  *   rename(id, t)    Promise
  *   remove(id)       Promise: deletes it and its subagents' sessions
@@ -104,7 +103,7 @@ function createSessionSource(deps) {
     notice = next;
     noticeChanged.fire();
   }
-  /* The notice for an error reading the rows; true when it means there is nothing to list rather than a failed list. */
+  /* The notice for an error reading the rows; true when the error means there is nothing to list (OpenCode not found). */
   function noteFailure(e) {
     const text = String((e && e.message) || e).replace(/\s+/g, ' ').trim();
     const logs = commands.logs ? [{ label: 'Show Logs', command: commands.logs, arguments: [] }] : [];
@@ -158,7 +157,6 @@ function createSessionSource(deps) {
     return r;
   }
 
-  /* The other windows' conversations (deps.otherWindows), by session id. */
   async function others() {
     if (typeof deps.otherWindows !== 'function') return new Map();
     try { return new Map(((await deps.otherWindows()) || []).filter((c) => c && c.sessionId).map((c) => [c.sessionId, c])); } catch (_) { return new Map(); }
@@ -186,7 +184,7 @@ function createSessionSource(deps) {
     });
   }
 
-  /* This extension's part of Account & usage, from the last reading. */
+  /* The OpenCode rows of Account & usage, built from the last reading. */
   function accountOf(sessionId) {
     const rows = [];
     const r = account.id === sessionId ? account.record : null;
@@ -302,7 +300,7 @@ function createSessionSource(deps) {
     return records.map((r) => rowOf(r, known, far, trees, branches));
   }
 
-  /* What a conversation has open or running, or '' when nothing does. */
+  /* Why a conversation cannot be opened here or deleted now, or '' when nothing stops it. */
   async function busyReason(id) {
     if (deps.manager.has(id)) return 'it is open in this window; close its tab first';
     if (deps.holder(id)) return 'it is open in another VS Code window; close it there first';
@@ -344,7 +342,7 @@ function createSessionSource(deps) {
         return { sessionId: id, outcome: 'done' };
       }
       default:
-        return { sessionId: id, outcome: 'refused', reason: `${action} is not something OpenCode Agent Plus does.` };
+        return { sessionId: id, outcome: 'refused', reason: `OpenCode Agent Plus has no action named ${action}.` };
     }
   }
 

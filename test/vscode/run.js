@@ -307,8 +307,8 @@ async function main() {
   let failed = 0, passed = 0;
   /* The window once it is open, and the step under way (`step` below). */
   let win = null, stepNow = RUN || 'start';
-  /* A failed check keeps what the window held then: <out>/failures/<n>-<step>.png, and beside it a .json with the check
-     and each frame's address and visible text. */
+  /* A failed check saves the window as it was at that moment: <out>/failures/<n>-<step>.png, and beside it a .json with
+     the check and each frame's address and visible text. */
   const KEPT_FAILURES = 20;
   const keeping = [];
   const keepFailure = async (n, what) => {
@@ -334,7 +334,7 @@ async function main() {
   win = w;
   const { page, call } = w;
   /* Starts step `name` of lib/steps.js if this run takes it: prints the name, which the failures that follow are kept
-     under, and returns true. Returns false for a step OPENCODE_AGENT_PLUS_UI_STEPS leaves out. */
+     under, and returns true. */
   const step = (name) => {
     if (picked && !picked.has(name)) return false;
     stepNow = name;
@@ -593,7 +593,7 @@ async function main() {
       return true;`, uri);
 
     if (step('basics')) {
-      // 1. The work plan plugin is in place, and Agent Plus's session list, which has this extension's conversations, is empty.
+      // 1. The work plan plugin is in place, and Agent Plus's session list has none of this extension's conversations yet.
       const inPlace = await until(() => ['index.js', 'hooks/plan_common.py', 'hooks/plan_agent.py', 'hooks/inject-work-plan.py'].every((f) => fs.existsSync(path.join(pluginHome, f)))
         && fs.existsSync(path.join(plansDir, 'config.json')), 20000);
       check(inPlace, "the work plan plugin, its scripts and config.json are in place in the extension's folder");
@@ -1679,7 +1679,7 @@ async function main() {
         return { kinds, figures: [...document.querySelectorAll('#log .figures')].map((x) => x.textContent) };
       });
       const beforeReload = await gapCi.pageOf(reloadCtx, { id: sessionId, text: firstText }).then((f) => (f ? logShape(f) : null)).catch(() => null);
-      /* Each chat tab's name, and whether it is the one its group shows. */
+      /* Each chat tab's name, and whether it is its group's active tab. */
       const labelsOf = () => call(`return vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.viewType === "opencodeAgentPlus.chat")
         .map((t) => ({ id: t.input.uri.path.split("/")[1], label: t.label, active: t.isActive }));`);
       const labelsBefore = await labelsOf();
@@ -1741,7 +1741,7 @@ async function main() {
         await until(() => ext('return !!(api && api.test);'), 60000);
         const early = ((await ext('return api.test.chatPages();')) || []).includes(behindId);
         const loaded = await until(async () => { const l = (await ext('return api.test.chatPages();')) || []; return l.includes(behindId) ? l : null; }, 40000, 500);
-        /* The page is made as the tab comes to the front, before the loading puts the first tab back. */
+        /* The tab's page is built when the tab comes to the front, before loadRestoredTabs brings the first tab back. */
         let front = null;
         await until(async () => {
           front = await call(`const g = vscode.window.tabGroups.all.find((x) => x.viewColumn === 1); const t = g && g.activeTab;

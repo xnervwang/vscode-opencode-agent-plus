@@ -5,7 +5,7 @@
 'use strict';
 /*
  * Tests for src/host/git-info.js: the branch checked out in a folder and the linked worktrees of its repository, read
- * from the files under .git, first from a layout written by hand and then from one git itself made.
+ * from the files under .git.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
