@@ -131,7 +131,7 @@ function modelChoices(f) {
 }
 
 /* Picks `id` in the model picker of frame `f`, or the action 'connect' or 'reload': opens the picker from the pill,
-   unfolds the row the model shares with its other geographies if it is folded, and clicks it. */
+   unfolds the model's row if its geographies are folded, and clicks the model. */
 async function pickModel(f, id) {
   if (await f.evaluate(() => document.getElementById('modelMenu').hidden)) await f.click('#model');
   const sel = id === 'connect' || id === 'reload' ? `#modelMenu [data-action="${id}"]` : `#modelMenu [data-model-id="${id}"]`;

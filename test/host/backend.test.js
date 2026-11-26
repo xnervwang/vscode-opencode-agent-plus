@@ -80,7 +80,7 @@ test('a missing member or factory is an error the caller sees, not a crash', asy
   await assert.rejects(none.listSessions(), /exports no factory/);
 });
 
-test('one subscribed to session changes before the module loads hears them once it has loaded, without listen()', async () => {
+test('a listener added before the module loads gets its session changes once it has loaded, without listen()', async () => {
   let emit = null;
   const fake = { listSessions: async () => [], onDidChangeSessions: (fn) => { emit = fn; return { dispose() { emit = null; } }; } };
   const b = createBackend({ load: () => ({ createOpenCode: () => fake }) });
@@ -93,5 +93,5 @@ test('one subscribed to session changes before the module loads hears them once 
   assert.deepStrictEqual(heard, ['ses_x']);
   b.listen();
   emit('ses_y');
-  assert.deepStrictEqual(heard, ['ses_x', 'ses_y'], 'listen() after it subscribes nothing twice');
+  assert.deepStrictEqual(heard, ['ses_x', 'ses_y'], 'a later listen() does not subscribe it twice');
 });

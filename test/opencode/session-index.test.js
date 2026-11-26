@@ -17,13 +17,13 @@ const { createSessionIndex, toRecord, within } = require('../../src/opencode/ses
 /* A row as OpenCode 2.4.1 printed it. */
 const row = (id, dir, time, extra = {}) => ({ id, projectID: 'p', cost: 0.5, tokens: { input: 10, output: 2, reasoning: 1, cache: { read: 5, write: 0 } }, time, location: { directory: dir }, ...extra });
 
-test('a row becomes a record: activity from busy and idle, never from updated, when the last turn began, and the viewer and archive times', () => {
+test('a row becomes a record: activity from busy and idle (never from updated), the start of the last turn, and the viewed and archived times', () => {
   const r = toRecord(row('ses_a', '/w/p', { created: 100, updated: 900, busy: 200, idle: 300, viewed: 300, archived: 900 }, { title: 'T', parentID: 'ses_p', model: { id: 'x.m', providerID: 'amazon-bedrock' }, outcome: 'succeeded' }));
   assert.deepEqual(r, {
     id: 'ses_a', title: 'T', cwd: '/w/p', parentId: 'ses_p', forkOf: '', createdAt: 100, lastActiveAt: 300, lastReplyAt: 300, lastTurnAt: 200, viewedAt: 300,
     archivedAt: 900, busy: false, cost: 0.5, tokens: { input: 10, output: 2, reasoning: 1, cacheRead: 5, cacheWrite: 0 }, model: 'amazon-bedrock/x.m', outcome: 'succeeded',
   });
-  assert.equal(toRecord(row('ses_b', '/w', { created: 100, updated: 500 })).lastActiveAt, 100, 'a session that never ran a turn is as old as it is');
+  assert.equal(toRecord(row('ses_b', '/w', { created: 100, updated: 500 })).lastActiveAt, 100, 'a session that never ran a turn was last active when it was created');
   const mid = toRecord(row('ses_c', '/w', { created: 100, updated: 500, busy: 400, idle: 300 }));
   assert.equal(mid.busy, true, 'a turn began after the last one ended');
   assert.equal(mid.lastActiveAt, 400);
@@ -33,7 +33,7 @@ test('a row becomes a record: activity from busy and idle, never from updated, w
   assert.equal(r.forkOf, '');
 });
 
-test('a folder holds itself and the folders below it, and no folder whose name merely starts the same', () => {
+test('a folder contains itself and the folders below it, and not a folder whose name only begins the same', () => {
   assert.equal(within('/w/p', '/w/p', 'linux'), true);
   assert.equal(within('/w/p/sub/deeper', '/w/p', 'linux'), true);
   assert.equal(within('/w/p/', '/w/p', 'linux'), true);
@@ -106,7 +106,7 @@ test('a database that has not changed is not read again; a write to it is', asyn
   assert.equal(calls.length, 3);
 });
 
-test('a running background service is asked over HTTP with its password, for the list and the turns that run', async (t) => {
+test('a running background service is asked over HTTP, with its password, for the session list and the running turns', async (t) => {
   const pages = [{ data: [row('ses_a', '/w', { created: 1, busy: 2 })], cursor: { next: null } }];
   const { index, calls, requests } = setup(t, { pages, service: { url: 'http://127.0.0.1:4321', pid: process.pid, password: 'pw' }, answers: { '/api/session/active': { data: { ses_a: { type: 'running' } } } } });
   const got = await index.list({ folders: ['/w'] });

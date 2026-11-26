@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 
 const COLORS = { light: '#424242', dark: '#c5c5c5' };
-/* A string is a filled dot; { ring } a ring of that colour, for a turn over with background work still running. */
+/* A string is a filled dot; { ring } a ring of that colour, for the background state. */
 const DOTS = { working: '#22c55e', waiting: '#ef4444', background: { ring: '#22c55e' } };
 const TAB_STATES = ['stopped', 'working', 'waiting', 'background'];
 

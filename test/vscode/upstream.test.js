@@ -3,8 +3,7 @@
 // All rights reserved.
 
 'use strict';
-/* What the vscode workflow installs from elsewhere is pinned in .github/upstream.json, and against-latest.yml runs it
-   against the newest of each once a day. */
+/* The pins in .github/upstream.json and the two workflows that read them. */
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');

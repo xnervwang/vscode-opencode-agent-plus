@@ -81,7 +81,7 @@ test('a new conversation is made by the backend and opened in a chat tab; closin
   control.state.handlers['vscode.openWith'] = (uri, viewType, opts) => opened.push([uri.toString(), viewType, opts]);
   await control.state.handlers['opencodeAgentPlus.newConversation']();
   assert.strictEqual(opened.length, 1);
-  assert.match(opened[0][0], /^opencodeagentplus-session:\/ses_[0-9a-f]+\/New(%20| )conversation$/, 'named as its tab is until it has a title');
+  assert.match(opened[0][0], /^opencodeagentplus-session:\/ses_[0-9a-f]+\/New(%20| )conversation$/, 'a new conversation\'s resource ends in New conversation until it has a title');
   assert.deepStrictEqual(opened[0].slice(1), ['opencodeAgentPlus.chat', { preview: false, viewColumn: 1 }]);
 
   const provider = control.state.editors['opencodeAgentPlus.chat'].provider;

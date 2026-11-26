@@ -28,7 +28,7 @@ const SUBCOMMANDS = new Set(['upgrade', 'update', 'uninstall', 'acp', 'api', 'de
 /* Flags of `opencode` and `opencode run` that take a value, so that the value is not taken for a subcommand. */
 const WITH_VALUE = new Set(['-s', '--session', '--prompt', '--server', '--log-level', '-m', '--model', '--agent', '--title', '--format',
   '-f', '--file', '-w', '--worktree', '--completions']);
-/* How long after an `opencode run` starts the session it creates can appear. */
+/* The session an `opencode run` creates appears within this long of the run's start. */
 const RUN_CREATES_WITHIN_MS = 60000;
 const RUN_STARTS_BEFORE_MS = 2000;
 
@@ -217,7 +217,7 @@ function createElsewhere(deps) {
     return { at: Date.now(), procs: roles, tabs: readTabs(stateDir, fs), active };
   }
 
-  /* Marks the sessions an `opencode run` of this reading created: in its folder, created within a minute of it. */
+  /* Marks the session each `opencode run` in `reading` created: the first one in its folder within a minute of its start. */
   function noteRuns(records, reading) {
     const known = { ...(deps.memory.get() || {}) };
     let changed = false;
@@ -239,7 +239,7 @@ function createElsewhere(deps) {
     return 'user';
   }
 
-  /* The places outside VS Code that have `record` open or run it, as the session list's `elsewhere`. */
+  /* `record`'s `elsewhere` entries, from `reading`. */
   function placesOf(record, reading, known = deps.memory.get() || {}) {
     const out = [];
     const running = reading.active.has(record.id);

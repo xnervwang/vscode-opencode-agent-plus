@@ -70,7 +70,7 @@ test('through extension.js: the time zone, the info box, the chimes, Fork from t
   assert.strictEqual(memo.get('opencodeAgentPlus.sound'), false);
   assert.strictEqual(panel.webview.posted.filter((m) => m.type === 'sound').pop().on, false);
 
-  /* Fork from Agent Plus's list, the source's own action on the row: a new conversation opens in a tab of its own. */
+  /* Fork, the action this extension's source adds to its rows in Agent Plus's list: the copy opens in a tab of its own. */
   const folder = api.test.snapshot(id).cwd;
   const before = (await api.test.source.listSessions({ folders: [folder] })).sessions;
   assert.deepStrictEqual(before.map((r) => [r.sessionId, r.actions]), [[id, ['fork']]]);

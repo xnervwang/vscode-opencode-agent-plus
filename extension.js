@@ -4,7 +4,7 @@
 
 'use strict';
 /*
- * Activation registers the commands, the chat editor, the source Agent Plus lists the conversations from, and the
+ * Activation registers the commands, the chat editor, this extension's conversation source for Agent Plus, and the
  * listeners. The agent (OpenCode, through src/host/backend.js and src/opencode/) starts when the first conversation
  * needs it, and a conversation's history is read when its tab opens. In Restricted Mode not even that: start() waits until the
  * workspace is trusted (src/host/trust-gate.js).
@@ -637,7 +637,7 @@ function start(context, log, gate, channel) {
   }
 
   /*
-   * VS Code names a chat tab restored after a reload after the last part of its resource until its page loads, so the
+   * Until its page loads, VS Code names a chat tab restored after a reload by the last part of its resource, so the
    * resource carries the title (agentplus-source uriOf). A conversation's title comes after its tab opened (OpenCode
    * names a new one after its first reply) or changes (a rename), so the tab is opened again under its title: beside
    * itself, where the old one closes, and only while it is in front and the conversation idle, which a page reload
@@ -660,7 +660,7 @@ function start(context, log, gate, channel) {
       if (draft) drafts.set(id, draft);
       await vscode.commands.executeCommand('vscode.openWith', ap.uriOf(id, title), ap.VIEW_TYPE, { viewColumn: tab.group.viewColumn, preview: false });
       await vscode.window.tabGroups.close(tab, true);
-      log(`opened the tab of ${id} again under its title`);
+      log(`reopened the tab of ${id} under its title`);
     } catch (e) {
       log(`opening the tab of ${id} under its title failed: ${(e && e.message) || e}`);
     } finally {
@@ -689,7 +689,7 @@ function start(context, log, gate, channel) {
     } finally {
       loadingTabs = false;
     }
-    if (n) log(`loaded ${n} chat tab(s) VS Code restored behind another`);
+    if (n) log(`loaded ${n} restored chat tab(s) that were behind another tab`);
     return n;
   }
   const loadTimer = setTimeout(() => { loadRestored().catch((e) => log(`loading the restored chat tabs failed: ${(e && e.message) || e}`)); }, 8000);
@@ -904,7 +904,7 @@ function start(context, log, gate, channel) {
     get: () => { try { const v = JSON.parse(fs.readFileSync(runsFile, 'utf8')); return v && v.runs && typeof v.runs === 'object' ? v.runs : {}; } catch (_) { return {}; } },
     set: (v) => {
       const kept = Object.fromEntries(Object.entries(v).sort((a, b) => b[1] - a[1]).slice(0, 2000));
-      try { fs.mkdirSync(paths.root(), { recursive: true }); writeAtomic(runsFile, JSON.stringify({ format: 1, runs: kept })); } catch (e) { log(`saving the sessions opencode run started failed: ${e.message}`); }
+      try { fs.mkdirSync(paths.root(), { recursive: true }); writeAtomic(runsFile, JSON.stringify({ format: 1, runs: kept })); } catch (e) { log(`saving the list of sessions started by opencode run failed: ${e.message}`); }
     },
   };
   const elsewhere = createElsewhere({ stateDir: async () => ((await backend.dataPaths()) || {}).state || '', active: () => sessionIndex.active(),

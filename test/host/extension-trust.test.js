@@ -142,7 +142,7 @@ test('once trust is granted it starts without a reload, and the chat tab already
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
   await control.state.handlers['opencodeAgentPlus.newConversation']();
   assert.strictEqual(opened.length, 1);
-  assert.match(opened[0], /^opencodeagentplus-session:\/ses_[0-9a-f]+\/New(%20| )conversation$/, 'named as its tab is until it has a title');
+  assert.match(opened[0], /^opencodeagentplus-session:\/ses_[0-9a-f]+\/New(%20| )conversation$/, 'a new conversation\'s resource ends in New conversation until it has a title');
   assert.ok(loaded('fake-backend.js'), 'the backend starts on first use');
 
   /* A second grant (VS Code fires it once, but) changes nothing. */

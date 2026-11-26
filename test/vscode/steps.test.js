@@ -13,7 +13,7 @@ const { NEEDS, BASE, RUNS, chosen, outOfStep } = require('./lib/steps');
 const RUN_JS = fs.readFileSync(path.join(__dirname, 'run.js'), 'utf8');
 const WORKFLOW = fs.readFileSync(path.join(__dirname, '..', '..', '.github', 'workflows', 'vscode.yml'), 'utf8');
 
-test('run.js starts the steps of the table, each once and in its order, and those of the other runs once each', () => {
+test('run.js starts each step of the table once and in the table\'s order, and each step of the other runs once', () => {
   const started = [...RUN_JS.matchAll(/\bstep\('([^']+)'\)/g)].map((m) => m[1]);
   assert.deepStrictEqual(started.filter((x) => x in NEEDS), Object.keys(NEEDS));
   assert.deepStrictEqual(started.filter((x) => !(x in NEEDS)), []);
@@ -33,7 +33,7 @@ test('a pattern picks the steps it matches, those they rely on and the base, in 
   assert.deepStrictEqual([...chosen('^reload$')], ['new-conversation', 'fake-chat', 'opencode', 'reload']);
 });
 
-test('a run with an option of its own is one step, and a pattern for the other run leaves it nothing', () => {
+test('a run with an option of its own is a single step, and a pattern naming another run\'s steps picks nothing in it', () => {
   assert.deepStrictEqual([...chosen('restricted', 'restricted')], ['restricted']);
   assert.deepStrictEqual([...chosen('restricted')], []);
   assert.deepStrictEqual([...chosen('input', 'restricted')], []);

@@ -76,7 +76,7 @@ const LOCAL = has('--local');
 const EXE = flag('--vscode');
 const VSIX = flag('--vsix');
 const CACHE = flag('--cache');
-/* The same VS Code as the local runs use; OPENCODE_AGENT_PLUS_VSCODE_VERSION gives a CI=true run another, such as stable. */
+/* The same VS Code as the local runs use; OPENCODE_AGENT_PLUS_VSCODE_VERSION sets another for a CI=true run, such as stable. */
 const VSCODE_VERSION = process.env.OPENCODE_AGENT_PLUS_VSCODE_VERSION || '1.147.0';
 const OUT = path.resolve(flag('--out', path.join(os.tmpdir(), `opencode-agent-plus-ui-${Date.now()}`)));
 /* 1.4.0 or later: the plan bar needs Agent Plus's planSummary. Without --agent-plus, the newest package built in a
@@ -308,7 +308,7 @@ async function main() {
   /* The window once it is open, and the step under way (`step` below). */
   let win = null, stepNow = RUN || 'start';
   /* A failed check keeps what the window held then: <out>/failures/<n>-<step>.png, and beside it a .json with the check
-     and each frame's address and visible text. The first KEPT_FAILURES are kept. */
+     and each frame's address and visible text. */
   const KEPT_FAILURES = 20;
   const keeping = [];
   const keepFailure = async (n, what) => {
@@ -579,7 +579,7 @@ async function main() {
     await w.hostUp();
     await until(() => ext('return !!(api && api.test);'), 60000);
 
-    /* Used by steps that a run with OPENCODE_AGENT_PLUS_UI_STEPS can leave out, and by those after them. */
+    /* Outside any step: steps that OPENCODE_AGENT_PLUS_UI_STEPS can leave out use these, and so do later steps. */
     const pluginHome = path.join(p.agentHome, 'opencode-plugin', 'agent-work-plan');
     const plansDir = path.join(p.agentHome, 'plans');
     const setTheme = async (theme, cls) => {
@@ -990,7 +990,7 @@ async function main() {
               const given = (await ext('return api.test.source.listSessions({ folders: [arg] });', p.folder)) || { sessions: [] };
               const kids = given.sessions.filter((x) => children.includes(x.sessionId));
               check(kids.length > 0 && kids.every((x) => x.kind === 'subagent' && x.parentId === sessionId),
-                "Agent Plus's session list is given it as a subagent of the conversation, which the list hides while background conversations are hidden", kids);
+                "Agent Plus's session list gets the subagent's session as a child of the conversation, hidden while background conversations are hidden", kids);
             }
             /* Its steps are drawn when the list is opened (a toggle event), so this looks again until they are there. */
             const card = await until(() => chat.evaluate(() => {
@@ -1521,11 +1521,11 @@ async function main() {
               chat = await frameWith(page, '#input', 30000);
             }
 
-            // 3x. The fork, its tab closed, is in Recently closed of Agent Plus's list.
+            // 3x. After its tab closes, the fork is in Recently closed in Agent Plus's list.
             if (forked) {
               await slh.show();
               check(!!slh.sl && !!await slh.wait((r) => slh.find(r, forked, 'closed') && (slh.find(r, forked, 'ungrouped') || {}).stripe === 'closed', 15000),
-                "the fork whose tab closed is in Recently closed of Agent Plus's list, and has the light blue stripe in Ungrouped", slh.sl && await slh.rows());
+                "after its tab closes, the fork is in Agent Plus's Recently closed section and has the light blue stripe in Ungrouped", slh.sl && await slh.rows());
             }
           }
 
@@ -1663,7 +1663,7 @@ async function main() {
         return f && boxNow === DRAFT ? f : null;
       }, 15000) : null;
       check(!!named && named.active && named.column === 1 && !!carried,
-        "once its conversation has a title, the tab in front opens again in its place under it, its resource carrying the title and the draft in its box going along", { named, carried: !!carried, boxNow });
+        "once its conversation has a title, the tab in front is reopened in place under that title: its resource carries the title and the draft in its message box is kept", { named, carried: !!carried, boxNow });
       if (carried) await carried.fill('#input', '');
       await ext('return api.test.retitleTabs(false);');
       const reloadTabs = await gapCi.openTabs(reloadCtx, { id: sessionId, text: firstText });
@@ -1749,7 +1749,7 @@ async function main() {
           return front === sessionId || null;
         }, 10000, 300);
         check(!!loaded && front === sessionId,
-          'with opencodeAgentPlus.loadRestoredTabs on, a reload loads the chat tab behind another without a click, and the tab that was in front is in front again', { early, loaded, front });
+          'with opencodeAgentPlus.loadRestoredTabs on, a reload loads the chat tab behind another without a click, and the first tab is back in front', { early, loaded, front });
         await setLoad(false);
       }
       await gapCi.closeTabs(call, reloadTabs.slice(1));

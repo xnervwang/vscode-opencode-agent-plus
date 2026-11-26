@@ -6,12 +6,12 @@
 /*
  * Which steps of test/vscode/run.js to take. The steps share one window and run in their order in run.js, and a step can
  * rely on what one before it left: a conversation with messages in it, or tabs it opened. OPENCODE_AGENT_PLUS_UI_STEPS
- * holds a regular expression of step names; the steps it matches run, each with the steps of NEEDS it relies on,
- * followed through. Left empty, every step runs. A run with --restricted, --download, --steward or --title-order is one
+ * holds a regular expression of step names; the steps it matches run, together with every step they rely on through
+ * NEEDS. Left empty, every step runs. A run with --restricted, --download, --steward or --title-order is one
  * step of its own, named after that option.
  */
 
-/* The steps of the run without those options, in their order, each with the earlier steps it relies on. Behind the fake
+/* Each step of the run without those options, in order, with the earlier steps it relies on. Behind the fake
    backend only fake-chat's turns record context use and cost, which rewind and fork check on the turns drawn again;
    compact checks the plan bar, which plan's row brings; a conversation with no message is not listed, so sessions needs
    opencode's turn. */
@@ -44,14 +44,14 @@ const NEEDS = {
   'model-groups': [],
   prefill: [],
 };
-/* Run whenever a step of NEEDS is: the conversation the others work in. */
+/* The step that makes the conversation the others work in; it runs whenever any step of NEEDS runs. */
 const BASE = ['new-conversation'];
 const RUNS = ['restricted', 'download', 'steward', 'title-order'];
 
 /*
- * The steps that `run` (one of RUNS, or '' for the run with the steps of NEEDS) takes for `pattern`, the text of
- * OPENCODE_AGENT_PLUS_UI_STEPS: null when every step runs, otherwise a Set of names, empty when none of this run's steps
- * matches. Throws when the pattern is not a regular expression, or matches no step of any run.
+ * The steps the run `run` takes for `pattern`, the text of OPENCODE_AGENT_PLUS_UI_STEPS; `run` is one of RUNS, or ''
+ * for the run whose steps are in NEEDS. Null when every step runs, otherwise a Set of names, empty when none of this
+ * run's steps matches. Throws when the pattern is not a regular expression, or matches no step of any run.
  */
 function chosen(pattern, run = '') {
   if (!pattern) return null;
@@ -67,7 +67,7 @@ function chosen(pattern, run = '') {
   return new Set(Object.keys(NEEDS).filter((x) => out.has(x)));
 }
 
-/* The names NEEDS gives as needed that are not steps, and those that come after the step needing them. */
+/* Entries of NEEDS that are not steps, or that come after the step that needs them. */
 function outOfStep() {
   const names = Object.keys(NEEDS);
   return names.flatMap((x) => NEEDS[x].filter((y) => !names.includes(y) || names.indexOf(y) >= names.indexOf(x)).map((y) => `${x} needs ${y}`));

@@ -34,8 +34,6 @@ async function run(t) {
   await conf(undefined);
   await until(async () => ((await groups()).some((g) => g.label === FREE_GROUP) ? null : true), real ? 120000 : 30000);
 
-  // The picker: the pill opens it with the focus in its filter, the two actions above the list, and one row for a
-  // model's geographies that unfolds to its variants.
   const state = () => f.evaluate(() => {
     const m = document.getElementById('modelMenu');
     const rows = (sel) => [...m.querySelectorAll(sel)].filter((r) => !r.closest('[hidden]')).map((r) => r.querySelector('.menu-name').textContent);
@@ -46,7 +44,7 @@ async function run(t) {
   await f.click('#model');
   const opened = await until(async () => { const st = await state(); return st.open && st.focused ? st : null; }, 10000);
   check(!!opened && opened.actions.join(',') === 'connect,reload' && !opened.inList,
-    'the model pill opens the picker with the focus in its filter and Connect a provider… and Reload the model list above the list', opened || await state());
+    'the model pill opens the picker, focused in its filter, with Connect a provider… and Reload the model list above the list', opened || await state());
   const multi = await f.evaluate(() => { const r = document.querySelector('#modelMenu .model-row.multi'); return r ? { key: r.dataset.family, name: r.querySelector('.menu-name').textContent } : null; });
   if (!multi) { check(false, 'the picker has a model with more than one geography', await state()); return; }
   await f.fill('#modelMenu .model-filter', multi.name);
@@ -68,7 +66,7 @@ async function run(t) {
     await f.fill('#modelMenu .model-filter', 'fake large');
     await f.press('#modelMenu .model-filter', 'Enter');
     const picked = await until(async () => ((await current()) === 'fake/fake-large' ? true : null), 15000);
-    check(!!picked, 'Enter in the filter picks the model it narrowed the list to', await current());
+    check(!!picked, 'Enter in the filter picks the model that matches', await current());
     await pickModel(f, now);
     await until(async () => ((await current()) === now ? true : null), 15000);
   }

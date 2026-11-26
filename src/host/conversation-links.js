@@ -85,7 +85,7 @@ function createConversationLinks(deps) {
     coreList = Array.isArray(got) ? got.slice() : [];
     recompute();
   };
-  /* A change that comes while the sessions are being read may be missing from that reading: it is read again after. */
+  /* A change during a read may be missing from it, so the sessions are read once more after it. */
   const readOwn = () => {
     if (reading) { again = true; return reading; }
     ownRead = true;

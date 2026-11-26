@@ -7,13 +7,13 @@
  * What git records about a folder, read from the files under .git rather than by running git, which would cost a
  * process per folder on every reading of the session list:
  *
- *   branchOf(dir)     the branch checked out in the working tree `dir` is in, or '' when HEAD is detached or `dir`
+ *   branchOf(dir)     the branch checked out in the working tree that holds `dir`, or '' when HEAD is detached or `dir`
  *                     is in no repository.
  *   worktreesOf(dir)  the linked worktrees of the repository `dir` is in, as [{ name, dir }]: the ones `git worktree
  *                     add` made, wherever they are (OpenCode puts its own under its data folder), not the main one.
  *
  * A worktree's .git is a file naming its folder under the repository's .git/worktrees, and that folder's commondir
- * names the repository's .git. Each reading is kept for TTL_MS.
+ * names the repository's .git. Answers are cached for TTL_MS.
  */
 const path = require('path');
 
@@ -25,7 +25,6 @@ function pointer(text, base, P) {
   return m ? P.resolve(base, m[1]) : '';
 }
 
-/* The branch a HEAD file names, or '' for a detached HEAD. */
 function branchIn(head) {
   const m = /^ref:\s*refs\/heads\/(.+?)\s*$/m.exec(String(head || ''));
   return m ? m[1] : '';

@@ -8,7 +8,7 @@
  * not trusted; the folder's .vscode/settings.json points opencodeAgentPlus.opencode.path at a program of its own, which
  * writes a file if it is ever run, and sets the other three settings that pick what runs. Until trust is granted no
  * OpenCode process may start, that program may not run, nothing may be written to the extension's folder, Agent Plus's
- * session list says it is in Restricted Mode and lists nothing of OpenCode's, and a chat tab and a command say to trust
+ * session list says it is in Restricted Mode and has no OpenCode rows, and a chat tab and a command say to trust
  * the workspace. The buttons on the list's note and in the tab each open the Workspace Trust editor, where the folder is
  * then trusted; without a reload the extension starts, the list offers OpenCode, the chat tab is handed over, and a new
  * conversation started from the list runs on the OpenCode of the user settings, not the folder's.
@@ -107,7 +107,7 @@ async function run(t) {
   const restricted = await ext('return api.test.restricted();');
   check(trusted === false && restricted === true, 'the folder opens in Restricted Mode, and OpenCode Agent Plus is active but has not started', { trusted, restricted });
 
-  // R2. Agent Plus's session list says it is in Restricted Mode, with the trust button, and lists nothing of OpenCode's.
+  // R2. Agent Plus's session list says it is in Restricted Mode, with the trust button, and has no OpenCode rows.
   const sl = await sessionList.restricted({ page, call, ext, check, shot, until, sleep });
 
   // R3. A chat tab, as VS Code would restore one, shows the same text and button.

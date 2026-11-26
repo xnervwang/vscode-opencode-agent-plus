@@ -51,7 +51,7 @@ function setup({ records = [], here = {}, far = [], places = {}, known = {}, hol
   return { source, calls, timers };
 }
 
-test('features name the members the source has', () => {
+test('source.features lists the members the source has', () => {
   const { source } = setup();
   assert.deepEqual(source.features, ['sessions', 'sessionImport', 'sessionSeen', 'sessionsNotice', 'accountInfo']);
 });
@@ -194,7 +194,7 @@ test('the scan and the database are watched once the list reads rows, and a chan
   const before = fired;
   await timers[0].fn();
   await new Promise((r) => setImmediate(r));
-  assert.equal(fired, before, 'the same reading again says nothing');
+  assert.equal(fired, before, 'the same reading again fires no change');
   activeRef.ids = ['ses_a'];
   await timers[0].fn();
   await new Promise((r) => setImmediate(r));
@@ -231,11 +231,11 @@ test('a turn running elsewhere stops a delete, and the core is told nothing it c
   const { source, calls } = setup({ records: [rec('ses_r', { busy: true })], active: ['ses_r'] });
   const r = (await source.runSessionAction('delete', ['ses_r'], {})).results[0];
   assert.equal(r.outcome, 'refused');
-  assert.match(r.reason, /turn of it is running/);
+  assert.match(r.reason, /it is running a turn/);
   assert.equal(calls.filter((c) => c[0] === 'remove').length, 0);
 });
 
-test('import: the sessions OpenCode archived, with when', async () => {
+test('import: the sessions OpenCode archived, with their archive times', async () => {
   const { source } = setup({ records: [rec('ses_a', { archivedAt: 555 }), rec('ses_b')] });
   assert.deepEqual(await source.importSessions({ folders: ['/w/p'] }), { archived: [{ sessionId: 'ses_a', at: 555 }], groups: [], pinned: [], colors: {} });
 });
@@ -286,7 +286,7 @@ test('no OpenCode: no rows and a short note with a download button; another fail
     actions: [{ label: 'Download OpenCode', command: 'x.downloadOpenCode', arguments: [] }, { label: 'Show Logs', command: 'x.showLogs', arguments: [] }] });
   assert.equal(told, 1);
   listError.current = new Error('session.list was not JSON');
-  await assert.rejects(source.listSessions({ folders: ['/w/p'] }), /not JSON/, 'a failed list still fails, so the core says so');
+  await assert.rejects(source.listSessions({ folders: ['/w/p'] }), /not JSON/, 'a failed list still rejects, so the core reports it');
   assert.deepEqual(source.sessionsNotice(), { text: "Couldn't list OpenCode's conversations: session.list was not JSON", actions: [{ label: 'Show Logs', command: 'x.showLogs', arguments: [] }] });
   listError.current = null;
   assert.equal((await source.listSessions({ folders: ['/w/p'] })).sessions.length, 1);

@@ -285,7 +285,7 @@ test('subscribe understands onEvent, a Node EventEmitter and on(fn)', () => {
   assert.strictEqual(typeof subscribe({}, () => {}), 'function');
 });
 
-test('a turn over with a background command or subagent still running is background, and stopped once both end', async () => {
+test('a conversation whose turn ended with a background command or subagent still running is background until both end, then stopped', async () => {
   const { manager, made } = setup();
   await manager.open(A);
   const c = made[0];

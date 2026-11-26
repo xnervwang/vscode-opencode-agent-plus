@@ -17,12 +17,12 @@ const BEDROCK = [{ id: 'amazon-bedrock/us.xai.grok-4.7', providerId: 'amazon-bed
 const FREE = [{ id: 'opencode/big-pickle', providerId: 'opencode' }];
 const cred = (id, ...ids) => ({ id, name: id === 'amazon-bedrock' ? 'Amazon Bedrock' : id === 'anthropic' ? 'Anthropic' : id, credentials: ids });
 
-test('a credential for a provider with none and no models connects it', () => {
+test('a new credential for a provider with no credential and no models reports it connected', () => {
   assert.equal(loginOutcome({ before: [], after: [cred('amazon-bedrock', 'c1')], had: FREE, now: [...FREE, ...BEDROCK] }),
     'Connected Amazon Bedrock. OpenCode offers 2 models.');
 });
 
-test('a new credential for a provider already connected says it was saved, not that nothing was added', () => {
+test('a new credential for a provider already connected is reported as saved', () => {
   assert.equal(loginOutcome({ before: [cred('amazon-bedrock', 'c1')], after: [cred('amazon-bedrock', 'c1', 'c2')], had: BEDROCK, now: BEDROCK }),
     'Saved new credentials for Amazon Bedrock, which was already connected. OpenCode offers 1 model.');
   assert.match(loginOutcome({ before: [], after: [cred('amazon-bedrock', 'c1')], had: BEDROCK, now: BEDROCK }), /^Saved new credentials for Amazon Bedrock/,
@@ -50,7 +50,7 @@ test("OpenCode's credential listing keeps each integration's credential ids", ()
   assert.equal(parseCredentials('No authenticated integrations'), null);
 });
 
-test('credentials() lists them with auth list on OpenCode 2, and is null on OpenCode 1 and when the listing fails', async () => {
+test('credentials() runs auth list on OpenCode 2, and returns null on OpenCode 1 or when the listing fails', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oap-creds-'));
   const run = (version, reply) => {
     const calls = [];

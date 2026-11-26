@@ -16,12 +16,13 @@
  *              with no message (it never ran a turn and is no fork), else 'user'.
  *   folders    the window's folders and the folders below them, and the linked worktrees of their repositories, which
  *              OpenCode keeps under its own data folder: a session moved into one is still this project's, and opens
- *              here. A row in such a worktree carries its name; every row carries the branch its folder has out.
+ *              here. A row in a linked worktree has the worktree's name, and every row has the branch checked out
+ *              in its folder.
  *   lastUserAt from this window or another one when they have the conversation open, as they saw each message sent;
  *              otherwise when OpenCode last began a turn of it.
  *   processes  this window, another VS Code window holding it, and each place elsewhere: more than one is a warning.
- *   delete     only what nothing has open and nothing runs: not this window, not another one, not a terminal
- *              interface, not a turn anywhere. The core adds its own rules (archived, not pinned) before it asks.
+ *   delete     only a session that no VS Code window and no terminal interface has open, and that runs no turn
+ *              anywhere. The core adds its own rules (archived, not pinned) before it asks.
  *   seen       written back to OpenCode's own record of what was read (/api/session/:id/view), which the terminal
  *              interface reads.
  *   notice     why the rows could not be read, above the list: OpenCode not found (no rows, with a button to download
@@ -32,7 +33,7 @@ const { within } = require('../opencode/session-index');
 
 const SCAN_MS = 10000;
 const DB_POLL_MS = 3000;
-/* How long a reading of Account & usage is given as it is. */
+/* How old a reading of Account & usage may be before it is read again. */
 const ACCOUNT_MS = 5000;
 
 function emitter() {
@@ -157,7 +158,7 @@ function createSessionSource(deps) {
     return r;
   }
 
-  /* What the other windows of this machine report of their conversations, by id. */
+  /* The other windows' conversations (deps.otherWindows), by session id. */
   async function others() {
     if (typeof deps.otherWindows !== 'function') return new Map();
     try { return new Map(((await deps.otherWindows()) || []).filter((c) => c && c.sessionId).map((c) => [c.sessionId, c])); } catch (_) { return new Map(); }
@@ -309,8 +310,8 @@ function createSessionSource(deps) {
     if (!r) return '';
     const fresh = await rescan().catch(() => reading);
     const places = deps.elsewhere.placesOf(r, fresh);
-    if (places.length) return `it is open or runs elsewhere (${places[0].label}); close it there first`;
-    if (r.busy && fresh.active.has(id)) return 'a turn of it is running';
+    if (places.length) return `it is in use elsewhere (${places[0].label}); close it there first`;
+    if (r.busy && fresh.active.has(id)) return 'it is running a turn';
     return '';
   }
 
@@ -395,7 +396,7 @@ function createSessionSource(deps) {
       });
     },
 
-    /* Every row comes with its state read: nothing is left to read later. */
+    /* Every row comes with its state already read. */
     wantSessionDetail() {},
 
     async importSessions({ folders = [] } = {}) {
@@ -414,9 +415,8 @@ function createSessionSource(deps) {
       deps.index.invalidate();
     },
 
-    /* Agent Plus reads this at once, without waiting: it gives what was last read, and reads again (telling the core
-       through onDidChangeAccountInfo when that changes anything) when the reading is of another conversation or older
-       than ACCOUNT_MS. */
+    /* Agent Plus does not wait for this: it returns the last reading, and reads again (firing onDidChangeAccountInfo
+       when the result changes) when that reading is of another conversation or older than ACCOUNT_MS. */
     accountInfo({ sessionId = '' } = {}) {
       if (account.id !== sessionId || now() - account.at > ACCOUNT_MS) readAccount(sessionId);
       return accountOf(sessionId);

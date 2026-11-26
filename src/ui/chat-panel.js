@@ -284,8 +284,8 @@ class ChatPanel {
       : '';
     const src = webview.cspSource;
     const icon = (name) => `<i class="codicon codicon-${name}" aria-hidden="true"></i>`;
-    /* The rail's glyphs, drawn in the page rather than taken from a font so they look the same everywhere: a bar with a
-       triangle for the two ends, a small triangle for one message, a chevron on the handle. */
+    /* The rail's glyphs are SVG drawn here so they look the same on every system: a bar with a triangle for the two
+       ends, a small triangle for one message, a chevron on the handle. */
     const glyph = (body, size = 13) => `<svg class="rail-glyph" width="${size}" height="${size}" viewBox="0 0 10 10" aria-hidden="true">${body}</svg>`;
     const bar = (y) => `<path d="M1.6 ${y}h6.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/>`;
     const tri = (d) => `<path d="${d}" fill="currentColor"/>`;
@@ -402,7 +402,8 @@ ${hl}<script src="${media('kit.js')}"></script>
     Promise.resolve(this.panel.webview.postMessage({ ...msg, now: this.now() })).catch(() => {});
   }
 
-  /* Shows the view of another page of the same conversation; the view's state is never changed in place. */
+  /* Shows the view of another page of the same conversation. The pages can share the state because a view's state is
+     replaced, never changed in place. */
   adopt(state) {
     if (this.disposed || !state) return;
     this.state = state;

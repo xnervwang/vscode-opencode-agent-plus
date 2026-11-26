@@ -75,10 +75,10 @@ const names = (l) => (l.length < 3 ? l.join(' and ') : `${l.slice(0, -1).join(',
 /*
  * What to say once the sign-in terminal has closed and OpenCode lists its models again. `before` and `after` are
  * OpenCode's credentials around the sign-in (backend credentials(): [{ id, name, credentials }]), each null when
- * OpenCode could not say; `had` the models listed before it and `now` those listed after it. A sign-in that saves a
- * credential gives it a new id, so a provider with a new id was signed in: connected, when it had no credential and
- * no models before, and signed in again otherwise. Without both credential lists, only the models are compared, and
- * no change in them is not taken as a failed sign-in.
+ * OpenCode could not list them; `had` and `now` are the models listed before and after it. Each credential a sign-in
+ * saves gets an id of its own, and a provider with a new one was signed in: connected when it had no credential and no
+ * models before, signed in again otherwise. Without both credential lists only the models are compared, and an
+ * unchanged list is not reported as a failed sign-in.
  */
 function loginOutcome({ before, after, had, now }) {
   const count = Array.isArray(now) ? now.length : 0;

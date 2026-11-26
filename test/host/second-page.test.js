@@ -4,9 +4,8 @@
 
 'use strict';
 /*
- * Through extension.js with the window tests' fake backend: a second chat page for a conversation already open in a
- * page shows what that page shows, the turns this window ran included, rather than only the history read when the
- * conversation was opened.
+ * Through extension.js with the window tests' fake backend: a second chat page for a conversation already open in
+ * another page shows the same entries as that page, including the turns this window ran since the conversation opened.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -65,7 +64,7 @@ test('a second page for an open conversation shows the turns this window ran in 
   second.fromPage({ type: 'ready' });
   const got = await until(() => reset(second));
   assert.ok(got, 'the second page was sent its view');
-  assert.match(JSON.stringify(got.items), /Reply with only the word alpha\./, 'with the message sent from the first page');
+  assert.match(JSON.stringify(got.items), /Reply with only the word alpha\./, 'it includes the message sent from the first page');
   const kinds = (p) => (reset(p) ? reset(p).items.map((x) => x.kind) : []);
   first.webview.posted.length = 0;
   first.fromPage({ type: 'ready' });

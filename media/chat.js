@@ -1161,7 +1161,7 @@
   focusBtn.id = 'focusBtn';
   focusBtn.type = 'button';
   focusBtn.hidden = true;
-  /* A line with two arrows, facing it while the log is folded to Focus view and facing away while everything shows. */
+  /* A line with two arrows: pointing at it in Focus view, pointing away when the whole log shows. */
   const foldGlyph = (folded) => {
     const NS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(NS, 'svg');
@@ -1500,9 +1500,8 @@
   }
 
   /*
-   * The model picker: the pill's button opens a list over the message box, filtered as you type, with Connect a
-   * provider… and Reload the model list above it so a long list never hides them. Each provider's models are a group,
-   * and the variants of one model across Bedrock geographies share a row that unfolds to pick one.
+   * The model picker. Connect a provider… and Reload the model list sit above the list of models so that a long list
+   * never hides them. The variants of one model across Bedrock geographies share a row, which unfolds to list them.
    */
   const modelMenu = $('modelMenu');
   const modelFilter = modelMenu.querySelector('.model-filter');

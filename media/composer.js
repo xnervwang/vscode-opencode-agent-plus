@@ -274,7 +274,7 @@
     return l.length > 0 && l.every((m) => m.id.startsWith('opencode/'));
   }
 
-  /* Bedrock's cross-Region geographies, named as OpenCode's model list names them, in the order the picker lists them. */
+  /* Bedrock's cross-Region geographies with the names OpenCode's model list uses, in the picker's order. */
   const GEOGRAPHIES = { global: 'Global', us: 'US', eu: 'EU', apac: 'APAC', jp: 'JP', au: 'AU', in: 'India', ca: 'Canada', 'us-gov': 'GovCloud' };
   const GEO_ORDER = Object.keys(GEOGRAPHIES);
   /* A Bedrock id is vendor.model, so a geography prefix leaves at least two dots: `us.xai.grok-4.7` is one, while
@@ -288,8 +288,7 @@
 
   /*
    * The model picker's rows: [{ label, families: [{ key, name, variants: [{ id, name, geo, label }] }] }]. The
-   * variants of one model across geographies share a row, named without its geography; groups and rows are sorted by
-   * name, and a model's variants put the geographies in GEO_ORDER, then the In-Region id.
+   * variants of one model across geographies share a row, named without its geography.
    */
   function modelFamilies(models, groupOf) {
     const groups = new Map();
@@ -316,8 +315,7 @@
     })).sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  /* The groups of modelFamilies narrowed to a query: every word must appear in a variant's model name, id, geography
-     or group, and only the variants that match are kept. */
+  /* Keeps the variants whose model name, id, geography or group contains every word of `query`. */
   function filterModelFamilies(groups, query) {
     const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return groups;

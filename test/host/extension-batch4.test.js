@@ -37,7 +37,7 @@ const context = {
 };
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 
-test('through extension.js: links from a chat page to other conversations, and a closed one deleted from the list', async () => {
+test('through extension.js: a chat page\'s links to other conversations, and deleting a closed conversation from the list', async () => {
   const api = extension.activate(context);
   const opened = [];
   control.state.handlers['vscode.openWith'] = (uri) => opened.push(uri.toString());
@@ -79,7 +79,6 @@ test('through extension.js: links from a chat page to other conversations, and a
   assert.strictEqual(store.has('opencodeAgentPlus.recentlyClosed'), false);
   assert.strictEqual(api.test.recent, undefined);
 
-  /* Agent Plus's list deletes the closed one. */
   assert.deepStrictEqual((await api.test.source.runSessionAction('delete', [b], {})).results, [{ sessionId: b, outcome: 'done' }]);
   assert.ok(!(await api.test.sessions()).some((r) => r.id === b), 'OpenCode no longer has it');
   extension.deactivate();

@@ -35,7 +35,7 @@ const CHILD_TEXT = 4000;
 /* Shown on a turn OpenCode starts by itself: after a background task finishes, or when a background subagent asks for
    permission. */
 const UNSOLICITED_NOTE = 'OpenCode started this turn on its own, for a background subagent or command.';
-/* The geographies of Bedrock's cross-Region model ids, named as OpenCode's model list names them. */
+/* The geographies of Bedrock's cross-Region model ids, with the names OpenCode's model list uses. */
 const REGIONS = { us: 'US', eu: 'EU', apac: 'APAC', jp: 'JP', au: 'AU', in: 'India', ca: 'Canada', 'us-gov': 'GovCloud', global: 'Global' };
 const REGION_PREFIX = /^(us-gov|us|eu|apac|jp|au|in|ca|global)\./;
 

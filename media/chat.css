@@ -1110,7 +1110,7 @@ button.rewind .codicon {
 body.vscode-light .rail-btn {
   border-color: var(--vscode-widget-border, rgba(0, 0, 0, 0.14));
 }
-/* The theme's hover colour is translucent, so it goes over the button's own background rather than in its place. */
+/* The theme's hover colour is translucent, so it is layered over the button's own background. */
 .rail-btn:hover {
   background: linear-gradient(var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.12)), var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.12))),
     var(--vscode-editorWidget-background, var(--page-bg));
@@ -1119,7 +1119,7 @@ body.vscode-light .rail-btn {
   height: 62px;
   border-radius: 4px 0 0 4px;
 }
-/* The handle's chevron points the way the list moves: left to bring it out, right to put it away. */
+/* The handle's chevron points the way a click moves the list. */
 #navBtn .rail-glyph + .rail-glyph,
 #navBtn[aria-pressed="true"] .rail-glyph:first-child {
   display: none;
@@ -1390,7 +1390,7 @@ button.pill:hover, .pill:hover {
 .model-pill {
   max-width: 260px;
 }
-/* The model button sits in the pill as the drop-down lists beside it do. */
+/* The model button is styled like the drop-down lists beside it in the pill. */
 #model {
   min-width: 0;
   max-width: 160px;
@@ -1958,7 +1958,7 @@ button.pill:hover, .pill:hover {
 body.focus-view .focus-out {
   display: none !important;
 }
-/* Lit in the same grey as a hovered button rather than in the theme's accent, as Claude Code Plus lights its own. */
+/* Lit in the same grey as a hovered button, which is how Claude Code Plus lights its own. */
 #focusBtn[aria-pressed="true"] {
   background: var(--pill);
 }

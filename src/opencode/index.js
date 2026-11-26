@@ -871,7 +871,7 @@ function createOpenCode(opts = {}) {
       async setModel(model) {
         const v = modelValue(model);
         if (!v) return;
-        /* Chosen during a turn, it can only be set before the next one, which sets it when modelGen is stale. */
+        /* A model chosen during a turn is applied before the next one: modelGen 0 marks it as not yet set. */
         if (v !== h.model) h.modelGen = 0;
         h.model = v;
         const p = proc;
@@ -1113,7 +1113,7 @@ function createOpenCode(opts = {}) {
       const filled = look ? times.fillUsage(times.fillTimes(events, metas, look), metas, look) : { events, metas };
       h.events = filled.events;
       h.metas = filled.metas;
-      /* The conversation lists show when its last message and reply were; only the export dates them. */
+      /* Only the export has the times of the last message and reply, which the conversation lists show. */
       if (look) {
         for (const e of h.events) {
           if (e.type === 'userMessage' && e.synthetic !== true && e.at > h.lastUserAt) h.lastUserAt = e.at;
@@ -1381,7 +1381,7 @@ function createOpenCode(opts = {}) {
 
     /* What `opencode mcp list` prints: the configured MCP servers and the state of each. */
     /* The integrations OpenCode keeps credentials for (parseCredentials), or null on OpenCode 1, which has no JSON
-       listing, and when the listing fails; never rejects. Each sign-in adds a credential with an id of its own, also
+       listing, or when the listing fails. It never rejects. Each sign-in adds a credential with an id of its own, even
        for an integration already signed in (2.4.1, measured). */
     async credentials() {
       let found;

@@ -5,7 +5,8 @@
 'use strict';
 /*
  * The window steps on Agent Plus's session list (its activity bar container agentPlusSessions, view agentPlus.sessions)
- * that check what this extension's source (src/host/session-source.js) puts in it and does for it, on the fake backend:
+ * that check the rows this extension's source (src/host/session-source.js) gives it and the actions it carries out, on
+ * the fake backend:
  *
  *   rows       the conversations of the window's folder: the one open here with the solid stripe, those closed here in
  *              Recently closed and with the light blue stripe in Ungrouped, one without a message left out.
@@ -98,14 +99,14 @@ function create({ page, call, until, sleep }) {
   return h;
 }
 
-/* At the start, before any conversation: the list with nothing of OpenCode's in it. */
+/* At the start, before any conversation: the list with no OpenCode rows. */
 async function empty(ctx) {
   const { check, shot } = ctx;
   const h = create(ctx);
   check(!!await h.show(), "Agent Plus's session list opens in its own container");
   if (!h.sl) return;
   const rows = await h.wait((r) => !r.some((x) => x.source === SOURCE), 10000);
-  check(!!rows, 'with no conversation yet, it lists nothing of OpenCode\'s', rows);
+  check(!!rows, 'with no conversation yet, it has no OpenCode rows', rows);
   await h.away();
   await shot('01-sessions-empty', { features: ['session list', 'empty list'],
     expect: 'The side bar shows Agent Plus\'s session list with nothing in it yet: at the top a New bar (an agent logo with a caret, then New in tab and New in sidebar), a row of chips All, Open, Running and Needs you, and no conversation rows; no error and no notice.',
@@ -139,7 +140,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
       await h.close(id);
       await until(async () => !(await ext('return !!api.test.snapshot(arg);', id)), 10000);
     }
-    check(made.length === 5, 'five more conversations are made, each with a message, and closed', made);
+    check(made.length === 5, 'five more conversations are made and closed', made);
     if (made.length < 5) return;
     const [green, ring, blue, red, redRing] = made;
     await call('return vscode.commands.executeCommand("opencodeAgentPlus.openConversation", arg);', sessionId);
@@ -176,10 +177,10 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     await changed();
     const dots = await h.wait((r) => [['green', green], ['greenRing', ring], ['blue', blue], ['red', red], ['redRing', redRing]].every(([d, id]) => (h.find(r, id, 'ungrouped') || {}).dot === d)
       && [green, ring, blue, redRing].every((id) => (h.find(r, id, 'ungrouped') || {}).dim), 20000);
-    check(!!dots, 'each of the five dots on OpenCode rows: a turn running, background work only, a permission waiting, a question asked and stopped, a question asked while working',
+    check(!!dots, 'each of the five dots on OpenCode rows: a turn running, background work only, a permission waiting, a plan question after the turn stopped, a plan question during a turn',
       (dots || await h.rows()).filter((r) => made.includes(r.id)).map((r) => [r.title, r.dot, r.stripe, r.dim]));
     check(!!dots && [green, ring, blue, redRing].every((id) => h.find(dots, id, 'ungrouped').stripe === 'elsewhere') && !h.find(dots, red, 'ungrouped').dim,
-      'the four open in the other VS Code window are dimmed with the outlined stripe, their dots kept; the one open nowhere is not dimmed');
+      'the four open in the other VS Code window are dimmed with the outlined stripe, their dots kept; the one not open anywhere is not dimmed');
     await h.collapse('Recently closed').catch(() => {});
     await h.away();
     await shot('06-sessions-dark', { features: ['session list', 'state dots', 'row stripes'],
@@ -216,7 +217,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
       part: SIDEBAR });
     await h.width(wide);
 
-    // Back to quiet: the other window goes, and its questions are answered.
+    // Back to quiet.
     for (const f of [winState, winEntry, planOf(red), planOf(redRing)]) { try { fs.unlinkSync(f); } catch (_) { /* not there */ } }
     await changed();
     check(!!await h.wait((r) => made.every((id) => { const x = h.find(r, id, 'ungrouped'); return x && x.dot === 'none' && !x.dim; }), 20000),
@@ -236,7 +237,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     const before = await h.frontId();
     await h.item('Fork Conversation').click();
     const fork = await until(async () => { const f = await h.frontId(); return f && f !== before && !made.includes(f) ? f : null; }, 20000);
-    check(!!fork && (await opencode()).some((s) => s.id === fork), 'Fork Conversation forks it in OpenCode and opens the copy in a tab', fork);
+    check(!!fork && (await opencode()).some((s) => s.id === fork), 'Fork Conversation makes a copy in OpenCode and opens it in a tab', fork);
     if (fork) { made.push(fork); await h.close(fork); }
     await h.show();
     await h.act(ring, 'archive');
@@ -250,7 +251,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     check(!!confirm && confirm.includes(T.ring) && /OpenCode/.test(confirm), 'deleting asks first, naming the conversation and saying what goes with it', confirm);
     await page.locator('.monaco-dialog-box .dialog-buttons .monaco-button').filter({ hasText: /^Delete$/ }).first().click().catch(() => {});
     const gone = await until(async () => !(await opencode()).some((s) => s.id === ring), 10000);
-    check(!!gone && !!await h.wait((r) => !h.find(r, ring)), 'on Delete OpenCode deletes it and it leaves the list');
+    check(!!gone && !!await h.wait((r) => !h.find(r, ring)), 'Delete removes it from OpenCode and from the list');
     if (gone) made.splice(made.indexOf(ring), 1);
     await h.act(sessionId, 'archive');
     await h.wait((r) => h.find(r, sessionId, 'archived'));
@@ -296,7 +297,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     await h.expand('Recently closed');
     await h.away();
     await shot('06k-sessions-closed', { features: ['recently closed'],
-      expect: 'A RECENTLY CLOSED section with a clock icon near the top of the list, expanded, listing OpenCode conversations whose tabs closed in this window, the latest first, each with "closed now" or "closed Nm" at the right and a light blue stripe at its start; the same conversations also have their rows in Ungrouped with the same light blue stripe.',
+      expect: 'A RECENTLY CLOSED section with a clock icon near the top of the list, expanded, listing OpenCode conversations whose tabs closed in this window, the latest first, each with "closed now" or "closed Nm" at the right and a light blue stripe at its start; their rows in Ungrouped have that stripe too.',
       part: SIDEBAR });
     await h.row(blue, 'closed').click();
     check(!!await until(async () => ((await h.frontId()) === blue) || null, 15000), 'a row of Recently closed opens that conversation again in a tab');
@@ -364,7 +365,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     const was = await h.frontId();
     await h.sl.locator('.sl-new-half[data-where="tab"]').click();
     const fresh = await until(async () => { const f = await h.frontId(); return f && f !== was && /^ses_/.test(f) ? f : null; }, 20000);
-    check(!!fresh, 'New in tab with OpenCode picked starts an OpenCode conversation in a tab', fresh);
+    check(!!fresh, 'New in tab, with OpenCode Agent Plus picked, opens a new conversation in an editor tab', fresh);
     if (fresh) { made.push(fresh); await h.close(fresh); }
   } finally {
     for (const f of [winState, winEntry]) { try { fs.unlinkSync(f); } catch (_) { /* not there */ } }
@@ -385,10 +386,10 @@ async function missing(ctx) {
   if (!h.sl) { check(false, "Agent Plus's session list opens"); return null; }
   const notes = await ctx.until(async () => { const n = await h.notice(); return n.find((x) => /OpenCode was not found/.test(x.text)) || null; }, 30000);
   check(!!notes && /reload the window, or download it with the button here\.$/.test(notes.text) && notes.buttons.includes('Download OpenCode') && notes.buttons.includes('Show Logs'),
-    'the session list says above its rows that OpenCode was not found, with Download OpenCode and Show Logs buttons', notes || await h.notice());
+    'a note above the session list says OpenCode was not found, with Download OpenCode and Show Logs buttons', notes || await h.notice());
   await h.away();
   await shot('02-sessions-no-opencode', { features: ['session list notice'],
-    expect: 'Agent Plus\'s session list with a note above its rows, starting with the OpenCode mark: "OpenCode was not found. Install OpenCode 2 with npm install -g @opencode/cli and reload the window, or download it with the button here.", whole and not cut off, with Download OpenCode and Show Logs buttons; no OpenCode conversation rows.',
+    expect: 'Agent Plus\'s session list with a note above its rows, starting with the OpenCode mark: "OpenCode was not found. Install OpenCode 2 with npm install -g @opencode/cli and reload the window, or download it with the button here.", shown whole, with Download OpenCode and Show Logs buttons; no OpenCode conversation rows.',
     part: SIDEBAR });
   return h;
 }
@@ -402,7 +403,7 @@ async function restricted(ctx) {
   const note = await ctx.until(async () => { const n = await h.notice(); return n.find((x) => /Restricted Mode/.test(x.text)) || null; }, 20000);
   const rows = await h.rows();
   check(!!note && note.buttons.includes('Manage Workspace Trust') && !rows.some((r) => r.source === SOURCE),
-    'in Restricted Mode the session list says so, with a Manage Workspace Trust button, and lists nothing of OpenCode\'s', { note, rows });
+    'in Restricted Mode the session list says so, with a Manage Workspace Trust button, and has no OpenCode rows', { note, rows });
   await h.away();
   await shot('R2-sessions-restricted', { features: ['Restricted Mode', 'session list'],
     expect: 'Agent Plus\'s session list in Restricted Mode: a note above it saying the list shows conversations and changes nothing, that some agents start only in a trusted workspace, with a Manage Workspace Trust button; no OpenCode rows.',

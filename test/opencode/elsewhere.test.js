@@ -14,7 +14,7 @@ const os = require('os');
 const path = require('path');
 const { createElsewhere, roleOf, readTabs, linuxProcesses, macProcesses, windowsProcesses, splitWindows } = require('../../src/opencode/elsewhere');
 
-test('an OpenCode process is told apart by its subcommand, with flag values not taken for one', () => {
+test('an OpenCode process\'s role comes from its subcommand, and a flag\'s value is not mistaken for a subcommand', () => {
   assert.deepEqual(roleOf(['/usr/bin/opencode']), { role: 'terminal', dir: '', session: '', continues: false, fork: false });
   assert.equal(roleOf(['opencode', '/w/p']).dir, '/w/p', 'a folder given to the terminal interface');
   assert.equal(roleOf(['opencode', '-s', 'ses_x']).session, 'ses_x');
@@ -106,7 +106,7 @@ function setup(t, { procs = [], tabs = {}, active = [], ours = [] } = {}) {
 
 const rec = (id, cwd, createdAt, extra = {}) => ({ id, cwd, createdAt, parentId: '', ...extra });
 
-test('a tab of a terminal interface that runs in its folder is open there, idle or in a turn; a tab left by one that exited is not', LINUX_ONLY, async (t) => {
+test('a session in a tab of a terminal interface running in its folder is open there, idle or in a turn; a tab left by an exited one does not count', LINUX_ONLY, async (t) => {
   const { e } = setup(t, { procs: [{ pid: 20, argv: ['/opt/opencode'], cwd: '/w/p', tty: 'pts/10', ticks: 100 }], tabs: { '/w/p': ['ses_a'], '/w/q': ['ses_q'] }, active: ['ses_a'] });
   const reading = await e.scan();
   const places = e.placesOf(rec('ses_a', '/w/p', 1), reading);
@@ -118,7 +118,7 @@ test('a tab of a terminal interface that runs in its folder is open there, idle 
   assert.deepEqual(e.placesOf(rec('ses_q', '/w/q', 1), reading), [], 'no terminal interface runs in /w/q');
 });
 
-test('a turn in the background service with no terminal interface showing it is placed there, and running', async (t) => {
+test('a turn in the background service that no terminal interface shows is placed in the service, as running', async (t) => {
   const { e } = setup(t, { active: ['ses_web'] });
   const places = e.placesOf(rec('ses_web', '/w/p', 1), await e.scan());
   assert.deepEqual(places.map((p) => [p.kind, p.running]), [['other', true]]);

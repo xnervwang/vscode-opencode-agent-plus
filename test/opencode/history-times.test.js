@@ -89,7 +89,7 @@ test('2.x: a failed export leaves the replay as it was, and says nothing to the 
   const s = await oc.openSession(BG, { cwd: CWD });
   const events = await s.history();
   assert.ok(events.filter((e) => e.type === 'userMessage').every((e) => e.at >= before));
-  assert.equal(s.lastUserAt, 0, 'without the export the time of its last message is not known');
+  assert.equal(s.lastUserAt, 0, 'without the export lastUserAt stays unknown (0)');
 });
 
 test('2.x: reload() loads the conversation again with times from a new export, and is refused while a turn runs', async (t) => {

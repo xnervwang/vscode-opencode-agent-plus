@@ -6,13 +6,13 @@
 # OpenCode. Each system downloads the VS Code version set in run.js, installs this extension and Agent Plus, which it
 # depends on, from .vsix files built once on Linux, and runs the tests once as usual and once in Restricted Mode. Runs
 # against a real model need credentials and stay on a developer's machine. The results folder of each system is kept
-# whether the run passed or not: the screenshots of every step, VS Code's logs, and for each check that failed what the
-# window held then (its failures/ folder).
+# whether the run passed or not: the screenshots of every step, VS Code's logs, and, for each failed check, what the
+# window showed at that moment (its failures/ folder).
 #
-# What it installs from elsewhere is pinned in .github/upstream.json: the Agent Plus commit it builds, and the versions of
-# the test runner's packages; VS Code's version is in run.js. A new Agent Plus is taken by changing that commit. Run with
-# `upstream: latest` (against-latest.yml does so once a day), it builds Agent Plus's default branch and installs VS Code
-# stable and the newest test runner instead.
+# What it installs from other repositories is pinned in .github/upstream.json: the Agent Plus commit it builds, and the
+# versions of the test runner's packages; VS Code's version is in run.js. To test a newer Agent Plus, change that commit.
+# Run with `upstream: latest` (against-latest.yml does so once a day), it builds Agent Plus's default branch and installs
+# VS Code stable and the newest test runner instead.
 name: vscode
 
 on:

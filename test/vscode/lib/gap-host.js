@@ -109,8 +109,8 @@ async function run(ctx) {
   const quiet = await until(async () => ((await busy()).length ? null : true), real ? 300000 : 30000);
   if (!quiet) note(`turns still running before the sign-in: ${JSON.stringify(await busy())}`);
   const refreshedBefore = (await ext('return api.test.logins();')).refreshed;
-  /* The fake backend lists the credentials in this file: one before the sign-in, and one more saved while its terminal
-     is open, as a second sign-in to a provider already connected saves. */
+  /* The fake backend lists the credentials in this file: one before the sign-in, and a second one written while the
+     sign-in terminal is open, as when you sign in again to a provider that is already connected. */
   const creds = path.join(home, 'fake-credentials.json');
   const credential = (...ids) => fs.writeFileSync(creds, JSON.stringify([{ id: 'fake', name: 'Fake', credentials: ids }]));
   if (!real) credential('cred_before');
@@ -144,7 +144,7 @@ async function run(ctx) {
     || (await told()).slice(-3);
   check(!!refreshed && words.some((w) => outcome.test(w)),
     real ? 'once the terminal closes, OpenCode restarts, and with no credential saved the notice says nothing changed rather than that the sign-in failed'
-      : 'once the terminal closes, OpenCode restarts, and a credential saved for a provider already connected is reported as saved', { refreshed, words, busy: refreshed ? undefined : await busy() });
+      : 'once the terminal closes, OpenCode restarts, and the notice says new credentials were saved for the connected provider', { refreshed, words, busy: refreshed ? undefined : await busy() });
   if (!real) fs.rmSync(creds, { force: true });
   f = await chatPage();
   const listed = f ? await until(() => f.evaluate(() => { const n = document.querySelectorAll('#modelMenu [data-model-id]').length; return document.querySelector('#modelMenu [data-action="connect"]') && n > 1 ? n : null; }), 30000) : null;

@@ -132,7 +132,7 @@ test('a click opens this extension\'s conversation here, hands one held by anoth
   assert.deepEqual(alone.state.core, []);
 });
 
-test('a change while the backend\'s sessions are read is read again once that reading ends', async () => {
+test('a change during a read of the backend\'s sessions starts another read after it', async () => {
   let release;
   const gate = new Promise((r) => { release = r; });
   let calls = 0;

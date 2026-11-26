@@ -134,7 +134,7 @@ test('a page that fails to draw leaves a message in the tab', async () => {
   assert.match(panel.webview.html, /could not be shown: no media folder/);
 });
 
-test("a tab takes the conversation's known title before it opens, and keeps it when another window has it", async () => {
+test("a tab gets its conversation's known title before the conversation opens, and keeps it when another window holds the conversation", async () => {
   const s = setup({ locked: true, titleOf: (id) => (id === A ? 'Listed title' : '') });
   const panel = control.panel();
   panel.title = A;
@@ -143,12 +143,12 @@ test("a tab takes the conversation's known title before it opens, and keeps it w
   assert.strictEqual(panel.title, 'Listed title', 'the busy page keeps the title VS Code saves for the next window');
 });
 
-test("a tab's resource carries the title after the session id, which still reads back as the id", () => {
+test("a tab's resource holds the session id, then the title, and the id still reads back from it", () => {
   const { sessionOfUri } = require('../../src/host/agentplus-source');
   const u = uriOf(A, 'Fix the build / tests\nnow');
   assert.strictEqual(u.path, `/${A}/Fix the build \u2215 tests now`);
   assert.strictEqual(sessionOfUri(u), A);
-  assert.strictEqual(uriOf(A, '  ').path, `/${A}/New conversation`, 'without a title it is named as the tab is');
+  assert.strictEqual(uriOf(A, '  ').path, `/${A}/New conversation`, 'without a title the resource ends in New conversation');
   assert.strictEqual(sessionOfUri({ scheme: u.scheme, path: `/${A}` }), A, 'a resource saved without a name still reads back');
   assert.strictEqual(sessionOfUri(uriOf(A)), A);
 });

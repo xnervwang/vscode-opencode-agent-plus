@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * Tests for src/host/git-info.js: the branch a folder has out and the linked worktrees of its repository, read from the
- * files under .git, first from a layout written by hand and then from one git itself made.
+ * Tests for src/host/git-info.js: the branch checked out in a folder and the linked worktrees of its repository, read
+ * from the files under .git, first from a layout written by hand and then from one git itself made.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -64,7 +64,7 @@ test('a repository laid out by hand: the branch of a folder below its top, its l
   assert.equal(await git.branchOf(''), '');
 });
 
-test('a reading is kept for a while, then read again', async (t) => {
+test('answers are cached for a while, then read again', async (t) => {
   const repo = tmp(t);
   write(path.join(repo, '.git', 'HEAD'), 'ref: refs/heads/one\n');
   let clock = 1000;
@@ -80,7 +80,7 @@ test('a reading is kept for a while, then read again', async (t) => {
 let gitWorks = false;
 try { execFileSync('git', ['--version'], { stdio: 'ignore' }); gitWorks = true; } catch (_) { /* no git here */ }
 
-test('a repository git made: a worktree it added elsewhere, its branch, and a detached one', { skip: !gitWorks && 'no git on this machine' }, async (t) => {
+test('a repository git itself made: a worktree added outside it, its branch, and a detached HEAD', { skip: !gitWorks && 'no git on this machine' }, async (t) => {
   const root = tmp(t);
   const repo = path.join(root, 'repo');
   fs.mkdirSync(repo);

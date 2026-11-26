@@ -98,8 +98,8 @@ async function openTabs(ctx, first) {
   }
   const done = (id) => ext('const s = api.test.snapshot(arg); return !!s && s.activity === "stopped" && !!s.lastReplyAt;', id).catch(() => false);
   await until(async () => (await Promise.all(tabs.slice(1).map((t) => done(t.id)))).every(Boolean), 180000, 500);
-  /* The tab behind `first` is opened again from its conversation, now that it has a title, as a conversation picked
-     from a list or a link is: its resource then carries the title, which names the tab after a reload until it is shown. */
+  /* The tab behind `first` is reopened from its conversation now that the conversation has a title, as a list or a link
+     would open it: the tab's resource then carries the title, which names the tab after a reload until the tab is shown. */
   await reveal(call, first.id);
   if (tabs[1]) {
     await call('await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path.split("/")[1] === arg)); return true;', tabs[1].id);

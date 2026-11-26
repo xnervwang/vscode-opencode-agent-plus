@@ -25,7 +25,7 @@
  *                                them ({ messageId, tracked, files }), commit removes the messages, clear undoes stage
  *   userMessages(id)             Promise of [{ id, text, at }], the user's messages as OpenCode stored them
  *   mcpList()                    Promise of the text `opencode mcp list` prints
- *   credentials()                optional: Promise of [{ id, name, credentials }] or null when OpenCode cannot say
+ *   credentials()                optional: Promise of [{ id, name, credentials }] or null when OpenCode cannot list them
  *   dataPaths()                  Promise of OpenCode's folders ({ db, data, ... })
  *   info()                       the running OpenCode: { path, version, pid, agent, capabilities }, or null
  *   session(id, { cwd })         Promise of the session object: id, cwd, title, status, waitingTool, waitingKind,
@@ -86,8 +86,8 @@ function createBackend({ options = {}, load, onError } = {}) {
     const factory = mod.createOpenCode || mod.createBackend || mod.create;
     if (typeof factory !== 'function') throw new Error('the agent backend exports no factory');
     made = factory(typeof options === 'function' ? options() : options);
-    /* Those who subscribed before the module was loaded hear its changes from now on. */
-    if (listeners.size) { try { hook(); } catch (_) { /* no changes to hear */ } }
+    /* Listeners added before the module was loaded are hooked up to it here. */
+    if (listeners.size) { try { hook(); } catch (_) { /* left unhooked */ } }
     return made;
   };
   const call = (name, ...args) => Promise.resolve().then(() => {

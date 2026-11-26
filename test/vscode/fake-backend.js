@@ -513,7 +513,7 @@ function createOpenCode() {
       const from = db.sessions[id];
       if (!from) throw new Error(`no session ${id}`);
       const now = Date.now();
-      /* As OpenCode 2 does: the messages are copied, and the fork has no turn, cost or tokens of its own yet. */
+      /* Like OpenCode 2, a fork copies the messages and starts with no turn, cost or tokens of its own. */
       const s = { ...from, id: `ses_${crypto.randomBytes(8).toString('hex')}`, title: from.title ? `${from.title} (fork)` : '', createdAt: now, lastActiveAt: now,
         lastUserAt: 0, lastReplyAt: 0, cost: 0, tokensIn: 0, tokensOut: 0, viewed: 0, archived: 0, forkOf: id, events: from.events.slice() };
       db.sessions[s.id] = s;
@@ -577,7 +577,7 @@ function createOpenCode() {
       try { return JSON.parse(fs.readFileSync(path.join(process.env.OPENCODE_AGENT_PLUS_HOME || '/tmp', 'fake-credentials.json'), 'utf8')); } catch (_) { return []; }
     },
     async deleteSession(id) { const c = live.get(id); if (c) c.dispose(); const db = read(); delete db.sessions[id]; write(db); changed(id); },
-    /* The session list's records, in the shape of OpenCode 2's /api session.list rows (src/opencode/session-index.js). A
+    /* The session list's records, as OpenCode 2's /api session.list rows (src/opencode/session-index.js). A
        session's turn counts as busy from its last message until its reply; `viewed` is the reply the list was told was
        seen. */
     sessionStore: () => ({

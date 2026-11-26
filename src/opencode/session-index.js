@@ -48,7 +48,7 @@ function within(dir, folder, platform = process.platform) {
   return d === f || d.startsWith(f.endsWith(sep) ? f : f + sep);
 }
 
-/* A row of /api session.list as the session list needs it. */
+/* The fields of an /api session.list row that the session list uses. */
 function toRecord(row) {
   if (!row || typeof row.id !== 'string' || !row.id) return null;
   const t = row.time || {};
@@ -88,7 +88,7 @@ function toRecord(row) {
  *   found()          { path, version } of the OpenCode in use, or a Promise of it; throws when there is none
  *   paths()          Promise of `opencode debug paths` as { state, db, ... }
  *   execFile         child_process.execFile
- *   env              the environment for subcommands, or a function answering it
+ *   env              the environment for subcommands, or a function returning it
  *   request          optional (url, { method, headers, body, timeout }) => Promise<{ status, body }>, plain HTTP
  *   store()          optional: Promise of null, or of a backend's own records ({ rows(), view(id, idle), stats(from, to) },
  *                    rows in the shape of session.list's), used instead of OpenCode's
@@ -180,9 +180,8 @@ function createSessionIndex(deps) {
       const rows = await all();
       return rows.filter((r) => folders.some((f) => within(r.cwd, f, platform)));
     },
-    /* Every record, for looking one up by id. */
     all,
-    /* The ids of the sessions in a turn in the background service, or an empty set when none runs. */
+    /* The ids of the sessions running a turn in the background service; empty when no service runs. */
     async active() {
       if (await store()) return new Set();
       const svc = await service();
@@ -191,13 +190,13 @@ function createSessionIndex(deps) {
         const v = await fromService(svc, '/api/session/active');
         return new Set(Object.keys((v && v.data) || {}));
       } catch (e) {
-        log(`asking OpenCode's background service which sessions run failed: ${e.message}`);
+        log(`asking OpenCode's background service for its running sessions failed: ${e.message}`);
         return new Set();
       }
     },
     service,
     stamp,
-    /* Marks the turn of `id` that ended at `idle` as seen, as the terminal interface does when it shows it. */
+    /* Marks the turn of `id` that ended at `idle` as seen; the terminal interface does the same when it shows the turn. */
     async view(id, idle) {
       const own = await store();
       if (own) { await own.view(id, idle); return; }
