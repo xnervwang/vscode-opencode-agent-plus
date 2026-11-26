@@ -58,13 +58,13 @@ test('features name the members the source has', () => {
 
 test('rows: the folder\'s sessions with their times, kind, viewed time and the fork action; the core\'s folders are passed on', async () => {
   const records = [rec('ses_a', { viewedAt: 300 }), rec('ses_sub', { cwd: '/w/p/sub' }), rec('ses_kid', { parentId: 'ses_a' }), rec('ses_run'),
-    rec('ses_new', { lastReplyAt: 0, lastActiveAt: 100 }), rec('ses_far', { cwd: '/w/other' })];
+    rec('ses_new', { lastReplyAt: 0, lastActiveAt: 100 }), rec('ses_fork', { lastReplyAt: 0, lastActiveAt: 100, forkOf: 'ses_a' }), rec('ses_far', { cwd: '/w/other' })];
   const { source, calls } = setup({ records, known: { ses_run: 1 } });
   const { sessions, cursor } = await source.listSessions({ folders: ['/w/p'], cursor: null, limit: 500 });
   assert.equal(cursor, null);
   assert.deepEqual(calls[0], ['list', ['/w/p']]);
   const by = Object.fromEntries(sessions.map((s) => [s.sessionId, s]));
-  assert.deepEqual(Object.keys(by).sort(), ['ses_a', 'ses_kid', 'ses_new', 'ses_run', 'ses_sub']);
+  assert.deepEqual(Object.keys(by).sort(), ['ses_a', 'ses_fork', 'ses_kid', 'ses_new', 'ses_run', 'ses_sub']);
   assert.deepEqual(by.ses_a, { sessionId: 'ses_a', title: 'Title ses_a', cwd: '/w/p', createdAt: 100, lastActiveAt: 300, lastReplyAt: 300, kind: 'user',
     viewedAt: 300, activity: 'stopped', running: false, actions: ['fork'] });
   assert.equal(by.ses_kid.kind, 'subagent');
@@ -72,6 +72,7 @@ test('rows: the folder\'s sessions with their times, kind, viewed time and the f
   assert.equal(by.ses_kid.actions, undefined, 'a subagent\'s session is not forked on its own');
   assert.equal(by.ses_run.kind, 'background');
   assert.equal(by.ses_new.kind, 'empty', 'never ran a turn');
+  assert.equal(by.ses_fork.kind, 'user', 'a fork has the messages it was copied with, though it never ran a turn');
 });
 
 test('rows: the linked worktrees of the folders\' repositories are listed too, with their names, and every row has its folder\'s branch', async () => {

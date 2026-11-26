@@ -513,7 +513,9 @@ function createOpenCode() {
       const from = db.sessions[id];
       if (!from) throw new Error(`no session ${id}`);
       const now = Date.now();
-      const s = { ...from, id: `ses_${crypto.randomBytes(8).toString('hex')}`, title: from.title ? `${from.title} (fork)` : '', lastActiveAt: now, events: from.events.slice() };
+      /* As OpenCode 2 does: the messages are copied, and the fork has no turn, cost or tokens of its own yet. */
+      const s = { ...from, id: `ses_${crypto.randomBytes(8).toString('hex')}`, title: from.title ? `${from.title} (fork)` : '', createdAt: now, lastActiveAt: now,
+        lastUserAt: 0, lastReplyAt: 0, cost: 0, tokensIn: 0, tokensOut: 0, viewed: 0, archived: 0, forkOf: id, events: from.events.slice() };
       db.sessions[s.id] = s;
       write(db);
       changed(s.id);
@@ -582,7 +584,7 @@ function createOpenCode() {
       rows: async () => Object.values(read().sessions).map((s) => {
         const busy = s.lastUserAt || 0;
         const idle = s.lastReplyAt || 0;
-        return { id: s.id, title: s.title || undefined, parentID: s.parent || undefined, location: { directory: s.cwd },
+        return { id: s.id, title: s.title || undefined, parentID: s.parent || undefined, fork: s.forkOf ? { sessionID: s.forkOf } : undefined, location: { directory: s.cwd },
           time: { created: s.createdAt || s.lastActiveAt || 0, updated: s.lastActiveAt || 0, ...(busy ? { busy } : {}), ...(idle ? { idle } : {}),
             ...(s.viewed ? { viewed: s.viewed } : {}), ...(s.archived ? { archived: s.archived } : {}) },
           cost: s.cost || 0, tokens: { input: s.tokensIn || 0, output: s.tokensOut || 0, reasoning: 0, cache: { read: 0, write: 0 } },

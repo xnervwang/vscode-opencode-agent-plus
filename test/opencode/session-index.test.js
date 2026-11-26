@@ -20,7 +20,7 @@ const row = (id, dir, time, extra = {}) => ({ id, projectID: 'p', cost: 0.5, tok
 test('a row becomes a record: activity from busy and idle, never from updated, when the last turn began, and the viewer and archive times', () => {
   const r = toRecord(row('ses_a', '/w/p', { created: 100, updated: 900, busy: 200, idle: 300, viewed: 300, archived: 900 }, { title: 'T', parentID: 'ses_p', model: { id: 'x.m', providerID: 'amazon-bedrock' }, outcome: 'succeeded' }));
   assert.deepEqual(r, {
-    id: 'ses_a', title: 'T', cwd: '/w/p', parentId: 'ses_p', createdAt: 100, lastActiveAt: 300, lastReplyAt: 300, lastTurnAt: 200, viewedAt: 300,
+    id: 'ses_a', title: 'T', cwd: '/w/p', parentId: 'ses_p', forkOf: '', createdAt: 100, lastActiveAt: 300, lastReplyAt: 300, lastTurnAt: 200, viewedAt: 300,
     archivedAt: 900, busy: false, cost: 0.5, tokens: { input: 10, output: 2, reasoning: 1, cacheRead: 5, cacheWrite: 0 }, model: 'amazon-bedrock/x.m', outcome: 'succeeded',
   });
   assert.equal(toRecord(row('ses_b', '/w', { created: 100, updated: 500 })).lastActiveAt, 100, 'a session that never ran a turn is as old as it is');
@@ -28,6 +28,9 @@ test('a row becomes a record: activity from busy and idle, never from updated, w
   assert.equal(mid.busy, true, 'a turn began after the last one ended');
   assert.equal(mid.lastActiveAt, 400);
   assert.equal(toRecord({ time: {} }), null);
+  const fork = toRecord(row('ses_f', '/w', { created: 700, updated: 701 }, { fork: { sessionID: 'ses_a', boundary: { type: 'through', messageID: 'msg_1' } } }));
+  assert.deepEqual([fork.forkOf, fork.lastReplyAt, fork.lastActiveAt], ['ses_a', 0, 700], 'a fork names the session it was copied from, and has no turn of its own');
+  assert.equal(r.forkOf, '');
 });
 
 test('a folder holds itself and the folders below it, and no folder whose name merely starts the same', () => {

@@ -13,7 +13,7 @@
  *   elsewhere  the terminal interface, `opencode run`, the background service (src/opencode/elsewhere.js), read every
  *              SCAN_MS while the list asks for rows. The core finds the other VS Code windows itself.
  *   kind       'subagent' for a session with a parent, 'background' for one an `opencode run` created, 'empty' for one
- *              that never ran a turn, else 'user'.
+ *              with no message (it never ran a turn and is no fork), else 'user'.
  *   folders    the window's folders and the folders below them, and the linked worktrees of their repositories, which
  *              OpenCode keeps under its own data folder: a session moved into one is still this project's, and opens
  *              here. A row in such a worktree carries its name; every row carries the branch its folder has out.
@@ -244,7 +244,7 @@ function createSessionSource(deps) {
       createdAt: r.createdAt,
       lastActiveAt: Math.max(r.lastActiveAt, here ? here.lastUserAt || 0 : 0, here ? here.lastReplyAt || 0 : 0),
       lastReplyAt: Math.max(r.lastReplyAt, here ? here.lastReplyAt || 0 : 0),
-      kind: deps.elsewhere.kindOf(r, known) === 'user' && !r.busy && !r.lastReplyAt && !(here && here.lastUserAt) ? 'empty' : deps.elsewhere.kindOf(r, known),
+      kind: deps.elsewhere.kindOf(r, known) === 'user' && !r.busy && !r.lastReplyAt && !r.forkOf && !(here && here.lastUserAt) ? 'empty' : deps.elsewhere.kindOf(r, known),
     };
     const sent = Math.max(here ? here.lastUserAt || 0 : 0, away ? away.lastUserAt || 0 : 0);
     if (sent || r.lastTurnAt) row.lastUserAt = sent || r.lastTurnAt;

@@ -64,6 +64,9 @@ function toRecord(row) {
     title: typeof row.title === 'string' ? row.title : '',
     cwd: (row.location && typeof row.location.directory === 'string' && row.location.directory) || '',
     parentId: typeof row.parentID === 'string' ? row.parentID : '',
+    /* The session a fork was copied from. OpenCode forks only a session with messages, and a fork has no turn of its own
+       until one is sent to it. */
+    forkOf: row.fork && typeof row.fork.sessionID === 'string' ? row.fork.sessionID : '',
     createdAt: created,
     lastActiveAt: Math.max(busy, idle) || created,
     lastReplyAt: idle,
