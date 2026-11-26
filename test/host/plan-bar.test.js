@@ -123,6 +123,6 @@ test('the chat page gets the summary when it loads and when it changes, and its 
 test('the page script finds Agent Plus\'s fragment under the name it exports', () => {
   const fragment = require('../../media/plan-bar.js');
   assert.equal(typeof fragment.create, 'function');
-  assert.equal(fragment.model(SUMMARY, 600, false).count, '2 open');
+  assert.deepEqual(fragment.model(SUMMARY, 600, false).bubbles, [{ state: 'doing', n: 1 }, { state: 'todo', n: 1 }]);
   assert.equal(fragment.model(null, 600, false), null);
 });
