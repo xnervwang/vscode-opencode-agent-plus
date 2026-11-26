@@ -274,6 +274,61 @@
     return l.length > 0 && l.every((m) => m.id.startsWith('opencode/'));
   }
 
+  /* Bedrock's cross-Region geographies, named as OpenCode's model list names them, in the order the picker lists them. */
+  const GEOGRAPHIES = { global: 'Global', us: 'US', eu: 'EU', apac: 'APAC', jp: 'JP', au: 'AU', in: 'India', ca: 'Canada', 'us-gov': 'GovCloud' };
+  const GEO_ORDER = Object.keys(GEOGRAPHIES);
+  /* A Bedrock id is vendor.model, so a geography prefix leaves at least two dots: `us.xai.grok-4.7` is one, while
+     `deepseek.v3.2` is not. The id without the prefix calls the model in the Region OpenCode uses. */
+  function modelVariant(id) {
+    const s = String(id || '');
+    const cut = s.lastIndexOf('/') + 1;
+    const m = /^(us-gov|us|eu|apac|jp|au|in|ca|global)\.([^.]+\..+)$/.exec(s.slice(cut));
+    return m ? { base: s.slice(0, cut) + m[2], geo: m[1], label: GEOGRAPHIES[m[1]] } : { base: s, geo: '', label: 'In-Region' };
+  }
+
+  /*
+   * The model picker's rows: [{ label, families: [{ key, name, variants: [{ id, name, geo, label }] }] }]. The
+   * variants of one model across geographies share a row, named without its geography; groups and rows are sorted by
+   * name, and a model's variants put the geographies in GEO_ORDER, then the In-Region id.
+   */
+  function modelFamilies(models, groupOf) {
+    const groups = new Map();
+    for (const m of Array.isArray(models) ? models : []) {
+      if (!m || typeof m.id !== 'string') continue;
+      const label = groupOf(m);
+      if (!groups.has(label)) groups.set(label, new Map());
+      const v = modelVariant(m.id);
+      const fams = groups.get(label);
+      if (!fams.has(v.base)) fams.set(v.base, { key: v.base, name: '', variants: [] });
+      const name = String(m.name || m.id);
+      fams.get(v.base).variants.push({ id: m.id, name, geo: v.geo, label: v.label });
+    }
+    const rank = (v) => (v.geo ? GEO_ORDER.indexOf(v.geo) : GEO_ORDER.length);
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    return [...groups].map(([label, fams]) => ({
+      label,
+      families: [...fams.values()].map((f) => {
+        f.variants.sort((a, b) => rank(a) - rank(b));
+        const plain = f.variants.find((v) => !v.geo);
+        f.name = plain ? plain.name : f.variants[0].name.replace(/\s*\([^()]*\)\s*$/, '') || f.variants[0].name;
+        return f;
+      }).sort(byName),
+    })).sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  /* The groups of modelFamilies narrowed to a query: every word must appear in a variant's model name, id, geography
+     or group, and only the variants that match are kept. */
+  function filterModelFamilies(groups, query) {
+    const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return groups;
+    const hit = (text) => words.every((w) => text.includes(w));
+    return groups.map((g) => ({
+      label: g.label,
+      families: g.families.map((f) => ({ ...f, variants: f.variants.filter((v) => hit(`${g.label} ${f.name} ${v.name} ${v.id} ${v.label}`.toLowerCase())) }))
+        .filter((f) => f.variants.length),
+    })).filter((g) => g.families.length);
+  }
+
   return { slashToken, filterCommands, atToken, insertToken, filesInText, imageOfDataUrl, escapeAction, chimeKind, ringLow, imageKind, driveSlashes, backgroundSummary,
-    outlineRows, subagentShare, onlyFreeModels, queuedText, prefillText, hasToken, insertRefs, appendDraft, enterAction, permissionModes, contextPill, autoContext, ASK, AUTO };
+    outlineRows, subagentShare, onlyFreeModels, modelVariant, modelFamilies, filterModelFamilies, queuedText, prefillText, hasToken, insertRefs, appendDraft, enterAction, permissionModes, contextPill, autoContext, ASK, AUTO };
 }));

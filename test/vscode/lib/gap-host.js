@@ -21,6 +21,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { modelChoices, pickModel } = require('./window');
 
 const ID = 'xnervwang.opencode-agent-plus';
 const HAIKU = 'amazon-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0';
@@ -100,20 +101,20 @@ async function run(ctx) {
     && (!real || plain.env.AWS_PROFILE === 'self'),
   "the sign-in runs auth login with the OpenCode the extension found (not the one on PATH), adds --standalone on OpenCode 2 and uses the extension's environment", plain && { ...plain, env: Object.keys(plain.env) });
   await ext('return api.test.loginProgram(arg);', program);
-  const offered = await f.evaluate(() => [...document.querySelectorAll('#model option')].map((o) => [o.value, o.textContent]));
-  check(offered.some(([v, t]) => v === '__connect' && t === 'Connect a provider…'), 'the model list offers "Connect a provider…"', offered.slice(-3));
+  const offered = (await modelChoices(f)).actions;
+  check(offered.some(([v, t]) => v === 'connect' && t === 'Connect a provider…'), 'the model list offers "Connect a provider…"', offered);
   /* OpenCode restarts only when no turn in this window is running, so the turns from earlier steps must end first. */
   const busy = async () => ((await ext('return api.test.conversations();')) || []).filter((c) => c.activity === 'working' || c.activity === 'waiting')
     .map((c) => ({ title: c.title, activity: c.activity, waitingFor: c.waitingFor }));
   const quiet = await until(async () => ((await busy()).length ? null : true), real ? 300000 : 30000);
   if (!quiet) note(`turns still running before the sign-in: ${JSON.stringify(await busy())}`);
   const refreshedBefore = (await ext('return api.test.logins();')).refreshed;
-  await f.selectOption('#model', '__connect');
+  await pickModel(f, 'connect');
   const term = await until(() => call('const t = vscode.window.terminals.find((x) => x.name === "OpenCode: Connect a Provider"); return t ? { name: t.name, path: t.creationOptions.shellPath, args: t.creationOptions.shellArgs } : null;'), 20000);
   check(!!term && term.path === program && Array.isArray(term.args) && term.args.join(' ') === (standalone ? 'auth login --standalone' : 'auth login'),
     'picking it opens the terminal "OpenCode: Connect a Provider" running the sign-in', term);
   const kept = await f.evaluate(() => document.getElementById('model').dataset.current || '');
-  check(kept && kept !== '__connect', 'the model pill still shows the earlier model, not Connect a provider…', kept);
+  check(kept && kept !== 'connect', 'the model pill still shows the earlier model, not Connect a provider…', kept);
   /* The terminal's process starts through VS Code's pty host, whose node-pty needs glibc 2.28: on an older Linux it never
      starts, and the terminal is closed instead. Windows runs the stand-in through cmd, which is not checked here. */
   const pid = await call(`const t = vscode.window.terminals.find((x) => x.name === "OpenCode: Connect a Provider");
@@ -134,7 +135,7 @@ async function run(ctx) {
   const words = (await told()).slice(-3);
   check(!!refreshed && words.some((w) => /OpenCode (now )?offers|Open a conversation to see/.test(w)), 'once the terminal closes, OpenCode restarts and the models are listed again', { refreshed, words, busy: refreshed ? undefined : await busy() });
   f = await chatPage();
-  const listed = f ? await until(() => f.evaluate(() => { const o = [...document.querySelectorAll('#model option')].map((x) => x.value); return o.includes('__connect') && o.length > 2 ? o.length : null; }), 30000) : null;
+  const listed = f ? await until(() => f.evaluate(() => { const n = document.querySelectorAll('#modelMenu [data-model-id]').length; return document.querySelector('#modelMenu [data-action="connect"]') && n > 1 ? n : null; }), 30000) : null;
   check(!!listed, 'the chat page lists the models again, still with "Connect a provider…"', listed);
   await ext('return api.test.loginProgram("");');
   await closePanel();
@@ -423,10 +424,10 @@ async function run(ctx) {
     const onModel = (id) => until(() => f.evaluate((m) => (document.getElementById('model').dataset.current === m ? true : null), id), 20000);
     await f.selectOption('#effort', 'low');
     await until(async () => ((await effortNow()) === 'low' ? true : null), 15000);
-    await f.selectOption('#model', HAIKU);
+    await pickModel(f, HAIKU);
     await onModel(HAIKU);
     const onHaiku = await until(async () => ((await effortNow()) === 'default' ? 'default' : null), 15000) || await effortNow();
-    await f.selectOption('#model', model);
+    await pickModel(f, model);
     await onModel(model);
     const back = await until(async () => ((await effortNow()) === 'low' ? 'low' : null), 15000) || await effortNow();
     const kept = await until(() => (recorded() === 'low' ? 'low' : null), 20000, 2000) || recorded();
@@ -444,7 +445,7 @@ async function run(ctx) {
   const takesImages = f ? await f.evaluate(() => !document.getElementById('attach').hidden) : false;
   if (takesImages) {
     if (real) {
-      await f.selectOption('#model', HAIKU);
+      await pickModel(f, HAIKU);
       await until(() => f.evaluate((m) => (document.getElementById('model').dataset.current === m ? true : null), HAIKU), 20000);
     }
     await clearBox(f);

@@ -1390,6 +1390,23 @@ button.pill:hover, .pill:hover {
 .model-pill {
   max-width: 260px;
 }
+/* The model button sits in the pill as the drop-down lists beside it do. */
+#model {
+  min-width: 0;
+  max-width: 160px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 1em;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .model-pill #effort {
   color: var(--muted);
   max-width: 80px;
@@ -1485,6 +1502,56 @@ button.pill:hover, .pill:hover {
   background: var(--vscode-editorWidget-background, var(--vscode-input-background));
   color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
   box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+}
+#modelMenu {
+  margin-bottom: 4px;
+  padding: 4px 0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+}
+.model-filter {
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% - 16px);
+  margin: 2px 8px 4px;
+  padding: 3px 6px;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--rule));
+  border-radius: 3px;
+}
+.model-filter:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+.model-actions {
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--rule);
+}
+/* The list scrolls on its own, so the filter and the two actions above it stay in view. */
+.model-list {
+  position: relative;
+  max-height: min(300px, 40vh);
+  overflow-y: auto;
+}
+.model-group-label {
+  padding: 6px 12px 2px;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+.menu-item.model-variant {
+  padding-left: 30px;
+}
+.menu-item.model-row .menu-desc, .menu-item.model-variant .menu-desc {
+  text-align: right;
+}
+.menu-item.current .menu-name {
+  font-weight: 600;
 }
 .menu-item {
   display: flex;

@@ -133,7 +133,7 @@ function pageTime(text, near) {
 }
 
 const need = (name) => require(DEPS ? path.join(DEPS, 'node_modules', name) : name);
-const { open, until, sleep, frameWith } = require('./lib/window');
+const { open, until, sleep, frameWith, pickModel } = require('./lib/window');
 const restricted = require('./lib/restricted');
 const downloading = require('./lib/download');
 const stewarding = require('./lib/steward');
@@ -1145,7 +1145,7 @@ async function main() {
           // 3h. An image pasted into the box goes with the message; Claude Haiku 4.5 reads it, and the fake backend the
           // colour of its first pixel.
           const SEEING = real ? { id: HAIKU, name: 'Claude Haiku 4.5' } : { id: 'fake/fake-large', name: 'Fake Large' };
-          await chat.selectOption('#model', SEEING.id);
+          await pickModel(chat, SEEING.id);
           const onHaiku = await until(() => chat.evaluate((id) => document.getElementById('model').dataset.current === id, SEEING.id), 15000);
           await chat.evaluate((b64) => {
             const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -1164,7 +1164,7 @@ async function main() {
           const colour = await lastReply();
           const imgChips = await lastUserChips();
           check(/blue/i.test(colour) && imgChips.includes('Image'), 'the model answers the colour of the pasted image, and the message shows it had one', { colour, imgChips });
-          await chat.selectOption('#model', MODEL);
+          await pickModel(chat, MODEL);
           await until(() => chat.evaluate((id) => document.getElementById('model').dataset.current === id, MODEL), 15000);
 
           // 3i. @ lists the workspace's files; the one picked goes with the message.
@@ -1925,7 +1925,7 @@ async function main() {
     await require('./lib/gap-page').run({ page, call, ext, check, shot, until, sleep, frameWith, real, line });
     await require('./lib/retry').run({ page, call, check, shot, until, sleep, frameWith, real });
     await require('./lib/gap-host').run({ page, call, ext, check, shot, until, sleep, frameWith, real, line, folder: p.folder, out: OUT, chatUris, front });
-    await require('./lib/model-groups').run({ page, call, check, until, frameWith, real });
+    await require('./lib/model-groups').run({ page, call, check, until, sleep, shot, frameWith, real });
     await require('./lib/prefill').run({ page, call, ext, check, shot, until, sleep, frameWith, chatUris, front, real });
   } catch (e) {
     check(false, 'the window steps ran to their end', (e && e.stack) || String(e));

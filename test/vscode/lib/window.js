@@ -121,4 +121,26 @@ async function frameWith(page, selector, ms = 30000) {
   }, ms, 300);
 }
 
-module.exports = { open, until, sleep, frameWith };
+/* The chat page's model picker in frame `f`, read from the page: its two actions and each group's model ids. The
+   list is drawn whether or not the picker is open. */
+function modelChoices(f) {
+  return f.evaluate(() => ({
+    actions: [...document.querySelectorAll('#modelMenu .model-action')].map((r) => [r.dataset.action, r.querySelector('.menu-name').textContent]),
+    groups: [...document.querySelectorAll('#modelMenu .model-group')].map((g) => ({ label: g.dataset.label, ids: [...g.querySelectorAll('[data-model-id]')].map((r) => r.dataset.modelId) })),
+  }));
+}
+
+/* Picks `id` in the model picker of frame `f`, or the action 'connect' or 'reload': opens the picker from the pill,
+   unfolds the row the model shares with its other geographies if it is folded, and clicks it. */
+async function pickModel(f, id) {
+  if (await f.evaluate(() => document.getElementById('modelMenu').hidden)) await f.click('#model');
+  const sel = id === 'connect' || id === 'reload' ? `#modelMenu [data-action="${id}"]` : `#modelMenu [data-model-id="${id}"]`;
+  await f.waitForSelector(sel, { state: 'attached', timeout: 10000 });
+  if (!(await f.isVisible(sel))) {
+    const family = await f.evaluate((s) => { const box = document.querySelector(s).closest('.model-family'); return box ? box.dataset.key : ''; }, sel);
+    if (family) await f.click(`#modelMenu .model-row[data-family="${family}"]`);
+  }
+  await f.click(sel);
+}
+
+module.exports = { open, until, sleep, frameWith, modelChoices, pickModel };

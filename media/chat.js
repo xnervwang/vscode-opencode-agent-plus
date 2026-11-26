@@ -1301,7 +1301,8 @@
 
     if (h.model && modelSel.dataset.current !== h.model.id) {
       modelSel.dataset.current = h.model.id;
-      if ([...modelSel.options].some((o) => o.value === h.model.id)) modelSel.value = h.model.id;
+      paintModelBtn(false);
+      if (!modelMenu.hidden) renderModelMenu();
     }
 
     queuedEl.replaceChildren(...(h.queued || []).map((q) => {
@@ -1498,49 +1499,179 @@
     return o;
   }
 
-  function applyModels(m) {
-    const current = (head && head.model && head.model.id) || m.current || '';
-    const list = Array.isArray(m.models) ? m.models : [];
-    modelSel.replaceChildren();
-    if (m.error) modelSel.appendChild(option('', `Couldn't list models: ${m.error}`));
-    /* Before a provider is connected, OpenCode offers only its free models, so Connect a provider… goes first. */
-    const free = C.onlyFreeModels(list);
-    if (free && caps.connect) modelSel.appendChild(option('__connect', 'Connect a provider…'));
-    const byVendor = new Map();
-    for (const model of list) {
-      const vendor = free ? "OpenCode's free models" : model.group || model.vendor || 'Other';
-      if (!byVendor.has(vendor)) byVendor.set(vendor, []);
-      byVendor.get(vendor).push(model);
-    }
-    for (const [vendor, models] of [...byVendor].sort((a, b) => a[0].localeCompare(b[0]))) {
-      const group = el('optgroup');
-      group.label = vendor;
-      for (const model of models) group.appendChild(option(model.id, model.name || model.id));
-      modelSel.appendChild(group);
-    }
-    if (current && !list.some((x) => x.id === current)) modelSel.insertBefore(option(current, current), modelSel.firstChild);
-    if (!current && !m.error) modelSel.insertBefore(option('', 'Choose a model'), modelSel.firstChild);
-    if (caps.connect && !free) modelSel.appendChild(option('__connect', 'Connect a provider…'));
-    modelSel.appendChild(option('__reload', 'Reload the model list'));
-    modelSel.value = current;
-    modelSel.dataset.current = current;
-    modelSel.dataset.free = free ? 'true' : 'false';
-    modelSel.title = `${current ? `Model: ${current}` : 'Model'}${free ? "\nOnly OpenCode's free models are listed. Connect a provider for more." : ''}`;
+  /*
+   * The model picker: the pill's button opens a list over the message box, filtered as you type, with Connect a
+   * provider… and Reload the model list above it so a long list never hides them. Each provider's models are a group,
+   * and the variants of one model across Bedrock geographies share a row that unfolds to pick one.
+   */
+  const modelMenu = $('modelMenu');
+  const modelFilter = modelMenu.querySelector('.model-filter');
+  const modelActions = modelMenu.querySelector('.model-actions');
+  const modelList = modelMenu.querySelector('.model-list');
+  let models = { list: [], free: false, error: '' };
+  const modelOpen = new Set();
+  let modelIndex = 0;
+
+  function paintModelBtn(loading) {
+    const current = modelSel.dataset.current || '';
+    const known = models.list.find((x) => x.id === current);
+    modelSel.textContent = loading ? 'Loading models…' : current ? (known && known.name) || current : models.error ? "Couldn't list models" : 'Choose a model';
+    modelSel.title = `${current ? `Model: ${current}` : 'Model'}${models.free ? "\nOnly OpenCode's free models are listed. Connect a provider for more." : ''}`;
   }
 
-  modelSel.addEventListener('change', () => {
-    const value = modelSel.value;
-    const current = modelSel.dataset.current || '';
-    if (value === '__reload') {
-      modelSel.replaceChildren(option(current, 'Loading models…'));
-      modelSel.value = current;
-      api.postMessage({ type: 'reloadModels' });
-    } else if (value === '__connect') {
-      modelSel.value = current;
-      api.postMessage({ type: 'connectProvider' });
-    } else if (value && value !== current) {
-      api.postMessage({ type: 'setModel', id: value });
+  function applyModels(m) {
+    const list = Array.isArray(m.models) ? m.models : [];
+    const free = C.onlyFreeModels(list);
+    models = { list, free, error: m.error ? String(m.error) : '' };
+    modelSel.dataset.current = (head && head.model && head.model.id) || m.current || '';
+    modelSel.dataset.free = free ? 'true' : 'false';
+    paintModelBtn(false);
+    renderModelMenu();
+  }
+
+  function modelRow(cls, name, desc, data, current) {
+    const row = el('div', `menu-item ${cls}${current ? ' current' : ''}`);
+    row.setAttribute('role', 'option');
+    Object.assign(row.dataset, data);
+    row.append(el('span', 'menu-name', name), el('span', 'menu-desc', desc || ''));
+    if (current) row.append(icon('check'));
+    return row;
+  }
+
+  function familyEl(f, current, query) {
+    const box = el('div', 'model-family');
+    box.dataset.key = f.key;
+    if (f.variants.length === 1) {
+      const v = f.variants[0];
+      box.append(modelRow('model-row', f.name, v.geo ? v.label : '', { modelId: v.id }, v.id === current));
+      return box;
     }
+    const open = !!query || modelOpen.has(f.key);
+    const top = modelRow('model-row multi', f.name, f.variants.map((v) => v.label).join(' · '), { family: f.key }, false);
+    if (f.variants.some((v) => v.id === current)) top.classList.add('current');
+    top.prepend(icon(open ? 'chevron-down' : 'chevron-right'));
+    top.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const variants = el('div', 'model-variants');
+    variants.hidden = !open;
+    variants.append(...f.variants.map((v) => modelRow('model-variant', v.label, v.id.slice(v.id.lastIndexOf('/') + 1), { modelId: v.id }, v.id === current)));
+    box.append(top, variants);
+    return box;
+  }
+
+  function renderModelMenu() {
+    const current = modelSel.dataset.current || '';
+    const query = modelFilter.value.trim();
+    const actions = [];
+    if (caps.connect) actions.push(modelRow('model-action', 'Connect a provider…', '', { action: 'connect' }, false));
+    actions.push(modelRow('model-action', 'Reload the model list', '', { action: 'reload' }, false));
+    modelActions.replaceChildren(...actions);
+    const groupOf = (x) => (models.free ? "OpenCode's free models" : x.group || x.vendor || 'Other');
+    const groups = C.filterModelFamilies(C.modelFamilies(models.list, groupOf), query);
+    const out = [];
+    if (models.error) out.push(el('div', 'menu-empty', `Couldn't list models: ${models.error}`));
+    const section = (label, families) => {
+      const g = el('div', 'model-group');
+      g.dataset.label = label;
+      g.append(el('div', 'model-group-label', label), ...families);
+      return g;
+    };
+    if (current && !query && !models.list.some((x) => x.id === current)) {
+      out.push(section('In use', [familyEl({ key: current, name: current, variants: [{ id: current, name: current, geo: '', label: '' }] }, current, '')]));
+    }
+    for (const g of groups) out.push(section(g.label, g.families.map((f) => familyEl(f, current, query))));
+    if (query && !groups.length) out.push(el('div', 'menu-empty', 'No model matches'));
+    modelList.replaceChildren(...out);
+    markModel();
+  }
+
+  const modelRows = () => [...modelMenu.querySelectorAll('.model-action, .model-row, .model-variant')].filter((r) => !r.closest('[hidden]'));
+
+  /* Only the list scrolls to the highlighted row: scrollIntoView would move the page too. */
+  function markModel() {
+    const rows = modelRows();
+    modelIndex = Math.max(0, Math.min(modelIndex, rows.length - 1));
+    rows.forEach((r, i) => r.classList.toggle('active', i === modelIndex));
+    const a = rows[modelIndex];
+    if (!a || !modelList.contains(a)) return;
+    const top = a.offsetTop;
+    const bottom = top + a.offsetHeight;
+    if (top < modelList.scrollTop) modelList.scrollTop = top;
+    else if (bottom > modelList.scrollTop + modelList.clientHeight) modelList.scrollTop = bottom - modelList.clientHeight;
+  }
+
+  function openModels() {
+    closeMenu();
+    modelFilter.value = '';
+    const current = modelSel.dataset.current || '';
+    if (current) modelOpen.add(C.modelVariant(current).base);
+    modelMenu.hidden = false;
+    modelSel.setAttribute('aria-expanded', 'true');
+    renderModelMenu();
+    const i = modelRows().findIndex((r) => r.dataset.modelId === current);
+    modelIndex = i >= 0 ? i : 0;
+    markModel();
+    modelFilter.focus();
+  }
+
+  function closeModels(refocus) {
+    if (modelMenu.hidden) return;
+    modelMenu.hidden = true;
+    modelSel.setAttribute('aria-expanded', 'false');
+    if (refocus) input.focus();
+  }
+
+  function toggleFamily(key, open) {
+    if (open === undefined ? !modelOpen.has(key) : open) modelOpen.add(key);
+    else modelOpen.delete(key);
+    renderModelMenu();
+    const i = modelRows().findIndex((r) => r.dataset.family === key);
+    if (i >= 0) { modelIndex = i; markModel(); }
+  }
+
+  function activateModelRow(row) {
+    if (!row) return;
+    if (row.dataset.family) { toggleFamily(row.dataset.family); return; }
+    closeModels(true);
+    if (row.dataset.action === 'reload') {
+      paintModelBtn(true);
+      api.postMessage({ type: 'reloadModels' });
+    } else if (row.dataset.action === 'connect') {
+      api.postMessage({ type: 'connectProvider' });
+    } else if (row.dataset.modelId && row.dataset.modelId !== (modelSel.dataset.current || '')) {
+      api.postMessage({ type: 'setModel', id: row.dataset.modelId });
+    }
+  }
+
+  modelSel.addEventListener('click', () => (modelMenu.hidden ? openModels() : closeModels(true)));
+  modelFilter.addEventListener('input', () => {
+    renderModelMenu();
+    const i = modelFilter.value.trim() ? modelRows().findIndex((r) => r.dataset.modelId) : 0;
+    modelIndex = Math.max(0, i);
+    markModel();
+  });
+  modelFilter.addEventListener('keydown', (e) => {
+    const rows = modelRows();
+    const row = rows[modelIndex];
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (rows.length) { modelIndex = (modelIndex + (e.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length; markModel(); }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      activateModelRow(row);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      closeModels(true);
+    } else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !modelFilter.value && row && row.dataset.family) {
+      e.preventDefault();
+      toggleFamily(row.dataset.family, e.key === 'ArrowRight');
+    }
+  });
+  /* A click in the list keeps the focus in the filter, so the keys go on working. */
+  modelMenu.addEventListener('mousedown', (e) => { if (e.target !== modelFilter) e.preventDefault(); });
+  modelMenu.addEventListener('click', (e) => activateModelRow(e.target.closest('.menu-item')));
+  document.addEventListener('mousedown', (e) => {
+    if (!modelMenu.hidden && !modelMenu.contains(e.target) && !modelSel.contains(e.target)) closeModels(false);
   });
 
   /* ---------- mode and effort ---------- */

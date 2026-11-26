@@ -323,6 +323,7 @@ ${icons}<link rel="stylesheet" href="${media('chat.css')}">
     <div id="queued"></div>
     <div id="note" hidden></div>
     <div id="menu" role="listbox" hidden></div>
+    <div id="modelMenu" role="dialog" aria-label="Models" hidden><input class="model-filter" type="text" placeholder="Filter models" aria-label="Filter models"><div class="model-actions"></div><div class="model-list" role="listbox"></div></div>
     <form id="composer">
       <div id="attachments"></div>
       <textarea id="input" rows="1" placeholder="Ask OpenCode…"></textarea>
@@ -332,7 +333,7 @@ ${icons}<link rel="stylesheet" href="${media('chat.css')}">
         <button id="slashBtn" class="tool-btn slash" type="button" title="Commands (/)" hidden><span>/</span></button>
         <span id="ring" class="ring tool-btn"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="6" fill="none"></circle><circle class="fill" cx="8" cy="8" r="6" fill="none"></circle></svg></span>
         <details id="background" class="pill" hidden><summary></summary><div class="bg-list"></div></details>
-        <span class="pill model-pill"><select id="model" title="Model"><option>Loading models…</option></select><select id="effort" class="option" hidden></select></span>
+        <span class="pill model-pill"><button id="model" type="button" title="Model" aria-haspopup="listbox" aria-expanded="false">Loading models…</button><select id="effort" class="option" hidden></select></span>
         <span id="ctxPill" class="pill ctx-pill" hidden><button id="addSelection" type="button" hidden></button><button id="ctxDrop" class="ctx-drop" type="button" title="Do not send this with the message" aria-label="Do not send this with the message" hidden>×</button></span>
         <span class="spacer"></span>
         <button id="infoBtn" class="tool-btn" type="button" title="About this conversation" hidden>&#8505;</button>
