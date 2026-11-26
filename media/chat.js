@@ -1161,7 +1161,29 @@
   focusBtn.id = 'focusBtn';
   focusBtn.type = 'button';
   focusBtn.hidden = true;
-  focusBtn.append(icon('eye'));
+  /* A line with two arrows, facing it while the log is folded to Focus view and facing away while everything shows. */
+  const foldGlyph = (folded) => {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('width', '15');
+    svg.setAttribute('height', '15');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', folded ? 'fold-in' : 'fold-out');
+    const arrows = folded ? ['M5 3.2l3 2.7 3-2.7', 'M5 12.8l3-2.7 3 2.7'] : ['M5 5.8l3-2.7 3 2.7', 'M5 10.2l3 2.7 3-2.7'];
+    for (const d of ['M2 8h12', ...arrows]) {
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'currentColor');
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      svg.append(path);
+    }
+    return svg;
+  };
+  focusBtn.append(foldGlyph(true), foldGlyph(false));
   infoBtn.after(focusBtn);
   function paintFocus() {
     document.body.classList.toggle('focus-view', view.focus);
@@ -1376,7 +1398,7 @@
   function closeInfo() { infoBox.hidden = true; infoBox.replaceChildren(); }
   function showInfo(m) {
     const rows = Array.isArray(m.rows) ? m.rows : [];
-    const box = [el('div', 'info-title', 'About this conversation')];
+    const box = [];
     if (m.error) box.push(el('div', 'info-error', m.error));
     for (const r of rows) {
       const row = el('button', 'info-row');

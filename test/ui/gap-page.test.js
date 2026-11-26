@@ -298,12 +298,13 @@ test('the page: thinking starts folded, a todo list starts open, an edit row ope
   for (const sel of ['.diff-row.d-add', '.diff-row.d-del', '.todo-completed .todo-text', '.todo-cancelled', '#pinned']) assert.ok(CSS.includes(sel), sel);
 });
 
-test('in a light theme grey text is lighter; an open request has a paler frame; the rail has no borders between its buttons', () => {
+test('in a light theme grey text is lighter; an open request has a paler frame; the rail is one strip against the right edge', () => {
   assert.match(CSS, /body\.vscode-light \{\s*--muted: color-mix\(/, 'in a light theme, grey text, including the times and figures, is lighter');
   assert.match(CSS, /\n\.permission:not\(\.settled\), \.question:not\(\.settled\) \{\s*border-color: color-mix\(/);
   assert.match(CSS, /#log \{\s*scrollbar-color: auto;/, "VS Code's scrollbar-color would turn the log's own thin bar off");
   assert.match(CSS, /\.tool\.state-running \.tool-state \{\s*color: var\(--vscode-foreground\);/);
-  assert.doesNotMatch(CSS, /\.rail-btn \+ \.rail-btn/);
+  assert.match(CSS, /#rail \{\s*position: absolute;\s*right: 0;/, 'the rail touches the right edge, as Claude Code Plus draws it');
+  assert.match(CSS, /\.rail-btn \{[^}]*border-right: none;\s*border-radius: 3px 0 0 3px;/, 'each button is flat on the edge side');
   assert.match(CSS, /container-type: inline-size;/);
   assert.match(CSS, /@container \(max-width: 600px\) \{\s*\.tl > \.meta, \.msg\.user \.meta \{\s*float: none;\s*display: block;/, 'in a narrow log the time takes a line of its own');
   assert.match(CSS, /\.perm-actions button\.diff \{\s*justify-content: flex-start;\s*border-color: transparent;/, 'View diff has no separate frame beside the highlighted answer');

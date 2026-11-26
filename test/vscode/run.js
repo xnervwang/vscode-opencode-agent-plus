@@ -707,7 +707,7 @@ async function main() {
         const infoRows = await until(() => chat.evaluate(() => { const b = document.getElementById('infoBox'); return b && !b.hidden ? [...b.querySelectorAll('.info-row')].map((r) => r.textContent) : null; }), 10000);
         check(!!infoRows && infoRows.some((t) => t.includes(sessionId)) && infoRows.some((t) => /2\.0\.0-fake, acp process \d+/.test(t)), 'the info button opens a box with the session id, the agent and its process', infoRows);
         await shot('04y-info', { features: ['session info'],
-          expect: 'At the top right of the chat page, under a small round "i" button, a box "About this conversation" with rows Session (an id starting ses_), Folder, OpenCode ("2.0.0-fake, acp process" and a number), Session database (a path) and Token mode (All features), and a "Copy all" button.',
+          expect: 'Above the message box, opened from its "ℹ" button, a box with rows Session (an id starting ses_), Folder, OpenCode ("2.0.0-fake, acp process" and a number), Session database (a path) and Token mode (All features), and a "Copy all" button.',
           part: '#workbench\\.parts\\.editor' });
         await chat.press('#input', 'Escape');
         const infoClosed = await chat.evaluate(() => document.getElementById('infoBox').hidden);
@@ -1462,7 +1462,7 @@ async function main() {
             && samePath(infoOf['Session database'] || '', runs.db) && infoOf['Token mode'] === 'All features',
           'the info box shows the session, the folder, OpenCode and its acp process, the session database and the token mode', infoOf);
           await shot('21-info', { features: ['session info'],
-            expect: `A box "About this conversation", opened from the info button under the message box and drawn above it, with Session, Folder, OpenCode ("${runs.version}, acp process <n>"), Session database (a path ending ${path.basename(runs.db)}) and Token mode (All features), and a Copy all button.`,
+            expect: `A box with no heading, opened from the "ℹ" button under the message box and drawn above it, with Session, Folder, OpenCode ("${runs.version}, acp process <n>"), Session database (a path ending ${path.basename(runs.db)}) and Token mode (All features), and a Copy all button.`,
             part: '#workbench\\.parts\\.editor' });
           await chat.press('#input', 'Escape');
 

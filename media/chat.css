@@ -1084,42 +1084,48 @@ button.rewind .codicon {
 
 #rail {
   position: absolute;
-  right: calc(var(--sb, 0px) + 6px);
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   z-index: 6;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: flex-end;
 }
+/* One strip against the right edge: each button is flat on that side, with the widget border on the other three. */
 .rail-btn {
-  width: 22px;
-  height: 24px;
+  box-sizing: border-box;
+  width: 27px;
+  height: 26px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--vscode-textLink-foreground);
-  border: 1px solid transparent;
-  border-radius: 3px;
+  color: var(--vscode-textLink-activeForeground, var(--vscode-focusBorder));
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.14));
+  border-right: none;
+  border-radius: 3px 0 0 3px;
   background: var(--vscode-editorWidget-background, var(--page-bg));
 }
-/* The light themes' widget background is the page's own, so the buttons are white tiles with a grey edge there. */
 body.vscode-light .rail-btn {
-  background: var(--vscode-input-background, #fff);
-  border-color: color-mix(in srgb, var(--rule) 50%, var(--page-bg));
+  border-color: var(--vscode-widget-border, rgba(0, 0, 0, 0.14));
 }
-.rail-btn .codicon {
-  font-size: 14px;
-}
+/* The theme's hover colour is translucent, so it goes over the button's own background rather than in its place. */
 .rail-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, var(--pill));
+  background: linear-gradient(var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.12)), var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.12))),
+    var(--vscode-editorWidget-background, var(--page-bg));
 }
 #navBtn {
-  height: 44px;
+  height: 62px;
+  border-radius: 4px 0 0 4px;
 }
-#navBtn[aria-pressed="true"] {
-  background: var(--vscode-inputOption-activeBackground, var(--pill));
+/* The handle's chevron points the way the list moves: left to bring it out, right to put it away. */
+#navBtn .rail-glyph + .rail-glyph,
+#navBtn[aria-pressed="true"] .rail-glyph:first-child {
+  display: none;
+}
+#navBtn[aria-pressed="true"] .rail-glyph + .rail-glyph {
+  display: block;
 }
 #outline {
   position: absolute;
@@ -1591,10 +1597,6 @@ button.pill:hover, .pill:hover {
   flex-direction: column;
   gap: 2px;
 }
-.info-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
 .info-error {
   color: var(--vscode-errorForeground);
 }
@@ -1889,12 +1891,16 @@ button.pill:hover, .pill:hover {
 body.focus-view .focus-out {
   display: none !important;
 }
+/* Lit in the same grey as a hovered button rather than in the theme's accent, as Claude Code Plus lights its own. */
 #focusBtn[aria-pressed="true"] {
-  background: var(--vscode-inputOption-activeBackground, var(--pill-hover));
-  color: var(--vscode-inputOption-activeForeground, inherit);
+  background: var(--pill);
 }
-#focusBtn .codicon {
-  font-size: 15px;
+#focusBtn .fold-in,
+#focusBtn[aria-pressed="true"] .fold-out {
+  display: none;
+}
+#focusBtn[aria-pressed="true"] .fold-in {
+  display: block;
 }
 /* Lined up with your messages in the log, whose left padding is 20px and right 35px beside the scrollbar. */
 #pinned {

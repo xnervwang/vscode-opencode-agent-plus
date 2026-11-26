@@ -284,6 +284,12 @@ class ChatPanel {
       : '';
     const src = webview.cspSource;
     const icon = (name) => `<i class="codicon codicon-${name}" aria-hidden="true"></i>`;
+    /* The rail's glyphs, drawn in the page rather than taken from a font so they look the same everywhere: a bar with a
+       triangle for the two ends, a small triangle for one message, a chevron on the handle. */
+    const glyph = (body, size = 13) => `<svg class="rail-glyph" width="${size}" height="${size}" viewBox="0 0 10 10" aria-hidden="true">${body}</svg>`;
+    const bar = (y) => `<path d="M1.6 ${y}h6.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/>`;
+    const tri = (d) => `<path d="${d}" fill="currentColor"/>`;
+    const chevron = (d) => `<path d="${d}" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;
     /* Each svg carries its own size and fill: drawn before chat.css applies, one without them fills the page's
        width with a black disc. */
     return `<!DOCTYPE html>
@@ -302,11 +308,11 @@ ${icons}<link rel="stylesheet" href="${media('chat.css')}">
 <main id="log" aria-live="polite"></main>
 <div id="welcome" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M16 10V18H8V10H16Z" fill="currentColor" fill-opacity="0.35"/><path fill-rule="evenodd" clip-rule="evenodd" d="M20 22H4V2H20V22ZM16 6H8V18H16V6Z" fill="currentColor"/></svg><p>Ask OpenCode about this project, or tell it what to change.</p></div>
 <div id="rail" hidden>
-  <button id="railTop" class="rail-btn" type="button" title="To the first message">${icon('fold-up')}</button>
-  <button id="railPrev" class="rail-btn" type="button" title="To the message before">${icon('chevron-up')}</button>
-  <button id="navBtn" class="rail-btn toggle" type="button" aria-pressed="false" hidden>${icon('chevron-left')}</button>
-  <button id="railNext" class="rail-btn" type="button" title="To the message after">${icon('chevron-down')}</button>
-  <button id="railBottom" class="rail-btn" type="button" title="To the end">${icon('fold-down')}</button>
+  <button id="railTop" class="rail-btn" type="button" title="To the first message">${glyph(bar(1.6) + tri('M2.1 7.6h5.8L5 3.6z'))}</button>
+  <button id="railPrev" class="rail-btn" type="button" title="To the message before">${glyph(tri('M1.6 7.4h6.8L5 2.6z'))}</button>
+  <button id="navBtn" class="rail-btn toggle" type="button" aria-pressed="false" hidden>${glyph(chevron('M6.2 2.2L3.4 5l2.8 2.8'), 16)}${glyph(chevron('M3.8 2.2L6.6 5 3.8 7.8'), 16)}</button>
+  <button id="railNext" class="rail-btn" type="button" title="To the message after">${glyph(tri('M1.6 2.6h6.8L5 7.4z'))}</button>
+  <button id="railBottom" class="rail-btn" type="button" title="To the end">${glyph(bar(8.4) + tri('M2.1 2.4h5.8L5 6.4z'))}</button>
 </div>
 <nav id="outline" aria-label="Your messages" hidden><input class="outline-filter" type="text" placeholder="Filter your messages" aria-label="Filter your messages"><div class="outline-list"></div></nav>
 </div>
@@ -329,7 +335,7 @@ ${icons}<link rel="stylesheet" href="${media('chat.css')}">
         <span class="pill model-pill"><select id="model" title="Model"><option>Loading models…</option></select><select id="effort" class="option" hidden></select></span>
         <span id="ctxPill" class="pill ctx-pill" hidden><button id="addSelection" type="button" hidden></button><button id="ctxDrop" class="ctx-drop" type="button" title="Do not send this with the message" aria-label="Do not send this with the message" hidden>×</button></span>
         <span class="spacer"></span>
-        <button id="infoBtn" class="tool-btn" type="button" title="About this conversation" hidden>${icon('info')}</button>
+        <button id="infoBtn" class="tool-btn" type="button" title="About this conversation" hidden>&#8505;</button>
         <button id="subBtn" class="pill toggle" type="button" aria-pressed="false" hidden>Subagents</button>
         <button id="sound" class="tool-btn" type="button" hidden></button>
         <label class="mode-pick">${icon('robot')}<select id="mode" class="option" hidden></select></label>
