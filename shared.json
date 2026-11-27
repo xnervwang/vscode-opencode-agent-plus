@@ -1,5 +1,5 @@
 {
-  "core": "720924688e348fed97d78d4cf789435b4ff7a91d",
+  "core": "0f42d9922e9a2b2daae494504f623b16e7455dc8",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -54,7 +54,7 @@
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan_common.py",
       "from": "shared/plugin/hooks/plan_common.py",
-      "sha256": "841853986960c13689d4dd120de867d2b5eb6584158d75b64111e0bac805fa39"
+      "sha256": "a72cfed9fe39654d1034903545317fb5fa4050282c8992854cf6b9216f310099"
     },
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan-row.py",
