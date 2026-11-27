@@ -1,5 +1,5 @@
 {
-  "core": "6cf1aaf5c16b4c9083ac841babad8b9c61002a86",
+  "core": "f26836e7e02cb5bc1bc5813a4347c9439f3df5c9",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -44,7 +44,7 @@
     {
       "path": "src/shared/notice-time.js",
       "from": "src/notice-time.js",
-      "sha256": "575eeadcbc2ae04258c78dfd600cde0f31b717bbafb6eeb96cf58b52b126cf0b"
+      "sha256": "5ea20e87fad7975f21433ea4e0cf0fda1bae864bf918785ada91e2623af864bc"
     },
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan_path.py",
@@ -119,7 +119,7 @@
     {
       "path": "media/plan-bar.js",
       "from": "shared/page/plan-bar.js",
-      "sha256": "498558b2e522ce8e7a7d86e09f5c7697cdcd80d64ca518e59c19dc55479649ca"
+      "sha256": "5cc918f0b077eacbcd39c2f20215316de9cab737924618b542756c2edb86c0b6"
     },
     {
       "path": "media/kit.js",
