@@ -444,7 +444,7 @@ async function main() {
     }, n);
   };
   /* Whether the page itself is scrolled (only its log should be), and by how much it is taller than its frame. */
-  const pageScroll = (f) => f.evaluate(() => ({ scrolled: document.scrollingElement.scrollTop, top: Math.round(document.getElementById('top').getBoundingClientRect().top),
+  const pageScroll = (f) => f.evaluate(() => ({ scrolled: document.scrollingElement.scrollTop, top: Math.round(document.getElementById('middle').getBoundingClientRect().top),
     over: document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight }));
   /* Clears a hover label the pointer left behind (a tab's, or one from a button whose row went away) by hovering the
      activity bar's Explorer icon, whose label goes when the pointer does; moving into a chat page alone does not clear
