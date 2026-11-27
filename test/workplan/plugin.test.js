@@ -145,14 +145,14 @@ test('setup with a context that has no session hooks registers nothing', async (
   assert.equal(await plugin.setup(undefined), undefined);
 });
 
-test('setup registers the three session hooks, the four plan tools, and subscribes to the three events it uses', async () => {
+test('setup registers the three session hooks, the four plan tools and set_title, and subscribes to the three events it uses', async () => {
   makeEnv();
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
   assert.deepEqual(Object.keys(f.hooks).sort(), ['compaction', 'context', 'prompt']);
   assert.equal(f.liveTools().length, 1);
   const added = f.liveTools()[0].added;
-  assert.deepEqual(added.map((t) => t.name), ['set_row', 'add_row', 'set_summary', 'set_status']);
+  assert.deepEqual(added.map((t) => t.name), ['set_row', 'add_row', 'set_summary', 'set_status', 'set_title']);
   for (const t of added) {
     assert.equal(t.input.type, 'object');
     assert.equal(t.input.additionalProperties, false);
@@ -301,26 +301,28 @@ test('a plan command that hangs is stopped and the model is told', { timeout: 30
   await stop();
 });
 
-test('plans switched off in config.json: nothing injected, the tools withdrawn; switched on again: registered again', async () => {
+test('plans switched off in config.json: nothing injected, the plan tools withdrawn and set_title kept; switched on again: registered again', async () => {
   const env = makeEnv();
   env.config({ enabled: false });
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
-  assert.equal(f.liveTools().length, 0);
+  const names = () => f.liveTools().flatMap((r) => r.added).map((t) => t.name);
+  assert.deepEqual(names(), ['set_title']);
   const ev = prompt(SID, 'msg_1', 'x');
   await f.hooks.prompt(ev);
   assert.deepEqual(ev.metadata, { source: 'x' });
   assert.deepEqual(env.runs(), []);
   env.config({ enabled: true });
   await f.hooks.prompt(prompt(SID, 'msg_2', 'x'));
-  assert.equal(f.liveTools().length, 1);
+  assert.deepEqual(names(), ['set_row', 'add_row', 'set_summary', 'set_status', 'set_title']);
   env.config({ enabled: false });
   await f.hooks.prompt(prompt(SID, 'msg_3', 'x'));
-  assert.equal(f.liveTools().length, 0);
-  assert.equal(f.toolRegs.length, 1);
+  assert.deepEqual(names(), ['set_title']);
+  assert.equal(f.liveTools().length, 1);
+  assert.equal(f.toolRegs.length, 3);
   env.config({ enabled: true, extensionMarkers: [path.join(env.root, 'gone')] });
   await f.hooks.prompt(prompt(SID, 'msg_4', 'x'));
-  assert.equal(f.liveTools().length, 0, 'an uninstalled extension counts as off');
+  assert.deepEqual(names(), ['set_title'], 'an uninstalled extension counts as off');
   await stop();
 });
 
@@ -568,7 +570,7 @@ const MANY_TEXT = ours(CCPLUS_MANY);
 const DOCS = { sourceId: 'claude-code', sessionId: 'aaaaaaaa-1111-4222-8333-444444444444', title: 'Docs steward' };
 const NIGHT = { sourceId: 'claude-code', sessionId: 'bbbbbbbb-1111-4222-8333-444444444444', title: 'Night steward' };
 const STEWARD_ID = DOCS.sessionId;
-const PLAN_TOOLS = ['set_row', 'add_row', 'set_summary', 'set_status'];
+const PLAN_TOOLS = ['set_row', 'add_row', 'set_summary', 'set_status', 'set_title'];
 /* The steward file as the extension writes it. */
 const watch = (env, id = SID, list = [DOCS]) => fs.writeFileSync(path.join(env.plans, `${id}.steward.json`),
   JSON.stringify({ format: 1, sourceId: list[0].sourceId, sessionId: list[0].sessionId, stewards: list }));
@@ -579,7 +581,7 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   const env = makeEnv();
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
-  assert.deepEqual(toolNames(f), PLAN_TOOLS, 'no steward anywhere: four tools');
+  assert.deepEqual(toolNames(f), PLAN_TOOLS, 'no steward anywhere: the four plan tools and set_title');
   const first = prompt(SID, 'msg_1', 'x');
   await f.hooks.prompt(first);
   assert.equal(first.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_1\n</system-update>`);
@@ -612,7 +614,7 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   const off = prompt(SID, 'msg_4', 'x');
   await f.hooks.prompt(off);
   assert.ok(!off.metadata.agentWorkPlan || !off.metadata.agentWorkPlan.includes('through Claude Code Plus'), 'plans off: no steward line');
-  assert.deepEqual(toolNames(f), [], 'plans off: no tools at all');
+  assert.deepEqual(toolNames(f), ['set_title'], 'plans off: only set_title');
 
   env.config({ enabled: true });
   fs.unlinkSync(path.join(env.plans, `${SID}.steward.json`));
@@ -774,4 +776,49 @@ test("the plugin and the extension with two stewards: the line names both, and e
     assert.deepEqual(handoffFiles(env), []);
     await stop();
   } finally { host.dispose(); }
+});
+
+/* ---------- set_title ---------- */
+
+test('set_title writes a retitle request for its own session, answers with what the window wrote back, and withdraws one nobody takes', async () => {
+  const env = makeEnv();
+  process.env.OPENCODE_AGENT_PLUS_RETITLE_WAIT_MS = '1500';
+  const f = fakeCtx();
+  const stop = await plugin.setup(f.ctx);
+  try {
+    const tool = f.tool('set_title');
+    assert.match(tool.description, /\n## When to rename\n/, "the shared retitle skill is the tool's description");
+    assert.doesNotMatch(tool.description, /## How to rename|^---|Source: vscode-agent-plus/m, 'without its frontmatter, source line and calling section');
+    assert.deepEqual([tool.input.required, Object.keys(tool.input.properties), tool.options], [['title'], ['title'], { codemode: false }]);
+    const dir = path.join(env.plans, 'retitle');
+    const host = (async () => {
+      for (let i = 0; i < 200; i++) {
+        const n = fs.existsSync(dir) ? fs.readdirSync(dir).find((x) => /^[0-9a-z]{12,40}\.json$/.test(x)) : null;
+        if (n) {
+          const key = n.slice(0, -5);
+          const body = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'));
+          fs.renameSync(path.join(dir, n), path.join(dir, `${key}.claimed`));
+          fs.writeFileSync(path.join(dir, `${key}.result.json`), JSON.stringify({ format: 1, key, outcome: 'done', reason: '', title: 'Parser rewrite', at: 1 }));
+          fs.unlinkSync(path.join(dir, `${key}.claimed`));
+          return body;
+        }
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      return null;
+    })();
+    const out = await tool.execute({ title: ' Parser rewrite ' }, { sessionID: SID });
+    const body = await host;
+    assert.equal(out.content, 'Renamed: the conversation is now titled "Parser rewrite".');
+    assert.deepEqual([body.format, body.agent, body.sessionId, body.title, body.via, /^[0-9a-z]{12,40}$/.test(body.key)],
+      [1, 'OpenCode', SID, ' Parser rewrite ', 'tool', true], 'the request names this session and carries the title as given');
+    assert.deepEqual(fs.readdirSync(dir), [], 'the answer is removed once read');
+    const none = await tool.execute({ title: 'Nobody takes this' }, { sessionID: SID });
+    assert.match(none.content, /^Not renamed: no VS Code window took the request/);
+    assert.deepEqual(fs.readdirSync(dir), [], 'a request nobody took is withdrawn');
+    assert.equal((await tool.execute({ title: '   ' }, { sessionID: SID })).content, 'Not renamed: the title is empty.');
+    assert.match((await tool.execute({ title: 'x' }, { sessionID: 'not-a-session' })).content, /^Not renamed: this conversation's id/);
+  } finally {
+    delete process.env.OPENCODE_AGENT_PLUS_RETITLE_WAIT_MS;
+    await stop();
+  }
 });

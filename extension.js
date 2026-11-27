@@ -61,6 +61,7 @@ const { createPlanBar } = require('./src/host/plan-bar');
 const { createWindowStates } = require('./src/host/window-states');
 const { createReplyFiles } = require('./src/host/reply-file');
 const { createStewards } = require('./src/host/steward');
+const { createRetitles } = require('./src/host/retitle');
 const workplan = require('./src/workplan');
 const rewinding = require('./src/host/rewind');
 const { loadImage } = require('./src/host/reply-images');
@@ -263,6 +264,7 @@ function start(context, log, gate, channel) {
       conv.on(onAuth);
       replies.track(id, conv, events);
       stewards.track(id, conv, events);
+      retitles.track(id, conv);
       return conv;
     },
     isLooking: (id) => {
@@ -978,6 +980,16 @@ function start(context, log, gate, channel) {
     log,
   });
   subs.push(stewards, manager.onDidChange(() => stewards.opened()));
+  /* A conversation open here asking for a title of its own with the plugin's set_title tool. */
+  const retitles = createRetitles({
+    dir: () => workplan.planDir(),
+    ids: () => manager.ids(),
+    rename: (id, title) => renameConversation(id, title),
+    strip: (title) => marks.withoutMarks(title),
+    log,
+  });
+  subs.push(retitles, manager.onDidChange(() => retitles.opened()));
+  retitles.opened();
   /* What this window has open, for the other windows' listAllConversations(); rewritten a moment after it changes. */
   const windows = createWindowStates({ dir: path.join(paths.root(), 'windows'), list: () => link.conversations(), log });
   let stateSoon = null;

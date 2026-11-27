@@ -88,7 +88,10 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     try {
       const p = workplan.installPlugin();
       const s = workplan.installScripts({ source: path.join(extensionPath, 'opencode-plugin', workplan.PLUGIN_ID, 'hooks') });
-      if (p.changed || s.changed.length) log(`work plan plugin copied to ${p.dir}${s.changed.length ? ` with ${s.changed.length} scripts` : ''}`);
+      const k = workplan.installSkills({ source: path.join(extensionPath, 'opencode-plugin', 'skills') });
+      if (p.changed || s.changed.length || k.changed.length) {
+        log(`work plan plugin copied to ${p.dir}${s.changed.length ? ` with ${s.changed.length} scripts` : ''}${k.changed.length ? `, skills ${k.changed.join(', ')}` : ''}`);
+      }
       installProblem = null;
     } catch (e) {
       installProblem = { step: 'Copying the work plan plugin', said: e.message };

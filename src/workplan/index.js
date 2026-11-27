@@ -42,6 +42,11 @@ function pluginDir(root = paths.root()) {
   return path.join(root, 'opencode-plugin', PLUGIN_ID);
 }
 
+/* The skills' folder beside the plugin, one <name>/SKILL.md each, which the plugin reads (set_title's description). */
+function skillsDir(root = paths.root()) {
+  return path.join(root, 'opencode-plugin', 'skills');
+}
+
 /* The shared scripts' folder beside the plugin: what OPENCODE_AGENT_PLUS_HOOKS_DIR names. */
 function scriptsDir(root = paths.root()) {
   return path.join(pluginDir(root), 'hooks');
@@ -84,6 +89,18 @@ function installScripts({ root = paths.root(), source }) {
     const from = path.join(source, name);
     if (!name.endsWith('.py') || !fs.statSync(from).isFile()) continue;
     if (writeIfDifferent(path.join(dir, name), fs.readFileSync(from))) changed.push(name);
+  }
+  return { dir, changed };
+}
+
+/* Copies every <name>/SKILL.md in `source` into skillsDir(root). Returns { dir, changed: [names written] }. */
+function installSkills({ root = paths.root(), source }) {
+  const dir = skillsDir(root);
+  const changed = [];
+  for (const name of fs.readdirSync(source).sort()) {
+    const from = path.join(source, name, 'SKILL.md');
+    if (!fs.existsSync(from)) continue;
+    if (writeIfDifferent(path.join(dir, name, 'SKILL.md'), fs.readFileSync(from))) changed.push(name);
   }
   return { dir, changed };
 }
@@ -207,8 +224,10 @@ module.exports = {
   sourceFile,
   pluginDir,
   scriptsDir,
+  skillsDir,
   installPlugin,
   installScripts,
+  installSkills,
   configFor,
   pluginEnv,
   support,

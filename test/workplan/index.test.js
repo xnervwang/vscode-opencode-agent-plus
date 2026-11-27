@@ -133,3 +133,17 @@ test('planDir is paths.plansDir(); planPath names a plan by an OpenCode session 
     if (saved === undefined) delete process.env.OPENCODE_AGENT_PLUS_HOME; else process.env.OPENCODE_AGENT_PLUS_HOME = saved;
   }
 });
+
+test('installSkills copies each <name>/SKILL.md beside the plugin and rewrites only what changed', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'na-skills-'));
+  const source = path.join(root, 'src');
+  fs.mkdirSync(path.join(source, 'retitle'), { recursive: true });
+  fs.mkdirSync(path.join(source, 'empty'), { recursive: true });
+  fs.writeFileSync(path.join(source, 'retitle', 'SKILL.md'), '# Retitle\n');
+  const first = workplan.installSkills({ root, source });
+  assert.deepEqual([first.dir, first.changed], [workplan.skillsDir(root), ['retitle']]);
+  assert.equal(fs.readFileSync(path.join(workplan.skillsDir(root), 'retitle', 'SKILL.md'), 'utf8'), '# Retitle\n');
+  assert.deepEqual(workplan.installSkills({ root, source }).changed, [], 'nothing rewritten when it is the same');
+  assert.ok(!fs.existsSync(path.join(workplan.skillsDir(root), 'empty')), 'a folder without a SKILL.md is not copied');
+  assert.ok(fs.existsSync(path.join(__dirname, '..', '..', 'opencode-plugin', 'skills', 'retitle', 'SKILL.md')), 'the extension ships the retitle skill');
+});

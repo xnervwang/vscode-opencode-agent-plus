@@ -19,7 +19,8 @@
  *                changes
  *   compaction   the same, plus the plan file, in the summary request
  *   tools        set_row, add_row, set_summary, set_status, each one run of plan-row.py; steward_handoff too while a session
- *                this instance has seen has a steward
+ *                this instance has seen has a steward; set_title, plans on or off, which writes a retitle request for the
+ *                extension (Agent Plus docs/protocol.md "Retitle requests") and waits for its answer
  *   steward      while <plans>/<session id>.steward.json exists (the extension writes it, with every steward in Claude Code
  *                Plus that looks after the conversation), each turn's text also names them; steward_handoff writes
  *                <session id>.handoff-<key>.json there, which the extension sends to one of them with Agent Plus's
@@ -30,7 +31,8 @@
  * Environment: OPENCODE_AGENT_PLUS_HOOKS_DIR (the scripts), OPENCODE_AGENT_PLUS_HOME (plans are in its plans/, ~/.opencode-agent-plus by default),
  * OPENCODE_AGENT_PLUS_PLAN_NUDGE ("note", the default, keeps the reminder for the next turn; "resume" also runs a turn for it;
  * "off"), OPENCODE_AGENT_PLUS_PLAN_LOG (a file to append a JSON line to for each thing done, for tests),
- * OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS (for tests: a wait for steward_handoff shorter than its usual 45000 ms).
+ * OPENCODE_AGENT_PLUS_HANDOFF_WAIT_MS (for tests: a wait for steward_handoff shorter than its usual 45000 ms),
+ * OPENCODE_AGENT_PLUS_RETITLE_WAIT_MS (for tests: each of set_title's two waits, shorter than its usual 15000 and 10000 ms).
  */
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -272,6 +274,89 @@ const HANDOFF_POLL_MS = 250;
 const NO_STEWARD = 'This conversation has no supervisor.';
 const LEAVE_IT = ' Say in your reply where it seems to belong, so the user decides.';
 
+/* set_title: the conversation asks the window hosting it for a title of its own, in the request and answer files of
+   Agent Plus's docs/protocol.md "Retitle requests" (plan_common.request_retitle on the Python side). The extension
+   (src/host/retitle.js) takes the request only for a conversation open in its window whose own set_title call it saw
+   with the same title. */
+/* The shared retitle skill (copied beside the plugin as ../skills/retitle/SKILL.md) is the tool's description: OpenCode
+   sends a tool's description with every request, which a skill of this plugin's could not be counted on to reach. The
+   frontmatter, the source line and the section on how to call it are left out. */
+function titleGuide() {
+  let text = '';
+  try { text = fs.readFileSync(path.join(__dirname, '..', 'skills', 'retitle', 'SKILL.md'), 'utf8'); } catch (_) { return ''; }
+  return text.replace(/^---\n[\s\S]*?\n---\n/, '').replace(/^<!--[^\n]*-->\n/m, '')
+    .replace(/\n## How to rename\n[\s\S]*?(?=\n## )/, '\n').trim();
+}
+const TITLE_TOOL = {
+  name: 'set_title',
+  description: ("Rename this conversation: the title shown on its tab and in Agent Plus's conversation list. "
+    + 'It returns whether the title was changed; do not call it again for the same title.\n\n' + titleGuide()).trim(),
+  input: { type: 'object', required: ['title'], additionalProperties: false, properties: {
+    title: { type: 'string', description: "The new title, in the conversation's language, under 40 characters where it can be." } } },
+};
+const RETITLE_DIR = 'retitle';
+const RETITLE_MAX_CHARS = 500;
+const RETITLE_WAIT_MS = 15000;
+const RETITLE_CLAIMED_WAIT_MS = 10000;
+/* For tests: waits shorter than the usual ones. */
+const retitleWaits = () => {
+  const n = Number(process.env.OPENCODE_AGENT_PLUS_RETITLE_WAIT_MS);
+  return Number.isInteger(n) && n > 0 && n < RETITLE_WAIT_MS ? [n, n] : [RETITLE_WAIT_MS, RETITLE_CLAIMED_WAIT_MS];
+};
+const RETITLE_POLL_MS = 200;
+
+async function retitle(sessionID, input, context) {
+  if (!SESSION.test(String(sessionID || ''))) return `Not renamed: this conversation's id (${sessionID}) is not an OpenCode session id.`;
+  const title = input && typeof input.title === 'string' ? input.title : '';
+  if (!title.trim()) return 'Not renamed: the title is empty.';
+  if (title.length > RETITLE_MAX_CHARS) return `Not renamed: the title is longer than ${RETITLE_MAX_CHARS} characters.`;
+  const dir = path.join(plansDir(), RETITLE_DIR);
+  const key = `${Date.now().toString(16)}${Math.random().toString(36).slice(2, 10)}`.replace(/[^0-9a-z]/g, '').slice(0, 40);
+  const request = path.join(dir, `${key}.json`), answer = path.join(dir, `${key}.result.json`);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(`${request}.${process.pid}.tmp`, JSON.stringify({ format: 1, key, agent: 'OpenCode', sessionId: sessionID, title, at: Date.now(), via: 'tool' }), { mode: 0o600 });
+    fs.renameSync(`${request}.${process.pid}.tmp`, request);
+  } catch (e) {
+    try { fs.unlinkSync(`${request}.${process.pid}.tmp`); } catch (_) { /* never written */ }
+    return `Not renamed: the request could not be written (${String(e && e.message || e)}).`;
+  }
+  const signal = context && context.abort && typeof context.abort.aborted === 'boolean' ? context.abort : null;
+  const read = () => {
+    let r = null;
+    try { r = JSON.parse(fs.readFileSync(answer, 'utf8')); } catch (_) { return null; }
+    try { fs.unlinkSync(answer); } catch (_) { /* gone */ }
+    return r && typeof r === 'object' ? r : {};
+  };
+  const said = (r) => {
+    log('retitle', { sessionID, outcome: r.outcome, reason: r.reason });
+    if (r.outcome === 'done') return `Renamed: the conversation is now titled ${JSON.stringify(String(r.title || ''))}.`;
+    return `Not renamed: ${String(r.reason || r.outcome || 'no reason was given')}.`;
+  };
+  const [wait, claimedWait] = retitleWaits();
+  const until = async (ms) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end && !(signal && signal.aborted)) {
+      const r = read();
+      if (r) return r;
+      await sleepMs(RETITLE_POLL_MS);
+    }
+    return null;
+  };
+  const first = await until(wait);
+  if (first) return said(first);
+  let untaken = false;
+  try { fs.renameSync(request, path.join(dir, `${key}.withdrawn`)); untaken = true; fs.unlinkSync(path.join(dir, `${key}.withdrawn`)); } catch (_) { /* taken, or gone */ }
+  if (untaken) {
+    log('retitle', { sessionID, outcome: 'untaken' });
+    return `Not renamed: no VS Code window took the request within ${Math.round(wait / 1000)} seconds.`;
+  }
+  const late = await until(claimedWait);
+  if (late) return said(late);
+  log('retitle', { sessionID, outcome: 'unclear' });
+  return `Unclear whether it was renamed: a VS Code window took the request but gave no answer within ${Math.round((wait + claimedWait) / 1000)} seconds.`;
+}
+
 const usable = (s) => !!s && typeof s === 'object' && typeof s.sourceId === 'string' && !!s.sourceId && typeof s.sessionId === 'string' && !!s.sessionId;
 const titleOf = (t) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE) : '');
 
@@ -477,7 +562,7 @@ async function setup(ctx) {
   const windows = new Map();
   const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE) ? process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE : 'note');
 
-  /* The tools are registered while plans are on and withdrawn while they are off. steward_handoff is in the set only
+  /* The plan tools are registered while plans are on and withdrawn while they are off; set_title stays. steward_handoff is in the set only
      while some session seen here has a steward file, so that its description is sent only while a session can use it.
      A change applies to the requests made after it and registers the whole set again. */
   let tools = null;
@@ -487,7 +572,8 @@ async function setup(ctx) {
     toolsBusy = toolsBusy.then(async () => {
       const on = enabled();
       const watched = on && state.ids().some(hasSteward);
-      const want = on ? (watched ? 'plan+steward' : 'plan') : '';
+      /* set_title is there whether or not plans are on. */
+      const want = on ? (watched ? 'plan+steward+title' : 'plan+title') : 'title';
       const canAdd = !!ctx.tool && typeof ctx.tool.transform === 'function';
       if (want === toolsSet || (want && !canAdd && !tools)) return;
       if (tools) {
@@ -498,10 +584,12 @@ async function setup(ctx) {
       }
       if (want && canAdd) {
         tools = await ctx.tool.transform((editor) => {
-          for (const t of TOOLS) {
+          for (const t of on ? TOOLS : []) {
             editor.add({ name: t.name, description: t.description, input: t.input, options: { codemode: false },
               execute: async (input, context) => ({ content: await runTool(t, context && context.sessionID, input) }) });
           }
+          editor.add({ name: TITLE_TOOL.name, description: TITLE_TOOL.description, input: TITLE_TOOL.input, options: { codemode: false },
+            execute: async (input, context) => ({ content: await retitle(context && context.sessionID, input, context) }) });
           if (watched) {
             editor.add({ name: STEWARD_TOOL.name, description: STEWARD_TOOL.description, input: STEWARD_TOOL.input, options: { codemode: false },
               execute: async (input, context) => ({ content: await handoff(context && context.sessionID, input, context) }) });
@@ -509,7 +597,7 @@ async function setup(ctx) {
         });
         toolsSet = want;
       }
-      log('tools', { registered: !!tools, steward: !!tools && watched });
+      log('tools', { registered: !!tools, plan: !!tools && on, steward: !!tools && watched });
     }).catch((e) => log('tools-error', { error: String(e && e.message || e) }));
     return toolsBusy;
   };
