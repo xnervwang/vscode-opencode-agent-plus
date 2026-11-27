@@ -1,0 +1,140 @@
+# BSD 3-Clause License
+# Copyright (c) 2026, Xnerv Wang
+# All rights reserved.
+
+# OpenCode ships often, and every other check here runs against the version src/opencode/download.js pins. This one
+# runs what the extension does with OpenCode against the newest OpenCode on npm once a day, on each system, so that a
+# release which breaks the extension is known before users update to it, and opens one issue for each such version.
+name: opencode check
+
+on:
+  schedule:
+    # 11:23 UTC. Off the hour, when the scheduler is busiest, and apart from against-latest.yml's 10:47.
+    - cron: '23 11 * * *'
+  push:
+    # Try a change to this workflow on a ci/ branch first; such a run opens no issue.
+    branches: ['ci/**']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: An OpenCode version to check instead of the newest on npm
+        type: string
+        default: ''
+      dry_run:
+        description: Write the issue it would open into the log instead of opening it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.newest.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Pick the OpenCode version
+        id: newest
+        shell: bash
+        env:
+          ASKED: ${{ inputs.version }}
+        run: |
+          set -o pipefail
+          v=$(node build/latest-check.js --resolve ${ASKED:+--version "$ASKED"} | tail -n 1)
+          echo "OpenCode $v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Run the extension's OpenCode checks against it
+        id: run
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          code=0
+          node build/latest-check.js --version "$VERSION" > report.txt 2>&1 || code=$?
+          # build/npm-check.js exits 1 for any failure, so its last line goes in as one failed check.
+          npm=0
+          { echo; echo "npm install -g @opencode/cli@$VERSION, as the install hint has users do:"; } >> report.txt
+          node build/npm-check.js --version "$VERSION" > npm.txt 2>&1 || npm=$?
+          cat npm.txt >> report.txt
+          if [ "$npm" != 0 ]; then
+            echo "FAIL npm: $(grep -v '^\s*$' npm.txt | tail -n 1)" >> report.txt
+            if [ "$code" = 0 ]; then code=1; fi
+          fi
+          cat report.txt
+          echo "$code" > code.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: report-${{ matrix.os }}
+          path: |
+            report.txt
+            code.txt
+          retention-days: 30
+
+  report:
+    needs: [version, check]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: reports
+      - name: Put the reports in the run summary
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          {
+            echo "## OpenCode $VERSION"
+            for d in reports/report-*; do
+              [ -d "$d" ] || continue
+              echo "### ${d#reports/report-}: exit $(cat "$d/code.txt" 2>/dev/null || echo '?')"
+              echo '```'
+              cat "$d/report.txt" 2>/dev/null || echo 'no report'
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Open an issue for a version that failed a check
+        uses: actions/github-script@v9
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          DRY_RUN: ${{ github.event_name == 'push' || inputs.dry_run }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const dir = path.join(process.env.GITHUB_WORKSPACE, 'reports');
+            const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch (_) { return ''; } };
+            const reports = (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter((n) => n.startsWith('report-')).map((n) => ({
+              os: n.slice('report-'.length), code: Number(read(path.join(dir, n, 'code.txt')).trim() || 2), text: read(path.join(dir, n, 'report.txt')),
+            }));
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { file } = require(path.join(process.env.GITHUB_WORKSPACE, 'build', 'latest-issue.js'));
+            const done = await file({ github, context, core, version: process.env.VERSION, reports, runUrl, dryRun: process.env.DRY_RUN === 'true' });
+            core.info(`issue: ${done}`);

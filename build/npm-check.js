@@ -4,10 +4,11 @@
 
 'use strict';
 /*
- * node build/npm-check.js [--prefix <folder>]
+ * node build/npm-check.js [--prefix <folder>] [--version <v>]
  *
  * Installs OpenCode the way the extension's install hint tells users to, `npm install -g @opencode/cli`, at the version
- * src/opencode/download.js pins, into a separate npm prefix. On Windows npm installs opencode.cmd, which Node does not
+ * src/opencode/download.js pins or at --version (the daily check, .github/workflows/opencode-check.yml, gives the newest),
+ * into a separate npm prefix. On Windows npm installs opencode.cmd, which Node does not
  * start without a shell, so this checks that the extension's findOpenCode reads npm's launcher and starts the
  * opencode.exe behind it. CI runs this script on Linux, macOS and Windows.
  */
@@ -19,6 +20,8 @@ const path = require('path');
 const args = process.argv.slice(2);
 const at = args.indexOf('--prefix');
 const given = at >= 0 ? path.resolve(args[at + 1] || '') : '';
+const asked = args.indexOf('--version');
+const VERSION = asked >= 0 ? String(args[asked + 1] || '').replace(/^v/, '') : '';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-agent-plus-npm-'));
 for (const name of ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_CACHE_HOME']) {
   process.env[name] = path.join(root, 'xdg', name.toLowerCase());
@@ -28,6 +31,7 @@ process.env.OPENCODE_AGENT_PLUS_HOME = path.join(root, 'agent');
 process.env.OPENCODE_DISABLE_AUTOUPDATE = '1';
 
 const download = require('../src/opencode/download');
+const version = VERSION || download.VERSION;
 const server = require('../src/opencode/server');
 const { createOpenCode } = require('../src/opencode');
 
@@ -64,7 +68,7 @@ function npm() {
 }
 
 (async () => {
-  const pkg = `@opencode/cli@${download.VERSION}`;
+  const pkg = `@opencode/cli@${version}`;
   const [cmd, ...pre] = npm();
   console.log(`npm install -g ${pkg} into ${prefix}`);
   const started = Date.now();
@@ -87,7 +91,7 @@ function npm() {
     check(fs.existsSync(path.join(prefix, 'opencode.cmd')), `npm left no opencode.cmd in ${prefix}.`);
     check(/\.exe$/i.test(found.path), 'On Windows findOpenCode should return the opencode.exe that opencode.cmd runs.');
   }
-  check(found.version && found.version.text === download.VERSION, `--version did not report ${download.VERSION}.`);
+  check(found.version && found.version.text === version, `--version did not report ${version}.`);
 
   const t0 = Date.now();
   const info = await oc.start();
