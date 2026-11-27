@@ -261,7 +261,7 @@ Click the pen at the end of any row in the Work plan view to bring the plan's co
 
 ### Claude Code Plus Supervisors
 
-To assign a supervisor, bring a Claude Code conversation to the front in Claude Code Plus. In the Supervisor panel at the bottom of the VS Code window, beside Problems, Output and Terminal, tick the conversations you want that conversation to look after. You can tick an OpenCode Agent Plus conversation there. The conversation in front becomes their supervisor. Earlier versions called a supervisor a steward, and the tool below keeps that name.
+To assign a supervisor, bring a Claude Code conversation to the front in Claude Code Plus. In the Supervisor panel at the bottom of the VS Code window, beside Problems, Output and Terminal, tick the conversations you want that conversation to look after. You can tick an OpenCode Agent Plus conversation there. The conversation in front becomes their supervisor. Steward is the old name for a supervisor, and the tool below still uses it.
 
 While an OpenCode Agent Plus conversation has a supervisor and [Token Mode](#token-mode) has work plans turned on, its model can use `steward_handoff` to pass the supervisor a request that belongs in another conversation. Under those same conditions, each message the conversation sends to the model includes a note that a supervisor is watching. The note and the tool need Agent Plus 1.6.0 or later and a Claude Code Plus release later than 1.5.0.
 
