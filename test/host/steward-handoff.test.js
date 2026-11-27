@@ -285,7 +285,7 @@ test('the signed first line of a message names its supervisor the way Claude Cod
   assert.strictEqual(senderOf(SIGNED(NIGHT, 'body')), NIGHT.sessionId);
   assert.strictEqual(senderOf(`Sent by the steward (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'steward, untitled');
   assert.strictEqual(senderOf(`Sent by the steward "Night steward" (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'steward, titled');
-  assert.strictEqual(senderOf(`sent by the SUPERVISOR (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'the word in any case');
+  assert.strictEqual(senderOf(`sent by the SUPERVISOR (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'supervisor, mixed case');
   assert.strictEqual(senderOf(`Sent by the manager (${NIGHT.sessionId}) for the user:\nbody`), '', 'another word');
   assert.strictEqual(senderOf(`  \r\nSent by the steward "A \\"quoted\\" one" (${NIGHT.sessionId.toUpperCase()}) for the user:  \r\nbody`), NIGHT.sessionId,
     'leading blank lines, trailing spaces, upper case');
