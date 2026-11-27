@@ -281,7 +281,7 @@ test("with 'stewardList' the steward file lists every steward with its title, th
   } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('the signed first line of a message names its supervisor the way Claude Code Plus reads it, whether it says supervisor or steward', () => {
+test('the signed first line of a message names its supervisor the way Claude Code Plus reads it', () => {
   assert.strictEqual(senderOf(SIGNED(NIGHT, 'body')), NIGHT.sessionId);
   assert.strictEqual(senderOf(`Sent by the steward (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'steward, untitled');
   assert.strictEqual(senderOf(`Sent by the steward "Night steward" (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'steward, titled');
