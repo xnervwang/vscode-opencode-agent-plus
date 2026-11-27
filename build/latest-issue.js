@@ -9,7 +9,7 @@
  * opens one; a check that could not run (exit 2) says nothing about OpenCode, and filing it would put an untrue claim
  * in the tracker.
  *
- * The check closes that issue itself: the first run in which every check held on every system leaves a comment naming
+ * The check closes that issue itself: the first run in which every check passed on every system leaves a comment naming
  * the commit it ran on and closes it. A version that fails again after that has its issue reopened, with the lines
  * that failed this time.
  *
@@ -30,7 +30,7 @@ function issueFor({ version, reports, runUrl }) {
   if (quoted.length > LIMIT) quoted = quoted.slice(0, LIMIT) + '\n... cut here; the run summary has every line';
   const ok = (reports || []).filter((r) => Number(r.code) === 0).map((r) => r.os);
   const body = [
-    `The daily check tested OpenCode **${v}** and failed on ${bad.map((r) => r.os).join(', ')}${ok.length ? ` (it held on ${ok.join(', ')})` : ''}.`,
+    `The daily check tested OpenCode **${v}** and failed on ${bad.map((r) => r.os).join(', ')}${ok.length ? ` (it passed on ${ok.join(', ')})` : ''}.`,
     'Archive failures apply to the extension\'s download only if `src/opencode/download.js` pins this version; other failures describe',
     'what happens when the extension uses this version on the system that reported them.',
     '',

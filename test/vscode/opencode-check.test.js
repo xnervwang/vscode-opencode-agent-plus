@@ -36,7 +36,7 @@ test('the issue for a failed check names the version and quotes the failing line
   ] });
   assert.strictEqual(got.title, 'OpenCode 2.5.0 failed the daily check');
   assert.match(got.body, /OpenCode \*\*2\.5\.0\*\*/);
-  assert.match(got.body, /failed on ubuntu-latest \(it held on windows-latest\)/);
+  assert.match(got.body, /failed on ubuntu-latest \(it passed on windows-latest\)/);
   assert.match(got.body, /#### ubuntu-latest\n\n```\nFAIL it does not say it can fork conversations/);
   assert.ok(!got.body.includes('ok   the release has'), 'an ok line is not quoted');
   assert.ok(!got.body.includes('#### macos-latest'), 'a system that could not run the check is not listed among the failures');
@@ -44,7 +44,7 @@ test('the issue for a failed check names the version and quotes the failing line
   assert.match(got.body, /node build\/latest-check\.js --version 2\.5\.0/);
 });
 
-test('no issue when each system either held or could not run', () => {
+test('no issue when each system either passed or could not run', () => {
   assert.strictEqual(issue.issueFor({ version: '2.5.0', runUrl: RUN, reports: [{ os: 'ubuntu-latest', code: 0, text: '' }, { os: 'macos-latest', code: 2, text: '' }] }), null);
 });
 

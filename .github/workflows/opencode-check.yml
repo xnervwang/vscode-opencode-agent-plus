@@ -5,7 +5,7 @@
 # OpenCode ships often, and every other check here runs against the version src/opencode/download.js pins. This one
 # runs the extension's OpenCode checks against the newest OpenCode on npm once a day, on each system, so that a
 # release which breaks the extension is known before users update to it. It opens one issue per failing version and
-# closes it, naming the commit, on the first run in which every check holds again on every system.
+# closes it, naming the commit, on the first run in which every check passes again on every system.
 name: opencode check
 
 on:
