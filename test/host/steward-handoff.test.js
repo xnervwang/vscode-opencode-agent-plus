@@ -281,10 +281,10 @@ test("with 'stewardList' the steward file lists every steward with its title, th
   } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('the signed first line of a message names its supervisor the way Claude Code Plus reads it, with either word', () => {
+test('the signed first line of a message names its supervisor the way Claude Code Plus reads it, whether it says supervisor or steward', () => {
   assert.strictEqual(senderOf(SIGNED(NIGHT, 'body')), NIGHT.sessionId);
-  assert.strictEqual(senderOf(`Sent by the steward (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'untitled, with the word steward');
-  assert.strictEqual(senderOf(`Sent by the steward "Night steward" (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'titled, with the word steward');
+  assert.strictEqual(senderOf(`Sent by the steward (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'steward, untitled');
+  assert.strictEqual(senderOf(`Sent by the steward "Night steward" (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'steward, titled');
   assert.strictEqual(senderOf(`sent by the SUPERVISOR (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'the word in any case');
   assert.strictEqual(senderOf(`Sent by the manager (${NIGHT.sessionId}) for the user:\nbody`), '', 'another word');
   assert.strictEqual(senderOf(`  \r\nSent by the steward "A \\"quoted\\" one" (${NIGHT.sessionId.toUpperCase()}) for the user:  \r\nbody`), NIGHT.sessionId,

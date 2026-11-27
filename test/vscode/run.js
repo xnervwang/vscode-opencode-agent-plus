@@ -1080,7 +1080,7 @@ async function main() {
                of theme, at a narrow width and with a bubble's list open; Agent Plus's status bar entry, which then says a
                conversation needs the user, is shot on a dark, a light and a blue status bar. */
             if (!real) {
-              /* Asked after the user's last message, so Agent Plus counts the conversation as needing the user. */
+              /* Agent Plus says a conversation needs the user only for a question asked after the user's last message. */
               const asked = new Date().toISOString();
               gapCi.writePlan(planFile, [{ title: 'list the files', state: 'doing' },
                 { title: 'Wait for the build', state: 'waiting', waitingOn: 'build' },

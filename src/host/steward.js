@@ -42,8 +42,8 @@ const STALE_MS = 10000;
 /* The plugin's tool waits 45 seconds at most, so a result older than this has no reader left. */
 const ORPHAN_MS = 120000;
 const NO_TITLE = 'New conversation';
-/* The line Claude Code Plus puts first in each message a steward sends (its src/stewards.js FROM). Its builds write
-   "supervisor" or "steward" there, and both are read. */
+/* The line Claude Code Plus puts first in each message a steward sends (its src/stewards.js FROM). Older releases
+   write "steward" there and newer ones "supervisor". */
 const FROM = /^Sent by the (?:supervisor|steward) (?:"(.*)" )?\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\) for the user:[ \t]*$/i;
 const FIRST_LINE_CHARS = 1000;
 /* How many conversations keep their latest message; past it, the oldest is dropped. */
