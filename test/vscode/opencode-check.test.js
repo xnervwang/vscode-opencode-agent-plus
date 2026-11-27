@@ -28,16 +28,16 @@ test('the workflow runs daily on three systems, and only its last job can write 
   assert.match(YML, /^permissions:\s*\n\s*contents: read\s*\n\s*\njobs:/m);
 });
 
-test('a failed check opens an issue named after the version, quoting the failing lines of each system and linking the run', () => {
+test('the issue for a failed check names the version and quotes the failing lines of each system', () => {
   const got = issue.issueFor({ version: '2.5.0', runUrl: RUN, reports: [
-    { os: 'ubuntu-latest', code: 1, text: report(['ok   the release has opencode-linux-x64-baseline.tar.gz', 'FAIL it no longer says it can fork conversations (sessionCapabilities.fork)']) },
-    { os: 'windows-latest', code: 0, text: 'Every check held.' },
+    { os: 'ubuntu-latest', code: 1, text: report(['ok   the release has opencode-linux-x64-baseline.tar.gz', 'FAIL it does not say it can fork conversations: no sessionCapabilities.fork']) },
+    { os: 'windows-latest', code: 0, text: 'Every check passed.' },
     { os: 'macos-latest', code: 2, text: 'could not run: npm answered 503' },
   ] });
   assert.strictEqual(got.title, 'OpenCode 2.5.0 failed the daily check');
   assert.match(got.body, /OpenCode \*\*2\.5\.0\*\*/);
   assert.match(got.body, /failed on ubuntu-latest \(it held on windows-latest\)/);
-  assert.match(got.body, /#### ubuntu-latest\n\n```\nFAIL it no longer says it can fork conversations/);
+  assert.match(got.body, /#### ubuntu-latest\n\n```\nFAIL it does not say it can fork conversations/);
   assert.ok(!got.body.includes('ok   the release has'), 'only the failing lines are quoted');
   assert.ok(!got.body.includes('#### macos-latest'), 'a system where the check could not run is not reported as failing');
   assert.ok(got.body.includes(`(${RUN})`));
@@ -66,7 +66,7 @@ const context = { repo: { owner: 'o', repo: 'r' } };
 const core = { info: () => {} };
 const TITLE = 'OpenCode 2.5.0 failed the daily check';
 const failedOn = [{ os: 'ubuntu-latest', code: 1, text: 'FAIL something' }, { os: 'macos-latest', code: 0, text: '' }];
-const heldOn = ['ubuntu-latest', 'macos-latest', 'windows-latest'].map((os) => ({ os, code: 0, text: 'Every check held.' }));
+const heldOn = ['ubuntu-latest', 'macos-latest', 'windows-latest'].map((os) => ({ os, code: 0, text: 'Every check passed.' }));
 const settle = (issues, reports, more = {}) => {
   const github = fakeGithub(issues);
   return issue.settle({ github, context, core, version: '2.5.0', reports, runUrl: RUN, sha: 'abc1234', ...more }).then((done) => [done, github.writes.filter((w) => w[0] !== 'list')]);
@@ -81,7 +81,7 @@ test('a failed check opens one issue per version, and no second one while it is 
     'a pull request with that title is not the issue');
 });
 
-test('the first run in which every system held closes the version\'s open issue, saying the commit it passed on', async () => {
+test('the first run in which every system passes closes the version\'s open issue, with a comment naming the commit', async () => {
   const [done, writes] = await settle([{ number: 7, title: TITLE, state: 'open' }], heldOn);
   assert.strictEqual(done, 'closed');
   assert.deepStrictEqual(writes, [['comment', 7, `The check passed on abc1234 against OpenCode 2.5.0: [the run](${RUN}).`], ['update', 7, 'closed', 'completed']]);

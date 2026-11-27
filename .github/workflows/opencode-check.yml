@@ -13,7 +13,7 @@ on:
     # 11:23 UTC. Off the hour, when the scheduler is busiest, and apart from against-latest.yml's 10:47.
     - cron: '23 11 * * *'
   push:
-    # Try a change to this workflow on a ci/ branch first; such a run opens no issue.
+    # A push to a ci/ branch runs it without opening or closing any issue, to try a change to this workflow first.
     branches: ['ci/**']
   workflow_dispatch:
     inputs:
@@ -22,7 +22,7 @@ on:
         type: string
         default: ''
       dry_run:
-        description: Write the issue it would open into the log instead of opening it
+        description: Log what it would do to the issue, without doing it
         type: boolean
         default: false
 

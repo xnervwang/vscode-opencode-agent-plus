@@ -198,7 +198,7 @@ function createSessionSource(deps) {
     const m = typeof deps.models === 'function' ? deps.models() || {} : {};
     if (missing) return { label: 'OpenCode', value: 'Not found', tooltip: 'Install OpenCode 2, or set opencodeAgentPlus.opencode.path to the one you have' };
     if (m.listed && !m.count) return { label: 'Provider', value: 'No provider configured', tooltip: 'Connect one from the model picker in a chat tab' };
-    if (statsFailed) return { label: 'Usage', value: 'Not available', tooltip: 'OpenCode did not give its statistics; Show Logs says why' };
+    if (statsFailed) return { label: 'Usage', value: 'Not available', tooltip: 'OpenCode\'s statistics could not be read; Show Logs has the error' };
     return { label: 'Usage', value: account.at ? 'Nothing recorded today' : 'Reading' };
   }
 

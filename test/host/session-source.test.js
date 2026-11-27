@@ -269,7 +269,7 @@ test('Account & usage, given at once from the last reading: the provider and mod
   assert.deepEqual(none.rows.map((r) => r.label), ['Today, all conversations']);
 });
 
-test('with nothing else to show, Account & usage still has OpenCode\'s part, whose one row says why', async () => {
+test('with nothing else to show, OpenCode\'s part of Account & usage keeps one row with the reason', async () => {
   const read = async (source) => {
     source.accountInfo({ sessionId: '' });
     for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 5));
@@ -286,7 +286,7 @@ test('with nothing else to show, Account & usage still has OpenCode\'s part, who
   assert.deepEqual(await read(lost), [['Provider', 'No provider configured']], 'once OpenCode is found, an empty model list means no provider is configured');
   assert.ok(told >= 2, 'the core is told each time the row changes');
   assert.deepEqual(await read(setup({ statsError: new Error('broken'), modelsState: { listed: true, count: 3 } }).source), [['Usage', 'Not available']],
-    'with providers but no statistics, the usage is not available');
+    'with providers but no statistics, the row says Not available');
   assert.deepEqual(await read(setup({ statsError: new Error('broken') }).source), [['Usage', 'Not available']], 'before the model list is read, the row says nothing about providers');
   assert.deepEqual(await read(setup({ modelsState: { listed: true, count: 0 } }).source), [['Today, all conversations', '$3.50']],
     'with today\'s cost, the part shows it as before');

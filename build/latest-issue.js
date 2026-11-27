@@ -84,7 +84,7 @@ async function settle({ github, context, core, version, reports, runUrl, sha, dr
     });
     return 'closed';
   }
-  core.info(passed(reports) ? 'every check held and no issue is open for this version' : 'no check failed, though not every system ran');
+  core.info(passed(reports) ? 'every check passed and no issue is open for this version' : 'no check failed, but some systems did not run');
   return 'none';
 }
 

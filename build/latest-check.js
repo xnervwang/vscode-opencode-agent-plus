@@ -14,7 +14,8 @@
  * GitHub marks the newest 1.x release as its latest while 2.x is the line in use. For that version the script downloads
  * this machine's archive from the GitHub release under the name download.js uses, checks its size and SHA-256 against
  * the release and unpacks it; then the extension's own code finds it, starts it and makes a conversation with it. None
- * of this asks a model anything, so a fork, which needs a message in the conversation, is checked as a capability only.
+ * of this asks a model anything. Forking needs a message in the conversation, so it is checked only as a stated
+ * capability.
  *
  * --resolve prints only the version it would check. Each failed check is a line starting "FAIL ". Exit 0 when every
  * check held, 1 when one did not, 2 when the check could not run (npm or GitHub unreachable, no such release), which
@@ -125,7 +126,7 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
     log: (line) => console.log(`     log: ${line}`),
   });
   let found;
-  try { found = oc.detect(); } catch (e) { fail(`findOpenCode did not take it: ${e.message}`); return finish(); }
+  try { found = oc.detect(); } catch (e) { fail(`findOpenCode failed: ${e.message}`); return finish(); }
   check(path.resolve(found.path) === path.resolve(exe), 'findOpenCode picks it', `findOpenCode picked ${found.path}`);
   check(!!found.version && found.version.text === version, `its --version is read as ${version}`, `its --version was read as ${JSON.stringify(found.version)}`);
 
@@ -136,7 +137,7 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
   const session = caps.sessionCapabilities || {};
   console.log(`     ACP answered in ${((Date.now() - t1) / 1000).toFixed(1)} s: ${JSON.stringify(info.agent)}; session capabilities `
     + `${Object.keys(session).join(', ') || 'none'}; prompt capabilities ${Object.keys(caps.promptCapabilities || {}).join(', ') || 'none'}`);
-  for (const c of ['list', 'fork', 'close']) check(!!session[c], `it says it can ${c} conversations`, `it no longer says it can ${c} conversations (sessionCapabilities.${c})`);
+  for (const c of ['list', 'fork', 'close']) check(!!session[c], `it says it can ${c} conversations`, `it does not say it can ${c} conversations: no sessionCapabilities.${c}`);
 
   const cwd = path.join(root, 'project');
   fs.mkdirSync(cwd, { recursive: true });
@@ -148,7 +149,7 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
       made.push(id);
       const listed = await oc.listSessions({ cwd });
       const ids = (Array.isArray(listed) ? listed : (listed && listed.sessions) || []).map((x) => x.sessionId || x.id);
-      check(ids.includes(id), 'and the list of the folder\'s conversations has it', `the folder's list did not have it: ${JSON.stringify(ids)}`);
+      check(ids.includes(id), 'the folder\'s conversation list has it', `the folder's list did not have it: ${JSON.stringify(ids)}`);
       if (oc.canRename()) { await oc.renameSession(id, 'Daily check'); ok('it renames the conversation'); }
     }
   } catch (e) { fail(`a conversation round trip failed: ${e.message}`); }
@@ -166,6 +167,6 @@ async function finish() {
   if (oc) { await oc.dispose().catch(() => {}); oc = null; }
   clearTimeout(watchdog);
   cleanUp();
-  console.log(failed ? `${failed} of the checks above failed.` : 'Every check held.');
+  console.log(failed ? `${failed} of the checks above failed.` : 'Every check passed.');
   process.exit(failed ? 1 : 0);
 }

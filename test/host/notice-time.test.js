@@ -4,9 +4,9 @@
 
 'use strict';
 /*
- * Every notification this extension shows starts with its time (src/shared/notice-time.js, a copy of Agent Plus's):
- * the source calls the wrappers rather than vscode.window's show…Message, which only a modal dialog, not a
- * notification, still calls; and the wrapper puts the time in the reader's zone once the extension has handed it over.
+ * Every notification this extension shows starts with its time. The source calls the wrappers in
+ * src/shared/notice-time.js, a copy of Agent Plus's, instead of vscode.window's show…Message; only a modal dialog
+ * still calls show…Message directly.
  */
 const test = require('node:test');
 const assert = require('node:assert');

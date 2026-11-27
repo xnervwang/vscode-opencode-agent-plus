@@ -1173,7 +1173,6 @@ async function main() {
               check(!!light && light.colours.waitingVsDiscussing >= 10, 'in the light theme the waiting and the discussing bubbles have clearly different tints', light && light.colours);
               check(looks.filter((l) => l.entry).length === 3 && looks.filter((l) => l.entry).every((l) => /rgba\(0, 0, 0, 0\)|transparent/.test(l.entry.background) && l.entry.contrast >= 4.5),
                 "Agent Plus's entry for a conversation that needs the user keeps the status bar's own colours and is readable on dark, light and blue status bars", looks.map((l) => [l.theme, l.entry]));
-              /* Narrow, the bar drops Plan and the arrow, and "to decide" keeps its number. */
               await chat.evaluate(() => { document.querySelector('[data-agent-plus-plan-bar]').style.maxWidth = '340px'; });
               const narrow = await until(async () => { const p = await parts(); return p && p.compact === '1' ? p : null; }, 10000);
               check(!!narrow && !narrow.plan && !narrow.chevron && narrow.bubbles.length === 4 && narrow.ask === '2',
