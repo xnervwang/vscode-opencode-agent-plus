@@ -38,7 +38,7 @@ test('the issue for a failed check names the version and quotes the failing line
   assert.match(got.body, /OpenCode \*\*2\.5\.0\*\*/);
   assert.match(got.body, /failed on ubuntu-latest \(it held on windows-latest\)/);
   assert.match(got.body, /#### ubuntu-latest\n\n```\nFAIL it does not say it can fork conversations/);
-  assert.ok(!got.body.includes('ok   the release has'), 'only the failing lines are quoted');
+  assert.ok(!got.body.includes('ok   the release has'), 'an ok line is not quoted');
   assert.ok(!got.body.includes('#### macos-latest'), 'a system where the check could not run is not reported as failing');
   assert.ok(got.body.includes(`(${RUN})`));
   assert.match(got.body, /node build\/latest-check\.js --version 2\.5\.0/);
@@ -94,7 +94,7 @@ test('a run where one system could not run the check closes nothing', async () =
   assert.deepStrictEqual(await settle([{ number: 7, title: TITLE, state: 'open' }], partly), ['none', []]);
 });
 
-test('a version that fails again after its issue was closed has it reopened, with the lines that failed this time', async () => {
+test('a version that fails again reopens its closed issue and quotes the new failing lines', async () => {
   const [done, writes] = await settle([{ number: 7, title: TITLE, state: 'closed' }], failedOn);
   assert.strictEqual(done, 'reopened');
   assert.deepStrictEqual(writes.map((w) => w.slice(0, 2)), [['comment', 7], ['update', 7]]);

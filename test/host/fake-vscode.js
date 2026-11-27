@@ -71,7 +71,7 @@ function create() {
   const state = { commands: [], handlers: {}, registered: [], said: [], answers: [], config: {}, configWrites: [], secrets: new Map(),
     picks: [], pickAnswer: null, inputs: [], inputAnswer: undefined, extensions: new Map(), context: {}, progress: [],
     editors: {}, trees: {}, log: [], closedTabs: [], treeProviders: {}, live: new Map(), unregistered: [], strictCommands: false, saves: 0 };
-  /* A notification is recorded without the time src/shared/notice-time.js puts before it, which is kept as `stamp`. */
+  /* Records each notification without the time src/shared/notice-time.js puts before it; the time goes in `stamp`. */
   const say = (kind) => async (raw, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
     const m = typeof raw === 'string' ? /^\[([^\]]+)\] /.exec(raw) : null;

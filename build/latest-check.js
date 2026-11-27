@@ -17,9 +17,9 @@
  * of this asks a model anything. Forking needs a message in the conversation, so it is checked only as a stated
  * capability.
  *
- * --resolve prints only the version it would check. Each failed check is a line starting "FAIL ". Exit 0 when every
- * check held, 1 when one did not, 2 when the check could not run (npm or GitHub unreachable, no such release), which
- * says nothing about OpenCode.
+ * --resolve prints only the version it would check. Each failed check is a line starting "FAIL ". The exit status is
+ * 0 when every check passed, 1 when one failed, and 2 when the check could not run at all (npm or GitHub unreachable,
+ * no such release).
  */
 const fs = require('fs');
 const https = require('https');
@@ -81,7 +81,7 @@ async function newest() {
   if (given) return given;
   const d = await getJson('https://registry.npmjs.org/@opencode%2Fcli');
   const v = d && d['dist-tags'] && d['dist-tags'].latest;
-  if (typeof v !== 'string' || !/^\d+\.\d+\.\d+/.test(v)) throw new Error('npm gave no latest version of @opencode/cli');
+  if (typeof v !== 'string' || !/^\d+\.\d+\.\d+/.test(v)) throw new Error('npm has no latest version of @opencode/cli');
   return v;
 }
 
@@ -109,7 +109,7 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
   console.log(`     downloaded ${got.bytes} bytes in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   check(got.bytes === a.size, `its size matches the release, ${a.size} bytes`, `${want.name} is ${got.bytes} bytes, the release says ${a.size}`);
   if (digest) check(got.sha256 === digest, 'its SHA-256 matches the release', `${want.name} has SHA-256 ${got.sha256}, the release gives ${digest}`);
-  else console.log('     the release gives no SHA-256 for it');
+  else console.log('     the release has no SHA-256 for it');
 
   const dir = path.join(root, 'unpacked');
   fs.mkdirSync(dir, { recursive: true });
@@ -128,7 +128,7 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
   let found;
   try { found = oc.detect(); } catch (e) { fail(`findOpenCode failed: ${e.message}`); return finish(); }
   check(path.resolve(found.path) === path.resolve(exe), 'findOpenCode picks it', `findOpenCode picked ${found.path}`);
-  check(!!found.version && found.version.text === version, `its --version is read as ${version}`, `its --version was read as ${JSON.stringify(found.version)}`);
+  check(!!found.version && found.version.text === version, `its --version says ${version}`, `its --version gave ${JSON.stringify(found.version)}`);
 
   let info;
   const t1 = Date.now();
