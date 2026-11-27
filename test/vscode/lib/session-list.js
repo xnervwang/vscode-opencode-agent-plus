@@ -8,8 +8,8 @@
  * that check the rows this extension's source (src/host/session-source.js) gives it and the actions it carries out, on
  * the fake backend:
  *
- *   rows       the conversations of the window's folder: the one open here with the solid stripe, those closed here in
- *              Recently closed and with the light blue stripe in Ungrouped, one without a message left out.
+ *   rows       the conversations of the window's folder: the one open here with the solid blue stripe, those closed here
+ *              in Recently closed and with the grey stripe in Ungrouped, one without a message left out.
  *   dots       each of the five, from what another VS Code window reports of its conversations (the window states
  *              src/host/window-states.js reads) and from the plans' questions; one open in that window is dimmed, and
  *              its hover names the window.
@@ -154,7 +154,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     if (!rows) return;
     const closed = rows.filter((r) => r.source === SOURCE && r.section === 'closed').map((r) => r.id);
     check(made.every((id) => closed.includes(id)) && made.every((id) => (h.find(rows, id, 'ungrouped') || {}).stripe === 'closed'),
-      'those closed here are in Recently closed too, and have the light blue stripe in Ungrouped', rows.filter((r) => made.includes(r.id)).map((r) => [r.title, r.section, r.stripe]));
+      'those closed here are in Recently closed too, and have the grey stripe in Ungrouped', rows.filter((r) => made.includes(r.id)).map((r) => [r.title, r.section, r.stripe]));
     const listed = (await ext('return api.test.source.listSessions({ folders: [arg] });', folder)) || { sessions: [] };
     const blank = listed.sessions.filter((s) => s.kind === 'empty').map((s) => s.sessionId);
     check(!blank.length || !rows.some((r) => blank.includes(r.id)), 'a conversation without a message is left out while background conversations are hidden', { blank });
@@ -184,7 +184,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     await h.collapse('Recently closed').catch(() => {});
     await h.away();
     await shot('06-sessions-dark', { features: ['session list', 'state dots', 'row stripes'],
-      expect: `Agent Plus's session list in the dark theme with OpenCode conversations in UNGROUPED, each row starting with the OpenCode mark (an upright rectangular frame whose lower inner half is fainter): "${T.green}" with a filled green dot at the logo's top right, "${T.ring}" with a hollow green ring, "${T.blue}" with a filled blue dot, "${T.red}" with a filled red dot, "${T.redRing}" with a hollow red ring. The conversation open here has a solid light stripe at its start; the four open in another window have an outlined stripe and greyed title and logo, their dots not greyed.`,
+      expect: `Agent Plus's session list in the dark theme with OpenCode conversations in UNGROUPED, each row starting with the OpenCode mark (an upright rectangular frame whose lower inner half is fainter): "${T.green}" with a filled green dot at the logo's top right, "${T.ring}" with a hollow green ring, "${T.blue}" with a filled blue dot, "${T.red}" with a filled red dot, "${T.redRing}" with a hollow red ring. The conversation open here has a solid dark blue stripe at its start and a blue tint behind it; the four open in another window have an outlined stripe and greyed title and logo, their dots not greyed.`,
       part: SIDEBAR });
     await shot('06a-sessions-elsewhere', { features: ['open elsewhere'],
       expect: `A close view of the list. The rows "${T.green}", "${T.ring}", "${T.blue}" and "${T.redRing}" stand out as open somewhere else at a glance: an outlined stripe at the row's start and a greyed title and logo, while "${T.red}" and the conversation open here are not greyed. Judge whether that mark is noticeable without being told to look for it.`,
@@ -297,7 +297,7 @@ async function run(ctx, { sessionId, folder, plans, home, setTheme }) {
     await h.expand('Recently closed');
     await h.away();
     await shot('06k-sessions-closed', { features: ['recently closed'],
-      expect: 'A RECENTLY CLOSED section with a clock icon near the top of the list, expanded, listing OpenCode conversations whose tabs closed in this window, the latest first, each with "closed now" or "closed Nm" at the right and a light blue stripe at its start; their rows in Ungrouped have that stripe too.',
+      expect: 'A RECENTLY CLOSED section with a clock icon near the top of the list, expanded, listing OpenCode conversations whose tabs closed in this window, the latest first, each with "closed now" or "closed Nm" at the right and a solid grey stripe at its start; their rows in Ungrouped have that stripe too.',
       part: SIDEBAR });
     await h.row(blue, 'closed').click();
     check(!!await until(async () => ((await h.frontId()) === blue) || null, 15000), 'a row of Recently closed opens that conversation again in a tab');

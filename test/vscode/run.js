@@ -1618,7 +1618,7 @@ async function main() {
             const both = slh.sl && forked && await slh.wait((r) => [sessionId, forked].every((id) => (slh.find(r, id, 'ungrouped') || {}).stripe === 'here'), 20000);
             check(!!both, "Agent Plus's session list has the conversation and its fork in Ungrouped, both open here with the solid stripe", both || (slh.sl && await slh.rows()));
             await shot('23-fork-rows', { features: ['fork', 'session list'],
-              expect: 'The editor shows the fork in a new tab (the same conversation); Agent Plus\'s session list in the side bar has the conversation and its fork in UNGROUPED, each starting with a solid light stripe and the OpenCode mark (an upright rectangular frame whose lower inner half is fainter).' });
+              expect: 'The editor shows the fork in a new tab (the same conversation); Agent Plus\'s session list in the side bar has the conversation and its fork in UNGROUPED, each starting with a solid dark blue stripe and the OpenCode mark (an upright rectangular frame whose lower inner half is fainter).' });
             if (forked) {
               await call('const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputCustom && t.input.uri.path.split("/")[1] === arg); await vscode.window.tabGroups.close(tabs); return true;', forked).catch(() => {});
               await sleep(1000);
@@ -1645,7 +1645,7 @@ async function main() {
             if (forked) {
               await slh.show();
               check(!!slh.sl && !!await slh.wait((r) => slh.find(r, forked, 'closed') && (slh.find(r, forked, 'ungrouped') || {}).stripe === 'closed', 15000),
-                "after its tab closes, the fork is in Agent Plus's Recently closed section and has the light blue stripe in Ungrouped", slh.sl && await slh.rows());
+                "after its tab closes, the fork is in Agent Plus's Recently closed section and has the grey stripe in Ungrouped", slh.sl && await slh.rows());
             }
           }
 
@@ -1757,7 +1757,7 @@ async function main() {
         check(!!mine, "Agent Plus's session list has the conversation in Ungrouped, open here", mine || (slh.sl && await slh.rows()));
         await page.mouse.move(5, 5);
         await shot('06-sessions', { features: ['session list'],
-          expect: 'Agent Plus\'s session list in the side bar: this conversation in UNGROUPED with a solid light stripe at its start, the OpenCode mark (an upright rectangular frame whose lower inner half is fainter) and its title, and a relative time at the right; above it a New bar and the chips All, Open, Running and Needs you.',
+          expect: 'Agent Plus\'s session list in the side bar: this conversation in UNGROUPED with a solid dark blue stripe at its start, the OpenCode mark (an upright rectangular frame whose lower inner half is fainter) and its title, and a relative time at the right; above it a New bar and the chips All, Open, Running and Needs you.',
           part: '#workbench\\.parts\\.sidebar' });
       }
     }
