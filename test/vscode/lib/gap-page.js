@@ -260,7 +260,7 @@ async function run(t) {
   await picture('g07-focus-view-dark', { features: ['focus view'], part: EDITOR,
     expect: 'Focus view is on: the conversation shows only your messages (boxes with a bar down the left) and one reply row under each, the last of its turn, with its time (followed by the turn\'s figures, if any); no tool rows, thinking rows or todo list. The eye button under the message box shows as pressed. A message of yours may be pinned over the top row.' });
   await chat.click('#focusBtn');
-  await chat.hover('#title').catch(() => {});
+  await chat.hover('#log').catch(() => {});
   const off = await until(async () => { const f = await focusOf(); return !f.on && (await read('focusView')) === false ? f : null; }, 10000);
   check(!!off && off.tools === before.tools && off.pressed === 'false', "the Focus button under the message box turns it off again, and the setting follows", off);
 

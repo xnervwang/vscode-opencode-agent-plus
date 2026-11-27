@@ -629,7 +629,7 @@ async function main() {
     let chat = await frameWith(page, '#input', 30000);
     check(!!chat, 'the chat page loaded in the tab');
     await shot('02-new-conversation', { features: ['new conversation', 'chat editor tab'],
-      expect: `An editor tab is open with the chat page: a thin header with the conversation's title; in the middle of the empty page the OpenCode mark and a one-line hint; at the bottom a rounded, centred message box; in its row of buttons under the text, a model pill showing ${real ? 'the Grok model' : 'Fake Small'} and, at the right end, a square send button with an arrow.`,
+      expect: `An editor tab is open with the chat page: no header repeating the conversation's title, which the tab shows; in the middle of the empty page the OpenCode mark and a one-line hint; at the bottom a rounded, centred message box; in its row of buttons under the text, a model pill showing ${real ? 'the Grok model' : 'Fake Small'} and, at the right end, a square send button with an arrow.`,
       part: '#workbench\\.parts\\.editor' });
 
     let sessionId = tab ? tab.uri.replace(/^opencodeagentplus-session:\//, '') : '';
@@ -693,7 +693,7 @@ async function main() {
         const fakeRenamed = await until(async () => {
           const t = await tabOf(sessionId);
           const rows = (await ext('return api.test.sessions();')) || [];
-          const pageTitle = await chat.evaluate(() => document.getElementById('title').textContent);
+          const pageTitle = await chat.evaluate(() => document.title);
           return t && t.label === 'Renamed in the fake run' && pageTitle === 'Renamed in the fake run' && rows.some((x) => x.id === sessionId && x.title === 'Renamed in the fake run') ? { tab: t.label, pageTitle } : null;
         }, 15000);
         check(r.renamed && !!fakeRenamed, "Rename in the chat tab's menu renames the conversation: the tab, the page and OpenCode's record follow", { r, fakeRenamed });
@@ -1355,7 +1355,7 @@ async function main() {
             const r = await renameFromTab((await tabOf(sessionId) || {}).label || '', NEW_TITLE, '13-tab-menu');
             const renamed = await until(async () => {
               const t = await tabOf(sessionId);
-              const pageTitle = await chat.evaluate(() => document.getElementById('title').textContent);
+              const pageTitle = await chat.evaluate(() => document.title);
               const rows = (await ext('return api.test.sessions();')) || [];
               const apRows = (await ext('return api.test.source.listConversations();')) || [];
               const inOc = recorded();
@@ -1368,7 +1368,7 @@ async function main() {
             const apView = await until(() => page.evaluate((t) => { const e = document.getElementById('workbench.parts.panel'); return !!e && e.textContent.includes(t); }, NEW_TITLE), 30000);
             check(apView, "Agent Plus's Conversations view shows the new title");
             await shot('13b-renamed', { features: ['renamed conversation'],
-              expect: `The chat tab and the page header read "${NEW_TITLE}"; the panel below shows Agent Plus's Conversations view with a row of that title.` });
+              expect: `The chat tab reads "${NEW_TITLE}"; the panel below shows Agent Plus's Conversations view with a row of that title.` });
             await call('await vscode.commands.executeCommand("workbench.action.closePanel"); return true;').catch(() => {});
 
             // 3m. While it waits for an approval, a delivery through the source is refused with the reason; when the turn

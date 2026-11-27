@@ -2,8 +2,8 @@
    Copyright (c) 2026, Xnerv Wang
    All rights reserved. */
 
-/* Colors use the theme's --vscode-* variables. The layout follows the Claude Code panel: a header with the title, a
-   timeline of the conversation, and a message box with its buttons, centred under it. */
+/* Colors use the theme's --vscode-* variables. The layout follows the Claude Code panel: a timeline of the conversation
+   and a message box with its buttons, centred under it. The tab shows the title, so the page draws none. */
 
 :root {
   --page-bg: var(--vscode-sideBar-background, var(--vscode-editor-background));
@@ -75,27 +75,6 @@ button:focus-visible, select:focus-visible, summary:focus-visible, input:focus-v
 
 [hidden] {
   display: none !important;
-}
-
-/* ---------- header ---------- */
-
-#top {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 41px;
-  box-sizing: border-box;
-  padding: 6px 6px 6px 7px;
-  border-bottom: 1px solid var(--vscode-panel-border, var(--rule));
-}
-#title {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 6px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* ---------- the conversation ---------- */

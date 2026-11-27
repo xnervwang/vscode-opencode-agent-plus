@@ -302,9 +302,6 @@ class ChatPanel {
 ${icons}<link rel="stylesheet" href="${media('chat.css')}">
 </head>
 <body>
-<header id="top">
-  <div id="title"></div>
-</header>
 <div id="middle">
 <main id="log" aria-live="polite"></main>
 <div id="welcome" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 24 24" fill="none"><path d="M16 10V18H8V10H16Z" fill="currentColor" fill-opacity="0.35"/><path fill-rule="evenodd" clip-rule="evenodd" d="M20 22H4V2H20V22ZM16 6H8V18H16V6Z" fill="currentColor"/></svg><p>Ask OpenCode about this project, or tell it what to change.</p></div>

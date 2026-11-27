@@ -121,10 +121,10 @@ test('the page links conversations as it renders a reply, opens one through the 
   /* scrollIntoView moves the page too, by the few pixels it is taller than its frame; only the log may scroll. */
   assert.doesNotMatch(PAGE, /\.scrollIntoView\(/);
   assert.match(PAGE, /function scrollLogTo\(el, center\)/);
-  /* The buttons under the message box wrap to a second row in a narrow pane rather than push out of it, and the title
-     is cut short. */
+  /* The buttons under the message box wrap to a second row in a narrow pane rather than push out of it. The page draws
+     no title of its own, since the tab shows it. */
   assert.match(css, /#tools \{\s*display: flex;\s*flex-wrap: wrap;/);
-  assert.match(css, /#title \{[^}]*text-overflow: ellipsis;/);
+  assert.doesNotMatch(css, /#title \{/);
 });
 
 function setup(extra = {}) {

@@ -201,7 +201,6 @@
   /* The settings shown next to the model, by the id the conversation's options() gives them. */
   const optionSels = { mode: $('mode'), effort: $('effort') };
   const ring = $('ring');
-  const titleEl = $('title');
   const ringFill = ring.querySelector('.fill');
   const ringLabel = el('span', 'ring-label');
   ring.appendChild(ringLabel);
@@ -1281,8 +1280,7 @@
 
   function applyHead(h) {
     head = h;
-    titleEl.textContent = h.title || 'New conversation';
-    titleEl.title = h.title || '';
+    document.title = h.title || 'New conversation';
     document.body.dataset.status = h.status;
     paintSend();
     placeholder();
