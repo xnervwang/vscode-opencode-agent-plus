@@ -1080,11 +1080,13 @@ async function main() {
                of theme, at a narrow width and with a bubble's list open; Agent Plus's status bar entry, which then says a
                conversation needs the user, is shot on a dark, a light and a blue status bar. */
             if (!real) {
+              /* Asked after the user's last message, so Agent Plus counts the conversation as needing the user. */
+              const asked = new Date().toISOString();
               gapCi.writePlan(planFile, [{ title: 'list the files', state: 'doing' },
                 { title: 'Wait for the build', state: 'waiting', waitingOn: 'build' },
-                { title: 'Pick a name', state: 'waiting', waitingOn: 'user', question: 'Which name should the export command take?' },
+                { title: 'Pick a name', state: 'waiting', waitingOn: 'user', question: 'Which name should the export command take?', asked },
                 { title: 'Which month to default to', state: 'discussing' },
-                { title: 'Colours', state: 'discussing', waitingOn: 'user', question: 'Amber or yellow for the warnings?' },
+                { title: 'Colours', state: 'discussing', waitingOn: 'user', question: 'Amber or yellow for the warnings?', asked },
                 { title: 'Docs', state: 'todo' }, { title: 'Tests', state: 'todo' }, { title: 'Refunds later', state: 'parked' }]);
               const parts = () => chat.evaluate(() => {
                 const b = document.querySelector('[data-agent-plus-plan-bar]');
