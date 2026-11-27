@@ -19,6 +19,7 @@
  * (src/host/models.js visibleModels).
  */
 const brand = require('../brand');
+const noticeTime = require('../shared/notice-time');
 
 const SECRET_KEY = `${brand.prefix}.bedrock.apiKey`;
 const OPENCODE_PROVIDER = 'opencode';
@@ -124,13 +125,13 @@ function createProviderConfig({ vscode, secrets, restart, log = () => {}, baseEn
     });
     if (!value || !value.trim()) return false;
     await secrets.store(SECRET_KEY, value.trim());
-    vscode.window.showInformationMessage('Amazon Bedrock API key saved. OpenCode is restarting to use it.');
+    noticeTime.info(vscode, 'Amazon Bedrock API key saved. OpenCode is restarting to use it.');
     return true;
   }
 
   async function clearApiKey() {
     await secrets.delete(SECRET_KEY);
-    vscode.window.showInformationMessage('Amazon Bedrock API key removed from this machine.');
+    noticeTime.info(vscode, 'Amazon Bedrock API key removed from this machine.');
   }
 
   /*

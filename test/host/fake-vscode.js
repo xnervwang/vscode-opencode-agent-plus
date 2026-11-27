@@ -71,9 +71,12 @@ function create() {
   const state = { commands: [], handlers: {}, registered: [], said: [], answers: [], config: {}, configWrites: [], secrets: new Map(),
     picks: [], pickAnswer: null, inputs: [], inputAnswer: undefined, extensions: new Map(), context: {}, progress: [],
     editors: {}, trees: {}, log: [], closedTabs: [], treeProviders: {}, live: new Map(), unregistered: [], strictCommands: false, saves: 0 };
-  const say = (kind) => async (message, ...rest) => {
+  /* A notification is recorded without the time src/shared/notice-time.js puts before it, which is kept as `stamp`. */
+  const say = (kind) => async (raw, ...rest) => {
     const buttons = rest.filter((b) => typeof b === 'string');
-    state.said.push({ kind, message, buttons });
+    const m = typeof raw === 'string' ? /^\[([^\]]+)\] /.exec(raw) : null;
+    const message = m ? raw.slice(m[0].length) : raw;
+    state.said.push({ kind, message, buttons, stamp: m ? m[1] : '' });
     for (const [match, pick] of state.answers) if (String(message).includes(match)) return pick;
     return undefined;
   };

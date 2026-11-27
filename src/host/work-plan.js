@@ -29,6 +29,7 @@ const tokenMode = require('../shared/token-mode');
 const hookSettings = require('../shared/hook-settings');
 const runtime = require('../shared/python-runtime');
 const pythonOffer = require('../shared/python-offer');
+const noticeTime = require('../shared/notice-time');
 
 /* By the token mode's feature id. */
 const KEYS = Object.freeze({ workPlan: `${brand.prefix}.workPlan`, conversationBrief: `${brand.prefix}.conversationBrief`,
@@ -119,7 +120,7 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     async () => {
       const r = await download(undefined, { userAgent: brand.packageName });
       log(`python download: ${r.said}`);
-      if (!r.ok) { Promise.resolve(vscode.window.showErrorMessage(`${brand.displayName}: downloading Python failed. ${r.said}`)).catch(() => {}); return false; }
+      if (!r.ok) { Promise.resolve(noticeTime.error(vscode, `${brand.displayName}: downloading Python failed. ${r.said}`)).catch(() => {}); return false; }
       await findPython();
       tell(`${brand.displayName}: Python is installed; the work plan starts with the next message.`);
       return true;
@@ -132,7 +133,7 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     writeSettings();
     const found = await findPython();
     if (!found) {
-      await pythonOffer.offer({ ask: (message, ...buttons) => vscode.window.showInformationMessage(message, ...buttons), get: getPython })
+      await pythonOffer.offer({ ask: (message, ...buttons) => noticeTime.info(vscode, message, ...buttons), get: getPython })
         .catch((e) => log(`asking whether to download Python failed: ${e.message}`));
     }
   }
@@ -143,7 +144,7 @@ function createWorkPlan({ vscode, extensionPath, storage, memo = null, tell = ()
     }),
     tokenMode.warnOutsideCustom(vscode, Object.values(KEYS), { who: brand.displayName, log }),
     vscode.commands.registerCommand(DOWNLOAD, async () => {
-      const pick = await vscode.window.showInformationMessage(`Download Python ${runtime.VERSION} from python.org?`,
+      const pick = await noticeTime.info(vscode, `Download Python ${runtime.VERSION} from python.org?`,
         { modal: true, detail: `11 MB, saved in ${runtime.home()}.` }, 'Download');
       return pick === 'Download' ? getPython() : false;
     }),

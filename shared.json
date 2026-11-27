@@ -1,5 +1,5 @@
 {
-  "core": "a6d845bd9801949e5c828ec303e27fecf92815bd",
+  "core": "6cf1aaf5c16b4c9083ac841babad8b9c61002a86",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -39,7 +39,12 @@
     {
       "path": "src/shared/token-mode.js",
       "from": "src/token-mode.js",
-      "sha256": "83fd03f44579844674e6733ed24161a483355da11728f81a8667e12813911174"
+      "sha256": "5603bb5304d0dd2d361741d41b4e54c9318fe04fbf4c9aaeb5860aa4a5a28969"
+    },
+    {
+      "path": "src/shared/notice-time.js",
+      "from": "src/notice-time.js",
+      "sha256": "575eeadcbc2ae04258c78dfd600cde0f31b717bbafb6eeb96cf58b52b126cf0b"
     },
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan_path.py",

@@ -70,6 +70,7 @@ const tokenMode = require('./src/shared/token-mode');
 const { createTrustGate } = require('./src/host/trust-gate');
 const { createOpenCodeDownload } = require('./src/host/opencode-download');
 const { createProviderLogin, loginOutcome } = require('./src/host/provider-login');
+const noticeTime = require('./src/shared/notice-time');
 /* src/opencode/ is loaded only once OpenCode is needed (Restricted Mode loads none of it). */
 const loginLaunch = (o) => require('./src/opencode/login').loginLaunch(o);
 const mentions = require('./src/host/mentions');
@@ -149,20 +150,20 @@ function start(context, log, gate, channel) {
   const tell = (text) => {
     told.push(String(text));
     if (told.length > 50) told.shift();
-    Promise.resolve(vscode.window.showInformationMessage(text)).catch(() => {});
+    Promise.resolve(noticeTime.info(vscode, text)).catch(() => {});
   };
   /* The same with buttons; resolves with the one chosen, or undefined. */
   const ask = (text, ...buttons) => {
     told.push(String(text));
     if (told.length > 50) told.shift();
-    return Promise.resolve(vscode.window.showInformationMessage(text, ...buttons)).catch(() => undefined);
+    return Promise.resolve(noticeTime.info(vscode, text, ...buttons)).catch(() => undefined);
   };
   /* OpenCode's own errors (not installed, not found where the settings say) already say what to do. */
   const fail = (what, e) => {
     const own = e && (e.name === 'OpenCodeError' || e.code === 'notFound' || e.code === 'configuredNotFound');
     const text = own ? e.message : `${what}: ${(e && e.message) || e}`;
     log(text);
-    Promise.resolve(vscode.window.showErrorMessage(text)).catch(() => {});
+    Promise.resolve(noticeTime.error(vscode, text)).catch(() => {});
   };
   const named = () => String(vscode.workspace.getConfiguration(brand.prefix).get('model') || '').trim();
 
@@ -284,6 +285,7 @@ function start(context, log, gate, channel) {
      client-time-zone.json in the plans folder. */
   const memo = context.globalState && typeof context.globalState.get === 'function' ? context.globalState : null;
   let timeZone = memo ? String(memo.get(ZONE_KEY, '') || '') : '';
+  noticeTime.setReaderZone(() => timeZone);
   const writeZone = (zone) => {
     if (!zone || vscode.workspace.isTrusted === false) return;
     try { if (hookSettings.writeClientZone(workplan.planDir(), zone)) log(`time zone written for the plugin: ${zone}`); } catch (e) { log(`writing the time zone failed: ${e.message}`); }

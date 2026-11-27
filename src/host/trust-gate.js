@@ -15,6 +15,7 @@
  */
 const crypto = require('crypto');
 const brand = require('../brand');
+const noticeTime = require('../shared/notice-time');
 
 const TRUST_COMMAND = 'workbench.trust.manage';
 const MANAGE = 'Manage Workspace Trust';
@@ -71,7 +72,7 @@ function createTrustGate({ vscode, viewType, commands, log = () => {} }) {
 
   const trusted = () => vscode.workspace.isTrusted !== false;
   const tell = () => {
-    Promise.resolve(vscode.window.showInformationMessage(TEXT, MANAGE))
+    Promise.resolve(noticeTime.info(vscode, TEXT, MANAGE))
       .then((pick) => (pick === MANAGE ? vscode.commands.executeCommand(TRUST_COMMAND) : undefined))
       .catch(() => {});
     return false;

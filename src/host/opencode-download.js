@@ -12,6 +12,7 @@
  */
 const brand = require('../brand');
 const { single } = require('../shared/python-offer');
+const noticeTime = require('../shared/notice-time');
 
 const COMMAND = `${brand.prefix}.downloadOpenCode`;
 const BUTTON = 'Download OpenCode';
@@ -28,7 +29,7 @@ const mb = (bytes) => Math.round(bytes / (1024 * 1024));
  *   lib             src/opencode/download.js, replaceable in tests
  */
 function createOpenCodeDownload({ vscode, done = () => {}, ask, tell = () => {}, log = () => {}, lib = require('../opencode/download') }) {
-  const askUser = ask || ((text, ...buttons) => vscode.window.showInformationMessage(text, ...buttons));
+  const askUser = ask || ((text, ...buttons) => noticeTime.info(vscode, text, ...buttons));
   let offered = false;
 
   const get = single(() => {
@@ -57,7 +58,7 @@ function createOpenCodeDownload({ vscode, done = () => {}, ask, tell = () => {},
         log(`OpenCode download: ${r.said}`);
         if (r.cancelled) { tell(r.said); return false; }
         if (!r.ok) {
-          Promise.resolve(vscode.window.showErrorMessage(`${brand.displayName}: downloading OpenCode failed. ${r.said}`)).catch(() => {});
+          Promise.resolve(noticeTime.error(vscode, `${brand.displayName}: downloading OpenCode failed. ${r.said}`)).catch(() => {});
           return false;
         }
         await Promise.resolve().then(() => done(r)).catch((e) => log(`handling the finished OpenCode download failed: ${(e && e.message) || e}`));

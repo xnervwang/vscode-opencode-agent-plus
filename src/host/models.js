@@ -9,6 +9,7 @@
  * model has been used.
  */
 const brand = require('../brand');
+const noticeTime = require('../shared/notice-time');
 
 const SECTION = brand.prefix;
 const fullId = (m) => (String(m.id).includes('/') || !m.providerId ? m.id : `${m.providerId}/${m.id}`);
@@ -48,7 +49,7 @@ function createModels({ vscode, listModels, defaultModel }) {
   async function pick(placeHolder) {
     const l = visibleModels(await list(), mode(), setting());
     if (!l.length) {
-      vscode.window.showWarningMessage('OpenCode has not listed any models yet. Open a conversation once, or connect a provider in OpenCode (opencode auth login), then try again.');
+      noticeTime.warning(vscode, 'OpenCode has not listed any models yet. Open a conversation once, or connect a provider in OpenCode (opencode auth login), then try again.');
       return null;
     }
     const groups = new Map();

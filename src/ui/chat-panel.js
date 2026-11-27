@@ -60,6 +60,7 @@ const fs = require('fs');
 const vm = require('./view-model');
 const { groupOf } = require('../host/models');
 const { PERMISSION_DECISIONS } = require('../contracts');
+const noticeTime = require('../shared/notice-time');
 
 const DIFF_SCHEME = 'opencodeAgentPlus-diff';
 const OPEN_DIFFS_KEY = 'opencodeAgentPlus.openDiffs';
@@ -941,7 +942,7 @@ ${hl}<script src="${media('kit.js')}"></script>
 
   showError(err) {
     const text = (err && err.message) || String(err);
-    Promise.resolve(this.vscode.window.showErrorMessage(text)).catch(() => {});
+    Promise.resolve(noticeTime.error(this.vscode, text)).catch(() => {});
   }
 
   dispose() {

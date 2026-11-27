@@ -6,6 +6,8 @@
 /* Just enough of the vscode API for the chat panel and the sessions view, recording what they call. */
 const path = require('path');
 
+const unstamp = (m) => (typeof m === 'string' ? m.replace(/^\[[^\]]+\] /, '') : m);
+
 class Uri {
   constructor(scheme, p, query = '') {
     this.scheme = scheme;
@@ -114,10 +116,11 @@ function createFakeVscode(answers = {}) {
       },
     },
     window: {
-      showErrorMessage: async (m) => { rec.errors.push(m); },
-      showInformationMessage: async (m) => { rec.infos.push(m); },
+      /* Recorded without the time src/shared/notice-time.js puts before a notification. */
+      showErrorMessage: async (m) => { rec.errors.push(unstamp(m)); },
+      showInformationMessage: async (m) => { rec.infos.push(unstamp(m)); },
       showWarningMessage: async (m, ...rest) => {
-        rec.warnings.push([m, ...rest]);
+        rec.warnings.push([unstamp(m), ...rest]);
         return answers.warning;
       },
       showInputBox: async (o) => {
