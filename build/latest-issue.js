@@ -4,13 +4,18 @@
 
 'use strict';
 /*
- * The issue .github/workflows/opencode-check.yml opens when the daily check of the newest OpenCode fails on a system:
- * one issue per OpenCode version, open or closed, as a daily schedule would otherwise file the same news every day.
- * Only a check that no longer holds (exit 1 of build/latest-check.js) files one; a check that could not run (exit 2)
- * says nothing about OpenCode, and filing it would put an untrue claim in the tracker.
+ * The issue .github/workflows/opencode-check.yml keeps for each OpenCode version the daily check of the newest
+ * OpenCode found failing: one per version, as a daily schedule would otherwise file the same news every day. Only a
+ * check that no longer holds (exit 1 of build/latest-check.js) files one; a check that could not run (exit 2) says
+ * nothing about OpenCode, and filing it would put an untrue claim in the tracker.
+ *
+ * The check closes that issue itself: the first run in which every system held for that version leaves a comment
+ * naming the commit it ran on and closes it, so whether it was fixed is decided by the check and not by a person. A
+ * version that fails again after that has its issue reopened, with the lines that failed this time.
  *
  *   issueFor({ version, reports, runUrl })   { title, body } or null; `reports` is [{ os, code, text }]
- *   file({ github, context, core, ..., dryRun })   opens it unless one with its title exists; 'none', 'known', 'dry' or 'filed'
+ *   settle({ github, context, core, version, reports, runUrl, sha, dryRun })
+ *       'filed', 'reopened', 'known' (open already), 'closed', 'none'; with dryRun it only logs what it would do
  */
 const LIMIT = 40000;
 const titleOf = (version) => `OpenCode ${version} failed the daily check`;
@@ -47,14 +52,41 @@ function issueFor({ version, reports, runUrl }) {
   return { title: titleOf(v), body };
 }
 
-async function file({ github, context, core, version, reports, runUrl, dryRun = false }) {
+/* Every system ran and every check held. */
+const passed = (reports) => (reports || []).length > 0 && reports.every((r) => Number(r.code) === 0);
+const passedNote = (sha, version, runUrl) => `The check passed on ${sha} against OpenCode ${version}: [the run](${runUrl}).`;
+
+async function settle({ github, context, core, version, reports, runUrl, sha, dryRun = false }) {
+  const repo = { owner: context.repo.owner, repo: context.repo.repo };
+  const title = titleOf(version || 'an unknown version');
+  const all = await github.paginate(github.rest.issues.listForRepo, { ...repo, state: 'all', per_page: 100 });
+  const had = all.find((i) => i.title === title && !i.pull_request) || null;
+  const act = async (what, fn) => { if (dryRun) { core.info(`would ${what}`); return; } await fn(); };
+
   const issue = issueFor({ version, reports, runUrl });
-  if (!issue) { core.info('no check failed, so no issue'); return 'none'; }
-  const all = await github.paginate(github.rest.issues.listForRepo, { owner: context.repo.owner, repo: context.repo.repo, state: 'all', per_page: 100 });
-  if (all.some((i) => i.title === issue.title && !i.pull_request)) { core.info(`already reported: ${issue.title}`); return 'known'; }
-  if (dryRun) { core.info(`would open: ${issue.title}\n\n${issue.body}`); return 'dry'; }
-  await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title: issue.title, body: issue.body });
-  return 'filed';
+  if (issue) {
+    if (!had) {
+      await act(`open: ${issue.title}\n\n${issue.body}`, () => github.rest.issues.create({ ...repo, title: issue.title, body: issue.body }));
+      return 'filed';
+    }
+    if (had.state === 'open') { core.info(`already reported: #${had.number}`); return 'known'; }
+    const again = `The check failed again on ${sha} against OpenCode ${version}.\n\n${issue.body}`;
+    await act(`reopen #${had.number} with:\n\n${again}`, async () => {
+      await github.rest.issues.createComment({ ...repo, issue_number: had.number, body: again });
+      await github.rest.issues.update({ ...repo, issue_number: had.number, state: 'open' });
+    });
+    return 'reopened';
+  }
+  if (passed(reports) && had && had.state === 'open') {
+    const note = passedNote(sha, version, runUrl);
+    await act(`close #${had.number} with: ${note}`, async () => {
+      await github.rest.issues.createComment({ ...repo, issue_number: had.number, body: note });
+      await github.rest.issues.update({ ...repo, issue_number: had.number, state: 'closed', state_reason: 'completed' });
+    });
+    return 'closed';
+  }
+  core.info(passed(reports) ? 'every check held and no issue is open for this version' : 'no check failed, though not every system ran');
+  return 'none';
 }
 
-module.exports = { issueFor, file, titleOf };
+module.exports = { issueFor, settle, titleOf, passedNote };

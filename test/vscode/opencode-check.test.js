@@ -48,19 +48,61 @@ test('no issue when every check held or could only not run', () => {
   assert.strictEqual(issue.issueFor({ version: '2.5.0', runUrl: RUN, reports: [{ os: 'ubuntu-latest', code: 0, text: '' }, { os: 'macos-latest', code: 2, text: '' }] }), null);
 });
 
-test('one issue per version: none is opened when one with its title exists, open or closed; a dry run opens none', async () => {
-  const made = [];
-  const listed = [];
-  const fake = (existing) => ({
-    paginate: async (fn, opts) => { listed.push(opts.state); return existing; },
-    rest: { issues: { listForRepo: () => {}, create: async (o) => { made.push(o.title); } } },
-  });
-  const context = { repo: { owner: 'o', repo: 'r' } };
-  const core = { info: () => {} };
-  const reports = [{ os: 'ubuntu-latest', code: 1, text: 'FAIL something' }];
-  const known = await issue.file({ github: fake([{ title: 'OpenCode 2.5.0 failed the daily check', state: 'closed' }]), context, core, version: '2.5.0', reports, runUrl: RUN });
-  const pr = await issue.file({ github: fake([{ title: 'OpenCode 2.5.0 failed the daily check', pull_request: {} }]), context, core, version: '2.5.0', reports, runUrl: RUN });
-  const dry = await issue.file({ github: fake([]), context, core, version: '2.6.0', reports, runUrl: RUN, dryRun: true });
-  const filed = await issue.file({ github: fake([]), context, core, version: '2.6.0', reports, runUrl: RUN });
-  assert.deepStrictEqual([known, pr, dry, filed, made, listed.every((s) => s === 'all')], ['known', 'filed', 'dry', 'filed', ['OpenCode 2.5.0 failed the daily check', 'OpenCode 2.6.0 failed the daily check'], true]);
+/* A stand-in for github-script's client: the issues it holds, and each write it was asked for. */
+function fakeGithub(issues) {
+  const writes = [];
+  return {
+    writes,
+    paginate: async (fn, opts) => { writes.push(['list', opts.state]); return issues; },
+    rest: { issues: {
+      listForRepo: () => {},
+      create: async (o) => { writes.push(['create', o.title]); },
+      createComment: async (o) => { writes.push(['comment', o.issue_number, o.body]); },
+      update: async (o) => { writes.push(['update', o.issue_number, o.state, o.state_reason]); },
+    } },
+  };
+}
+const context = { repo: { owner: 'o', repo: 'r' } };
+const core = { info: () => {} };
+const TITLE = 'OpenCode 2.5.0 failed the daily check';
+const failedOn = [{ os: 'ubuntu-latest', code: 1, text: 'FAIL something' }, { os: 'macos-latest', code: 0, text: '' }];
+const heldOn = ['ubuntu-latest', 'macos-latest', 'windows-latest'].map((os) => ({ os, code: 0, text: 'Every check held.' }));
+const settle = (issues, reports, more = {}) => {
+  const github = fakeGithub(issues);
+  return issue.settle({ github, context, core, version: '2.5.0', reports, runUrl: RUN, sha: 'abc1234', ...more }).then((done) => [done, github.writes.filter((w) => w[0] !== 'list')]);
+};
+
+test('a failed check opens one issue per version: none while one is open, and it reads every issue, open or closed', async () => {
+  const github = fakeGithub([]);
+  await issue.settle({ github, context, core, version: '2.5.0', reports: failedOn, runUrl: RUN, sha: 'abc1234' });
+  assert.deepStrictEqual(github.writes, [['list', 'all'], ['create', TITLE]]);
+  assert.deepStrictEqual(await settle([{ number: 7, title: TITLE, state: 'open' }], failedOn), ['known', []]);
+  assert.deepStrictEqual(await settle([{ number: 7, title: TITLE, state: 'open', pull_request: {} }], failedOn), ['filed', [['create', TITLE]]],
+    'a pull request with that title is not the issue');
+});
+
+test('the first run in which every system held closes the version\'s open issue, saying the commit it passed on', async () => {
+  const [done, writes] = await settle([{ number: 7, title: TITLE, state: 'open' }], heldOn);
+  assert.strictEqual(done, 'closed');
+  assert.deepStrictEqual(writes, [['comment', 7, `The check passed on abc1234 against OpenCode 2.5.0: [the run](${RUN}).`], ['update', 7, 'closed', 'completed']]);
+  assert.deepStrictEqual(await settle([{ number: 7, title: TITLE, state: 'closed' }], heldOn), ['none', []], 'a closed one is left closed');
+  assert.deepStrictEqual(await settle([], heldOn), ['none', []]);
+});
+
+test('a run in which a system could not run closes nothing, as it does not show that system holds', async () => {
+  const partly = [heldOn[0], heldOn[1], { os: 'windows-latest', code: 2, text: 'could not run: npm answered 503' }];
+  assert.deepStrictEqual(await settle([{ number: 7, title: TITLE, state: 'open' }], partly), ['none', []]);
+});
+
+test('a version that fails again after its issue was closed has it reopened, with the lines that failed this time', async () => {
+  const [done, writes] = await settle([{ number: 7, title: TITLE, state: 'closed' }], failedOn);
+  assert.strictEqual(done, 'reopened');
+  assert.deepStrictEqual(writes.map((w) => w.slice(0, 2)), [['comment', 7], ['update', 7]]);
+  assert.match(writes[0][2], /^The check failed again on abc1234 against OpenCode 2\.5\.0\.\n\n[\s\S]*FAIL something/);
+  assert.strictEqual(writes[1][2], 'open');
+});
+
+test('a dry run writes nothing', async () => {
+  assert.deepStrictEqual(await settle([], failedOn, { dryRun: true }), ['filed', []]);
+  assert.deepStrictEqual(await settle([{ number: 7, title: TITLE, state: 'open' }], heldOn, { dryRun: true }), ['closed', []]);
 });
