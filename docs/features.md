@@ -259,13 +259,13 @@ On OpenCode 1, Agent Plus shows "Work plans need OpenCode 2" above the plan. Cli
 
 Click the pen at the end of any row in the Work plan view to bring the plan's conversation to the front. OpenCode Agent Plus appends `About row N (title): `, with the row's number and title filled in, to any text in the message box. Finish the message and send it when you're ready. The pen needs Agent Plus 1.8.0 or later.
 
-### Claude Code Plus Stewards
+### Claude Code Plus Supervisors
 
-To assign a steward, bring a Claude Code conversation to the front in Claude Code Plus. In the Steward panel at the bottom of the VS Code window, beside Problems, Output and Terminal, tick the conversations you want that conversation to look after. You can tick an OpenCode Agent Plus conversation there. The conversation in front becomes their steward.
+To assign a supervisor, bring a Claude Code conversation to the front in Claude Code Plus. In the Supervisor panel at the bottom of the VS Code window, beside Problems, Output and Terminal, tick the conversations you want that conversation to look after. You can tick an OpenCode Agent Plus conversation there. The conversation in front becomes their supervisor. Earlier versions called a supervisor a steward, and the tool below keeps that name.
 
-While an OpenCode Agent Plus conversation has a steward and [Token Mode](#token-mode) has work plans turned on, its model can use `steward_handoff` to pass the steward a request that belongs in another conversation. Under those same conditions, each message the conversation sends to the model includes a note that a steward is watching. The note and the tool need Agent Plus 1.6.0 or later and a Claude Code Plus release later than 1.5.0.
+While an OpenCode Agent Plus conversation has a supervisor and [Token Mode](#token-mode) has work plans turned on, its model can use `steward_handoff` to pass the supervisor a request that belongs in another conversation. Under those same conditions, each message the conversation sends to the model includes a note that a supervisor is watching. The note and the tool need Agent Plus 1.6.0 or later and a Claude Code Plus release later than 1.5.0.
 
-A conversation can have more than one steward. The note then names each of them, and a handoff goes to the steward whose message started the turn, or else to the steward you last talked to. The model can also name one of the stewards to hand it to. To assign multiple stewards to one conversation, use a version of Agent Plus later than 1.6.0.
+A conversation can have more than one supervisor. The note then names each of them, and a handoff goes to the supervisor whose message started the turn, or else to the supervisor you last talked to. The model can also name one of the supervisors to hand it to. To assign multiple supervisors to one conversation, use a version of Agent Plus later than 1.6.0.
 
 ## Conversation Brief
 

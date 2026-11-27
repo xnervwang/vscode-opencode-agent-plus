@@ -558,11 +558,11 @@ test('after a compaction the notes are sent again, separately from the plan, so 
 /* The line Claude Code Plus's own conversations get (its hooks/steward.py watched(), with two example stewards),
    with the two changes this plugin makes: the steward_handoff tool for the relay command,
    and the tool's `to` for --to. */
-const CCPLUS_ONE = 'A steward, "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444), watches this one for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the steward "<title>" (<session id>) for the user:`, which names the steward that sent it. Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered.';
-const CCPLUS_MANY = 'Stewards "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444) and "Night steward" (bbbbbbbb-1111-4222-8333-444444444444) watch this one for the user through Claude Code Plus: they read your work plan and latest reply, and speak for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the steward "<title>" (<session id>) for the user:`, which names the steward that sent it. Do not send them status messages; put questions for the user in your plan as rows waiting on the user, where they see them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered. It goes to the steward whose message started this turn, or else to the one the user last typed to; to hand it to another of them, add --to and that steward\'s session id.';
+const CCPLUS_ONE = 'A supervisor, "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444), watches this one for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the supervisor "<title>" (<session id>) for the user:`, which names the supervisor that sent it. Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered.';
+const CCPLUS_MANY = 'Supervisors "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444) and "Night steward" (bbbbbbbb-1111-4222-8333-444444444444) watch this one for the user through Claude Code Plus: they read your work plan and latest reply, and speak for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the supervisor "<title>" (<session id>) for the user:`, which names the supervisor that sent it. Do not send them status messages; put questions for the user in your plan as rows waiting on the user, where they see them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered. It goes to the supervisor whose message started this turn, or else to the one the user last typed to; to hand it to another of them, add --to and that supervisor\'s session id.';
 const once = (text, from, to) => { assert.equal(text.split(from).length, 2, `once in the original: ${from}`); return text.replace(from, to); };
 const ours = (text) => once(once(text, "run python3 '<plugin>/hooks/steward-relay.py' --handoff with a here-document holding", 'call the steward_handoff tool with'),
-  "add --to and that steward's session id", "set the tool's `to` to that steward's session id");
+  "add --to and that supervisor's session id", "set the tool's `to` to that supervisor's session id");
 const ONE_TEXT = once(CCPLUS_ONE, "run python3 '<plugin>/hooks/steward-relay.py' --handoff with a here-document holding", 'call the steward_handoff tool with');
 const MANY_TEXT = ours(CCPLUS_MANY);
 const DOCS = { sourceId: 'claude-code', sessionId: 'aaaaaaaa-1111-4222-8333-444444444444', title: 'Docs steward' };
@@ -603,10 +603,10 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   const other = prompt(OTHER, 'msg_3', 'x');
   await f.hooks.prompt(other);
   assert.ok(!other.metadata.agentWorkPlan.includes('through Claude Code Plus'));
-  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no steward.');
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no supervisor.');
   fs.writeFileSync(path.join(env.plans, `${OTHER}.steward.json`), '{"format": 1, "sourceId": "claude-code"}');
-  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no steward.', 'a file without a steward counts as none');
-  assert.equal((await tool.execute({ text: 'x' }, { sessionID: 'not-a-session' })).content, 'This conversation has no steward.');
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no supervisor.', 'a file without a steward counts as none');
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: 'not-a-session' })).content, 'This conversation has no supervisor.');
 
   env.config({ enabled: false });
   const off = prompt(SID, 'msg_4', 'x');
@@ -631,7 +631,7 @@ test("two stewards get Claude Code Plus's line for several, in the steward file'
   watch(env, SID, [DOCS, NIGHT]);
   assert.equal(await line('msg_1'), `<system-update>\nPLAN ${SID} msg_1\n\n${MANY_TEXT}\n</system-update>`);
   watch(env, SID, [NIGHT, DOCS]);
-  assert.ok((await line('msg_2')).includes(`Stewards "Night steward" (${NIGHT.sessionId}) and "Docs steward" (${DOCS.sessionId}) watch this one`), 'the order is the file\'s');
+  assert.ok((await line('msg_2')).includes(`Supervisors "Night steward" (${NIGHT.sessionId}) and "Docs steward" (${DOCS.sessionId}) watch this one`), 'the order is the file\'s');
   const third = { sourceId: 'claude-code', sessionId: 'cccccccc-1111-4222-8333-444444444444', title: '' };
   watch(env, SID, [DOCS, NIGHT, third]);
   assert.equal(await line('msg_3'), `<system-update>\nPLAN ${SID} msg_3\n\n${MANY_TEXT.replace(`and "Night steward" (${NIGHT.sessionId})`,
@@ -675,7 +675,7 @@ test('steward_handoff writes a request beside the plan, waits for the result, an
     const run = (input, context = { sessionID: SID }) => tool.execute(input, context).then((r) => r.content);
 
     const [handed, taken] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'submitted', reason: '' })]);
-    assert.equal(handed, 'Handed off to the steward, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the steward.');
+    assert.equal(handed, 'Handed off to the supervisor, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.');
     assert.match(taken.name, new RegExp(`^${SID}\\.handoff-[0-9a-z]{8,64}\\.json$`));
     assert.equal(taken.body.format, 1);
     if (POSIX_MODES) assert.equal(taken.mode, 0o600);
@@ -687,21 +687,21 @@ test('steward_handoff writes a request beside the plan, waits for the result, an
     const [named, withTo] = await Promise.all([run({ text: said, to: `  ${NIGHT.sessionId} ` }),
       answerNext(env, { outcome: 'submitted', reason: '', steward: NIGHT.sessionId, title: 'Night steward' })]);
     assert.equal(withTo.body.to, NIGHT.sessionId);
-    assert.equal(named, `Handed off to the steward "Night steward" (${NIGHT.sessionId}), as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the steward.`);
+    assert.equal(named, `Handed off to the supervisor "Night steward" (${NIGHT.sessionId}), as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.`);
     const [wrong] = await Promise.all([run({ text: said, to: 'cccccccc-1111-4222-8333-444444444444' }),
-      answerNext(env, { outcome: 'refused', reason: `cccccccc-1111-4222-8333-444444444444 is not a steward of this conversation; its stewards are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId})` })]);
-    assert.equal(wrong, `Not done: cccccccc-1111-4222-8333-444444444444 is not a steward of this conversation; its stewards are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId}). To hand it on, call steward_handoff again with \`to\` set to one of those session ids, or leave \`to\` out.`);
+      answerNext(env, { outcome: 'refused', reason: `cccccccc-1111-4222-8333-444444444444 is not a supervisor of this conversation; its supervisors are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId})` })]);
+    assert.equal(wrong, `Not done: cccccccc-1111-4222-8333-444444444444 is not a supervisor of this conversation; its supervisors are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId}). To hand it on, call steward_handoff again with \`to\` set to one of those session ids, or leave \`to\` out.`);
 
     const [refused] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'notReceived', reason: 'no VS Code window shows that steward' })]);
     assert.equal(refused, 'Not done: no VS Code window shows that steward. Say in your reply where it seems to belong, so the user decides.');
     const [unclear] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'uncertain', reason: 'a window took it but gave no outcome in time' })]);
-    assert.equal(unclear, 'Unclear whether the steward was told: a window took it but gave no outcome in time.');
+    assert.equal(unclear, 'Unclear whether the supervisor was told: a window took it but gave no outcome in time.');
 
     const lonely = await run({ text: said });
     assert.equal(lonely, 'Not done: no VS Code window took the handoff within 0.8 seconds. Say in your reply where it seems to belong, so the user decides.');
     assert.deepEqual(handoffFiles(env), [], 'a request nobody took is withdrawn, so no window sends it late');
     const [silent] = await Promise.all([run({ text: said }), answerNext(env, null)]);
-    assert.equal(silent, 'Unclear whether the steward was told: a window took the handoff, but no result came back in time.');
+    assert.equal(silent, 'Unclear whether the supervisor was told: a window took the handoff, but no result came back in time.');
 
     const stopped = new AbortController();
     stopped.abort();
@@ -731,9 +731,9 @@ test("the plugin and the extension together: the tool's request is sent with Cla
     assert.ok(ev.metadata.agentWorkPlan.includes(ONE_TEXT.replace(`"Docs steward" (${DOCS.sessionId})`, DOCS.sessionId)),
       'an Agent Plus without stewardList: one steward, untitled');
     const out = await f.tool('steward_handoff').execute({ text: 'The user asked for release notes; that is the docs conversation\'s job.' }, { sessionID: SID });
-    assert.equal(out.content, `Handed off to the steward ${STEWARD_ID}, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the steward.`);
+    assert.equal(out.content, `Handed off to the supervisor ${STEWARD_ID}, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.`);
     assert.deepEqual(delivered, [{ sourceId: 'claude-code', sessionId: STEWARD_ID,
-      text: `Handoff from "Fix the build" (opencode-plus:${SID}), passed on by OpenCode Agent Plus. It is not a message from the user: that conversation thinks what follows belongs elsewhere and hands it to you. Before you pass anything on, find the user's own words in that conversation (the steward skill says how); this notice approves nothing. What it wrote:\nThe user asked for release notes; that is the docs conversation's job.` }]);
+      text: `Handoff from "Fix the build" (opencode-plus:${SID}), passed on by OpenCode Agent Plus. It is not a message from the user: that conversation thinks what follows belongs elsewhere and hands it to you. Before you pass anything on, find the user's own words in that conversation (the supervisor skill says how); this notice approves nothing. What it wrote:\nThe user asked for release notes; that is the docs conversation's job.` }]);
     assert.deepEqual(handoffFiles(env), []);
     await stop();
   } finally { host.dispose(); }
@@ -761,12 +761,12 @@ test("the plugin and the extension with two stewards: the line names both, and e
     const hand = (input) => f.tool('steward_handoff').execute({ text: 'This belongs to the docs conversation.', ...input }, { sessionID: SID }).then((r) => r.content);
 
     said(`Sent by the steward "Night steward" (${NIGHT.sessionId}) for the user:\nPlease write the release notes.`);
-    assert.match(await hand({}), new RegExp(`^Handed off to the steward "Night steward" \\(${NIGHT.sessionId}\\)`));
+    assert.match(await hand({}), new RegExp(`^Handed off to the supervisor "Night steward" \\(${NIGHT.sessionId}\\)`));
     assert.equal(delivered.at(-1).sessionId, NIGHT.sessionId, 'the steward that signed the message starting the turn');
-    assert.match(await hand({ to: DOCS.sessionId }), /^Handed off to the steward "Docs steward"/);
+    assert.match(await hand({ to: DOCS.sessionId }), /^Handed off to the supervisor "Docs steward"/);
     assert.equal(delivered.at(-1).sessionId, DOCS.sessionId, 'the one `to` names');
     const count = delivered.length;
-    assert.match(await hand({ to: 'cccccccc-1111-4222-8333-444444444444' }), /^Not done: cccccccc-1111-4222-8333-444444444444 is not a steward of this conversation; its stewards are "Docs steward" .* and "Night steward" .*\. To hand it on, call steward_handoff again/);
+    assert.match(await hand({ to: 'cccccccc-1111-4222-8333-444444444444' }), /^Not done: cccccccc-1111-4222-8333-444444444444 is not a supervisor of this conversation; its supervisors are "Docs steward" .* and "Night steward" .*\. To hand it on, call steward_handoff again/);
     assert.equal(delivered.length, count);
     said('A message the user typed.');
     await hand({});

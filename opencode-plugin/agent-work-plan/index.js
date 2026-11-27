@@ -242,25 +242,25 @@ function watchedText(list) {
   const names = list.map(nameOf);
   const several = names.length > 1;
   const who = several ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
-  return `${several ? 'Stewards' : 'A steward,'} ${who}${several ? ' watch' : ', watches'} this one for the user through Claude Code Plus: `
+  return `${several ? 'Supervisors' : 'A supervisor,'} ${who}${several ? ' watch' : ', watches'} this one for the user through Claude Code Plus: `
     + `${several ? 'they read' : 'it reads'} your work plan and latest reply, and ${several ? 'speak' : 'speaks'} for the user by typing `
     + 'messages here, which come as the user\'s own. Each such message starts with the line '
-    + '`Sent by the steward "<title>" (<session id>) for the user:`, which names the steward that sent it. '
+    + '`Sent by the supervisor "<title>" (<session id>) for the user:`, which names the supervisor that sent it. '
     + `Do not send ${several ? 'them' : 'it'} status messages; put questions for the user in your plan as rows waiting on the user, `
     + `where ${several ? 'they see' : 'it sees'} them. If a message plainly belongs elsewhere (meant for another conversation, `
     + 'unrelated to the work here, or better done by another one), do not start background work for it here: call the '
     + 'steward_handoff tool with the user\'s words, where it should go (a session id, or a folder for a new conversation) '
     + 'and why, and say in one sentence what it answered.'
-    + (several ? ' It goes to the steward whose message started this turn, or else to the one the user last typed to; to hand '
-      + 'it to another of them, set the tool\'s `to` to that steward\'s session id.' : '');
+    + (several ? ' It goes to the supervisor whose message started this turn, or else to the one the user last typed to; to hand '
+      + 'it to another of them, set the tool\'s `to` to that supervisor\'s session id.' : '');
 }
 const STEWARD_TOOL = {
   name: 'steward_handoff',
-  description: 'Hand a message that belongs elsewhere to a steward watching this conversation. '
-    + 'It returns whether the steward got it; do not call it again for the same message.',
+  description: 'Hand a message that belongs elsewhere to a supervisor watching this conversation. '
+    + 'It returns whether the supervisor got it; do not call it again for the same message.',
   input: { type: 'object', required: ['text'], additionalProperties: false, properties: {
     text: { type: 'string', description: "The user's words, where it should go (a session id, or a folder for a new conversation) and why." },
-    to: { type: 'string', description: 'The session id of the steward who should get the message; leave it out for the default one.' } } },
+    to: { type: 'string', description: 'The session id of the supervisor who should get the message; leave it out for the default one.' } } },
 };
 /* deliver() settles within about 40 seconds once a window has the request. */
 const HANDOFF_WAIT_MS = 45000;
@@ -269,7 +269,7 @@ const handoffWait = () => {
   return Number.isInteger(n) && n > 0 && n < HANDOFF_WAIT_MS ? n : HANDOFF_WAIT_MS;
 };
 const HANDOFF_POLL_MS = 250;
-const NO_STEWARD = 'This conversation has no steward.';
+const NO_STEWARD = 'This conversation has no supervisor.';
 const LEAVE_IT = ' Say in your reply where it seems to belong, so the user decides.';
 
 const usable = (s) => !!s && typeof s === 'object' && typeof s.sourceId === 'string' && !!s.sourceId && typeof s.sessionId === 'string' && !!s.sessionId;
@@ -294,15 +294,15 @@ function handedSaid(r) {
   const outcome = r && typeof r.outcome === 'string' ? r.outcome : '';
   if (outcome === 'submitted') {
     const who = r && typeof r.steward === 'string' && r.steward ? ` ${nameOf({ sessionId: r.steward, title: titleOf(r.title) })}` : '';
-    return `Handed off to the steward${who}, as a notice that says it is not from the user. Say so in one sentence in your reply `
-      + 'and leave it to the steward.';
+    return `Handed off to the supervisor${who}, as a notice that says it is not from the user. Say so in one sentence in your reply `
+      + 'and leave it to the supervisor.';
   }
   if (outcome === 'refused') {
-    return `Not done: ${reason || 'that steward cannot take it'}. To hand it on, call steward_handoff again with \`to\` set to one of `
+    return `Not done: ${reason || 'that supervisor cannot take it'}. To hand it on, call steward_handoff again with \`to\` set to one of `
       + 'those session ids, or leave `to` out.';
   }
-  if (outcome === 'uncertain') return `Unclear whether the steward was told: ${reason || 'no outcome came in time'}.`;
-  if (outcome === 'drafted') return `Not done: it was put into the steward's message input, and not sent.${LEAVE_IT}`;
+  if (outcome === 'uncertain') return `Unclear whether the supervisor was told: ${reason || 'no outcome came in time'}.`;
+  if (outcome === 'drafted') return `Not done: it was put into the supervisor's message input, and not sent.${LEAVE_IT}`;
   return `Not done: ${reason || outcome || 'no reason was given'}.${LEAVE_IT}`;
 }
 
@@ -342,7 +342,7 @@ async function handoff(sessionID, input, context) {
   log('handoff', { sessionID, to, outcome: untaken ? 'untaken' : 'unanswered', aborted: !!(signal && signal.aborted) });
   if (signal && signal.aborted && untaken) return 'Not done: the turn was stopped before a window took the handoff.';
   if (untaken) return `Not done: no VS Code window took the handoff within ${wait / 1000} seconds.${LEAVE_IT}`;
-  return 'Unclear whether the steward was told: a window took the handoff, but no result came back in time.';
+  return 'Unclear whether the supervisor was told: a window took the handoff, but no result came back in time.';
 }
 
 function str(v) { return v == null ? '' : String(v); }
