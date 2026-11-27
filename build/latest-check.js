@@ -107,7 +107,7 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
   let got;
   try { got = await download.fetchFile(a.browser_download_url, archive, {}); } catch (e) { return cannot(`downloading ${want.name}: ${e.message}`); }
   console.log(`     downloaded ${got.bytes} bytes in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-  check(got.bytes === a.size, `its size matches the release, ${a.size} bytes`, `${want.name} is ${got.bytes} bytes, the release says ${a.size}`);
+  check(got.bytes === a.size, `its size matches the release, ${a.size} bytes`, `${want.name} is ${got.bytes} bytes; the release lists ${a.size}`);
   if (digest) check(got.sha256 === digest, 'its SHA-256 matches the release', `${want.name} has SHA-256 ${got.sha256}, the release gives ${digest}`);
   else console.log('     the release has no SHA-256 for it');
 
@@ -116,7 +116,7 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
   const unpacked = await download.extract(archive, dir, { kind: want.kind });
   const exe = path.join(dir, process.platform === 'win32' ? 'opencode.exe' : 'opencode');
   if (!check(unpacked && fs.existsSync(exe), `it unpacks to ${path.basename(exe)} at its top`,
-    `${want.name} did not unpack to ${path.basename(exe)} at its top, where download.js looks for it`)) return finish();
+    `${want.name} did not unpack to ${path.basename(exe)} at its top`)) return finish();
   if (process.platform !== 'win32') fs.chmodSync(exe, 0o755);
 
   oc = createOpenCode({

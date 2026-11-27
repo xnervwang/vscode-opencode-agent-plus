@@ -39,7 +39,7 @@ test('the issue for a failed check names the version and quotes the failing line
   assert.match(got.body, /failed on ubuntu-latest \(it held on windows-latest\)/);
   assert.match(got.body, /#### ubuntu-latest\n\n```\nFAIL it does not say it can fork conversations/);
   assert.ok(!got.body.includes('ok   the release has'), 'an ok line is not quoted');
-  assert.ok(!got.body.includes('#### macos-latest'), 'a system where the check could not run is not reported as failing');
+  assert.ok(!got.body.includes('#### macos-latest'), 'a system that could not run the check is not listed among the failures');
   assert.ok(got.body.includes(`(${RUN})`));
   assert.match(got.body, /node build\/latest-check\.js --version 2\.5\.0/);
 });
