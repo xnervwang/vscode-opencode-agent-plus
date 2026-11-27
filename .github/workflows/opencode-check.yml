@@ -3,9 +3,9 @@
 # All rights reserved.
 
 # OpenCode ships often, and every other check here runs against the version src/opencode/download.js pins. This one
-# runs what the extension does with OpenCode against the newest OpenCode on npm once a day, on each system, so that a
-# release which breaks the extension is known before users update to it. It opens one issue for each such version and
-# closes it itself, with the commit it ran on, the first time every check holds for that version again.
+# runs the extension's OpenCode checks against the newest OpenCode on npm once a day, on each system, so that a
+# release which breaks the extension is known before users update to it. It opens one issue per failing version and
+# closes it, naming the commit, on the first run in which every check holds again on every system.
 name: opencode check
 
 on:
@@ -73,7 +73,7 @@ jobs:
           node build/latest-check.js --version "$VERSION" > report.txt 2>&1 || code=$?
           # build/npm-check.js exits 1 for any failure, so its last line goes in as one failed check.
           npm=0
-          { echo; echo "npm install -g @opencode/cli@$VERSION, as the install hint has users do:"; } >> report.txt
+          { echo; echo "npm install -g @opencode/cli@$VERSION, the install hint's command:"; } >> report.txt
           node build/npm-check.js --version "$VERSION" > npm.txt 2>&1 || npm=$?
           cat npm.txt >> report.txt
           if [ "$npm" != 0 ]; then
@@ -121,7 +121,7 @@ jobs:
               echo '```'
             done
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Open the version's issue when a check failed, or close it when every check held
+      - name: Open or close the version's issue
         uses: actions/github-script@v9
         env:
           VERSION: ${{ needs.version.outputs.version }}

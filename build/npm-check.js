@@ -6,9 +6,9 @@
 /*
  * node build/npm-check.js [--prefix <folder>] [--version <v>]
  *
- * Installs OpenCode the way the extension's install hint tells users to, `npm install -g @opencode/cli`, at the version
- * src/opencode/download.js pins or at --version (the daily check, .github/workflows/opencode-check.yml, gives the newest),
- * into a separate npm prefix. On Windows npm installs opencode.cmd, which Node does not
+ * Installs OpenCode the way the extension's install hint tells users to, `npm install -g @opencode/cli`, into a separate
+ * npm prefix: at the version src/opencode/download.js pins, or at --version, which the daily check in
+ * .github/workflows/opencode-check.yml sets to the newest. On Windows npm installs opencode.cmd, which Node does not
  * start without a shell, so this checks that the extension's findOpenCode reads npm's launcher and starts the
  * opencode.exe behind it. CI runs this script on Linux, macOS and Windows.
  */

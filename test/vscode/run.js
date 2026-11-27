@@ -1072,14 +1072,13 @@ async function main() {
             });
             const bar = await until(barNow, 45000);
             check(!!bar && (bar.bubbles.join() === 'doing 1' || /All rows done/.test(bar.text)) && bar.gap >= 0 && bar.gap <= 12 && Math.abs(bar.width - bar.box) <= 2,
-              'once the plan has a row, the plan bar counts it right above the input box, as wide as it', bar);
+              'once the plan has a row, the plan bar counts it right above the input box, the same width as the box', bar);
             await shot('04b2-plan-bar', { features: ['plan bar'],
-              expect: 'Right above the message box, as wide as it, a one-line bar: a list icon and "Plan", one small rounded bubble with a blue triangle and "1" on a light blue tint (or a green check and "All rows done"), and an arrow at the right end.',
+              expect: 'Right above the message box and the same width, a one-line bar: a list icon and "Plan", one small rounded bubble with a blue triangle and "1" on a light blue tint (or a green check and "All rows done"), and an arrow at the right end.',
               part: '#workbench\\.parts\\.editor' });
-            /* Rows in every state the bar counts, two of them waiting for the user's answer: a bubble for each state with
-               rows, those two in "2 to decide" only. Shot in each kind of theme, narrow, and with a bubble's list open;
-               Agent Plus's status bar entry, which then says a conversation needs the user, in a dark, a light and a blue
-               status bar. */
+            /* Rows in every state the bar counts, two of them waiting for the user's answer. The bar is shot in each kind
+               of theme, at a narrow width and with a bubble's list open; Agent Plus's status bar entry, which then says a
+               conversation needs the user, is shot on a dark, a light and a blue status bar. */
             if (!real) {
               gapCi.writePlan(planFile, [{ title: 'list the files', state: 'doing' },
                 { title: 'Wait for the build', state: 'waiting', waitingOn: 'build' },
@@ -1095,7 +1094,7 @@ async function main() {
               });
               const counted = await until(async () => { const p = await parts(); return p && p.ask === '2 to decide' && p.bubbles.length === 4 ? p : null; }, 20000);
               check(!!counted && counted.bubbles.join() === 'doing 1,waiting 1,discussing 1,todo 2' && counted.plan && counted.chevron,
-                'the plan bar counts the open rows in a bubble per state, doing, waiting, discussing and todo, and the two waiting for the answer in "2 to decide" only', counted);
+                'the plan bar counts the two rows waiting for the answer only in "2 to decide", and the other doing, waiting, discussing and todo rows in a bubble per state', counted);
               /* The colours as drawn: each bubble's icon against its state's charts colour, its tint over the bar, "to decide"'s
                  words against its fill, and waiting against discussing. */
               const colours = () => chat.evaluate(() => {
@@ -1131,7 +1130,7 @@ async function main() {
                 return { bubbles, ask: { fill: hue(qFill), asked: hue(asked), words: contrast(parse(getComputedStyle(q).color), qFill) },
                   waitingVsDiscussing: Math.round(Math.hypot(w[0] - d[0], w[1] - d[1], w[2] - d[2])) };
               });
-              /* Agent Plus's status bar entry while a conversation needs the user: the colour of its words against the bar. */
+              /* The contrast of Agent Plus's status bar entry with the status bar while a conversation needs the user. */
               const entry = () => page.evaluate(() => {
                 const parse = (c) => (String(c).match(/[\d.]+/g) || []).map(Number).slice(0, 3);
                 const lum = (c) => { const v = c.map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
@@ -1156,7 +1155,7 @@ async function main() {
                 looks.push({ theme, themed: !!themed, colours: c, entry: e });
                 if (name) {
                   await shot(name, { features: ['plan bar', 'plan bar bubbles'],
-                    expect: `In ${words}, the one-line bar right above the message box: a list icon, "Plan", then four small rounded bubbles, each a state's icon in its colour with a number on a light tint of that colour: a blue triangle 1, an orange clock 1, a yellow speech bubble 1 and a purple circle 2 (the light high contrast theme gives these its own darker colours); far right a solid pill with a question mark and "2 to decide" in dark words (white on the dark blue of the light high contrast theme), then an arrow. The orange and the yellow bubble are told apart at a glance.`,
+                    expect: `In ${words}, the one-line bar right above the message box: a list icon, "Plan", then four small rounded bubbles, each with a state's icon and a number on a light tint of the icon's colour: a blue triangle 1, an orange clock 1, a yellow speech bubble 1 and a purple circle 2 (the light high contrast theme gives these its own darker colours); far right a solid pill with a question mark and "2 to decide" in dark words (white on the dark blue of the light high contrast theme), then an arrow. The orange and the yellow bubble are easy to tell apart.`,
                     part: '#workbench\\.parts\\.editor' });
                 }
                 if (status) {
@@ -1169,11 +1168,11 @@ async function main() {
               const good = (l) => l.themed && l.colours && Object.values(l.colours.bubbles).every((b) => apart(b.icon, b.chart) && b.apart >= 12)
                 && apart(l.colours.ask.fill, l.colours.ask.asked) && l.colours.ask.words >= 4.5;
               check(looks.every((l) => !/High Contrast/.test(l.theme) || good(l)) && looks.filter((l) => !/High Contrast/.test(l.theme)).every(good),
-                "each bubble's icon is its state's colour on a tint that stands out from the bar, and \"to decide\" is the question mark's colour with words of 4.5:1 or more, in every theme", looks.map((l) => [l.theme, l.colours]));
+                "each bubble's icon is its state's colour on a tint that stands out from the bar, and \"to decide\" is the question mark's colour with text at a contrast of 4.5:1 or more, in every theme", looks.map((l) => [l.theme, l.colours]));
               const light = looks.find((l) => l.theme === 'Default Light Modern');
-              check(!!light && light.colours.waitingVsDiscussing >= 10, 'in the light theme the waiting and the discussing bubble are told apart, by their deeper tints', light && light.colours);
+              check(!!light && light.colours.waitingVsDiscussing >= 10, 'in the light theme the waiting and the discussing bubbles have clearly different tints', light && light.colours);
               check(looks.filter((l) => l.entry).length === 3 && looks.filter((l) => l.entry).every((l) => /rgba\(0, 0, 0, 0\)|transparent/.test(l.entry.background) && l.entry.contrast >= 4.5),
-                "Agent Plus's status bar entry says the conversation needs the user in the status bar's own colours, readable on a dark, a light and a blue status bar", looks.map((l) => [l.theme, l.entry]));
+                "Agent Plus's entry for a conversation that needs the user keeps the status bar's own colours and is readable on dark, light and blue status bars", looks.map((l) => [l.theme, l.entry]));
               /* Narrow, the bar drops Plan and the arrow, and "to decide" keeps its number. */
               await chat.evaluate(() => { document.querySelector('[data-agent-plus-plan-bar]').style.maxWidth = '340px'; });
               const narrow = await until(async () => { const p = await parts(); return p && p.compact === '1' ? p : null; }, 10000);
@@ -1184,7 +1183,6 @@ async function main() {
                 part: '#workbench\\.parts\\.editor' });
               await chat.evaluate(() => { document.querySelector('[data-agent-plus-plan-bar]').style.maxWidth = ''; });
               await until(async () => { const p = await parts(); return p && p.compact === '0' ? p : null; }, 10000);
-              /* Hovering the waiting bubble lists its row, without the one that waits for the answer. */
               await chat.hover('[data-agent-plus-plan-bar] .apb-b[data-state="waiting"]');
               const hovered = await until(() => chat.evaluate(() => { const l = document.querySelector('[data-agent-plus-plan-bar-list]'); return l ? l.textContent : null; }), 5000);
               check(!!hovered && /1 waiting/.test(hovered) && /Wait for the build/.test(hovered) && !/Pick a name/.test(hovered),

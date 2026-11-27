@@ -6,16 +6,15 @@
 /*
  * node build/latest-check.js [--version <v>] [--resolve]
  *
- * Runs what this extension does with OpenCode against the newest OpenCode published, rather than the version
- * src/opencode/download.js pins: .github/workflows/opencode-check.yml runs it once a day on each system, so that a
- * release which breaks the extension is known before users update to it.
+ * Runs the code this extension uses to work with OpenCode against the newest OpenCode published, rather than the
+ * version src/opencode/download.js pins: .github/workflows/opencode-check.yml runs it once a day on each system, so that
+ * a release which breaks the extension is known before users update to it.
  *
- * The newest version is the `latest` tag of @opencode/cli on npm, which is how the install hint has users install it:
- * GitHub marks the newest 1.x release as its latest while 2.x is the line in use. For that version the script takes
- * this machine's archive from the GitHub release, under the name download.js uses for it, checks it against the size
- * and SHA-256 the release gives, unpacks it, and has the extension's own code find it, read its version, start it, read
- * the capabilities it states, create, list, rename and delete a conversation and read its data folders. None of this
- * asks a model anything, so a fork, which needs a message in the conversation, is checked as a capability only.
+ * The newest version is the `latest` tag of @opencode/cli on npm, the one the install hint's `npm install -g` gets:
+ * GitHub marks the newest 1.x release as its latest while 2.x is the line in use. For that version the script downloads
+ * this machine's archive from the GitHub release under the name download.js uses, checks its size and SHA-256 against
+ * the release and unpacks it; then the extension's own code finds it, starts it and makes a conversation with it. None
+ * of this asks a model anything, so a fork, which needs a message in the conversation, is checked as a capability only.
  *
  * --resolve prints only the version it would check. Each failed check is a line starting "FAIL ". Exit 0 when every
  * check held, 1 when one did not, 2 when the check could not run (npm or GitHub unreachable, no such release), which
@@ -54,7 +53,6 @@ const cleanUp = () => {
 const fail = (text) => { failed++; console.log(`FAIL ${text}`); };
 const ok = (text) => console.log(`ok   ${text}`);
 const check = (cond, good, bad) => { if (cond) ok(good); else fail(bad || good); return !!cond; };
-/* The check could not run: nothing it says is about OpenCode. */
 async function cannot(text) {
   console.log(`could not run: ${text}`);
   if (oc) await oc.dispose().catch(() => {});
@@ -100,7 +98,7 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
   const want = download.asset();
   if (!want) return cannot(`download.js lists no archive for ${process.platform} ${process.arch}`);
   const a = (release.assets || []).find((x) => x.name === want.name);
-  if (!check(!!a, `the release has ${want.name}`, `the release v${version} has no ${want.name}, the name download.js gives this machine's archive`)) return finish();
+  if (!check(!!a, `the release has ${want.name}`, `the release v${version} has no ${want.name}`)) return finish();
   const digest = typeof a.digest === 'string' && a.digest.startsWith('sha256:') ? a.digest.slice(7) : '';
 
   const archive = path.join(root, want.name);
@@ -108,15 +106,15 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
   let got;
   try { got = await download.fetchFile(a.browser_download_url, archive, {}); } catch (e) { return cannot(`downloading ${want.name}: ${e.message}`); }
   console.log(`     downloaded ${got.bytes} bytes in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-  check(got.bytes === a.size, `its size is the ${a.size} bytes the release gives`, `${want.name} is ${got.bytes} bytes, the release says ${a.size}`);
-  if (digest) check(got.sha256 === digest, 'its SHA-256 is the one the release gives', `${want.name} has SHA-256 ${got.sha256}, the release gives ${digest}`);
+  check(got.bytes === a.size, `its size matches the release, ${a.size} bytes`, `${want.name} is ${got.bytes} bytes, the release says ${a.size}`);
+  if (digest) check(got.sha256 === digest, 'its SHA-256 matches the release', `${want.name} has SHA-256 ${got.sha256}, the release gives ${digest}`);
   else console.log('     the release gives no SHA-256 for it');
 
   const dir = path.join(root, 'unpacked');
   fs.mkdirSync(dir, { recursive: true });
   const unpacked = await download.extract(archive, dir, { kind: want.kind });
   const exe = path.join(dir, process.platform === 'win32' ? 'opencode.exe' : 'opencode');
-  if (!check(unpacked && fs.existsSync(exe), `it unpacks to ${path.basename(exe)} at its top, where download.js looks`,
+  if (!check(unpacked && fs.existsSync(exe), `it unpacks to ${path.basename(exe)} at its top`,
     `${want.name} did not unpack to ${path.basename(exe)} at its top, where download.js looks for it`)) return finish();
   if (process.platform !== 'win32') fs.chmodSync(exe, 0o755);
 
@@ -151,7 +149,6 @@ const watchdog = setTimeout(() => { fail('the check took more than 20 minutes');
       const listed = await oc.listSessions({ cwd });
       const ids = (Array.isArray(listed) ? listed : (listed && listed.sessions) || []).map((x) => x.sessionId || x.id);
       check(ids.includes(id), 'and the list of the folder\'s conversations has it', `the folder's list did not have it: ${JSON.stringify(ids)}`);
-      /* Forking needs a message in the conversation, and that needs a model; the capability above stands in for it. */
       if (oc.canRename()) { await oc.renameSession(id, 'Daily check'); ok('it renames the conversation'); }
     }
   } catch (e) { fail(`a conversation round trip failed: ${e.message}`); }
@@ -169,6 +166,6 @@ async function finish() {
   if (oc) { await oc.dispose().catch(() => {}); oc = null; }
   clearTimeout(watchdog);
   cleanUp();
-  console.log(failed ? `A check failed: ${failed} of the checks above did not hold.` : 'Every check held.');
+  console.log(failed ? `${failed} of the checks above failed.` : 'Every check held.');
   process.exit(failed ? 1 : 0);
 }

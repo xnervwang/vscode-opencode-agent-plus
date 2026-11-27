@@ -100,7 +100,6 @@ function createModels({ vscode, listModels, defaultModel }) {
     forNew,
     /* Uses the last list, without asking OpenCode again. */
     cached: (name) => last.find((m) => matches(m, name)) || null,
-    /* Whether a list was read, and how many models it had, without asking OpenCode again. */
     state: () => ({ listed, count: last.length }),
     fullId,
   };

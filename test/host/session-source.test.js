@@ -254,7 +254,7 @@ test('Account & usage, given at once from the last reading: the provider and mod
   source.onDidChangeAccountInfo(() => { told++; });
   const first = source.accountInfo({ sessionId: 'ses_a' });
   assert.ok(!first || typeof first.then !== 'function', 'not a promise: Agent Plus does not wait for it');
-  assert.deepEqual(first.rows.map((r) => [r.label, r.value]), [['Usage', 'Reading']], 'nothing read yet, which the part says');
+  assert.deepEqual(first.rows.map((r) => [r.label, r.value]), [['Usage', 'Reading']], 'nothing read yet: the row says Reading');
   for (let i = 0; i < 50 && !told; i++) await new Promise((r) => setTimeout(r, 5));
   assert.equal(told, 1, 'the core is told once the reading finishes');
   const info = source.accountInfo({ sessionId: 'ses_a' });
@@ -283,13 +283,13 @@ test('with nothing else to show, Account & usage still has OpenCode\'s part, who
   assert.deepEqual(await read(lost), [['OpenCode', 'Not found']], 'OpenCode not found comes first');
   listError.current = null;
   await lost.listSessions({ folders: ['/w'] });
-  assert.deepEqual(await read(lost), [['Provider', 'No provider configured']], 'found again, a model list with no model says no provider is set up');
-  assert.ok(told >= 2, 'and the core is told each time it changes');
+  assert.deepEqual(await read(lost), [['Provider', 'No provider configured']], 'once OpenCode is found, an empty model list means no provider is configured');
+  assert.ok(told >= 2, 'the core is told each time the row changes');
   assert.deepEqual(await read(setup({ statsError: new Error('broken'), modelsState: { listed: true, count: 3 } }).source), [['Usage', 'Not available']],
     'with providers but no statistics, the usage is not available');
-  assert.deepEqual(await read(setup({ statsError: new Error('broken') }).source), [['Usage', 'Not available']], 'a model list not read yet claims nothing about providers');
+  assert.deepEqual(await read(setup({ statsError: new Error('broken') }).source), [['Usage', 'Not available']], 'before the model list is read, the row says nothing about providers');
   assert.deepEqual(await read(setup({ modelsState: { listed: true, count: 0 } }).source), [['Today, all conversations', '$3.50']],
-    'with today\'s cost there is data, which is drawn as before');
+    'with today\'s cost, the part shows it as before');
 });
 
 test('today starts at midnight in the user\'s time zone', () => {

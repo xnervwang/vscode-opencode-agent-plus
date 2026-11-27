@@ -4,14 +4,14 @@
 
 'use strict';
 /*
- * The issue .github/workflows/opencode-check.yml keeps for each OpenCode version the daily check of the newest
- * OpenCode found failing: one per version, as a daily schedule would otherwise file the same news every day. Only a
- * check that no longer holds (exit 1 of build/latest-check.js) files one; a check that could not run (exit 2) says
- * nothing about OpenCode, and filing it would put an untrue claim in the tracker.
+ * The issue .github/workflows/opencode-check.yml opens when the daily check of the newest OpenCode fails: one per
+ * version, so the same failure is not filed again every day. Only a check that fails (exit 1 of build/latest-check.js)
+ * opens one; a check that could not run (exit 2) says nothing about OpenCode, and filing it would put an untrue claim
+ * in the tracker.
  *
- * The check closes that issue itself: the first run in which every system held for that version leaves a comment
- * naming the commit it ran on and closes it, so whether it was fixed is decided by the check and not by a person. A
- * version that fails again after that has its issue reopened, with the lines that failed this time.
+ * The check closes that issue itself: the first run in which every check held on every system leaves a comment naming
+ * the commit it ran on and closes it. A version that fails again after that has its issue reopened, with the lines
+ * that failed this time.
  *
  *   issueFor({ version, reports, runUrl })   { title, body } or null; `reports` is [{ os, code, text }]
  *   settle({ github, context, core, version, reports, runUrl, sha, dryRun })
@@ -30,13 +30,13 @@ function issueFor({ version, reports, runUrl }) {
   if (quoted.length > LIMIT) quoted = quoted.slice(0, LIMIT) + '\n... cut here; the run summary has every line';
   const ok = (reports || []).filter((r) => Number(r.code) === 0).map((r) => r.os);
   const body = [
-    `The daily check ran what this extension does with OpenCode against OpenCode **${v}**, the newest \`@opencode/cli\` on npm,`,
-    `and a check no longer held on ${bad.map((r) => r.os).join(', ')}${ok.length ? ` (it held on ${ok.join(', ')})` : ''}.`,
-    'Users who update OpenCode to this version, or install it fresh, get what the failing lines below describe.',
+    `The daily check tested OpenCode **${v}** and failed on ${bad.map((r) => r.os).join(', ')}${ok.length ? ` (it held on ${ok.join(', ')})` : ''}.`,
+    'Archive failures apply to the extension\'s download only if `src/opencode/download.js` pins this version; other failures describe',
+    'what happens when the extension uses this version on the system that reported them.',
     '',
     '### What the check said',
     '',
-    `The lines that failed are below; each system's whole report is in the summary of [the run](${runUrl}).`,
+    `The summary of [the run](${runUrl}) has the full report for each system.`,
     '',
     quoted.trim(),
     '',
@@ -44,15 +44,14 @@ function issueFor({ version, reports, runUrl }) {
     '',
     '- The archive name, size or SHA-256: `src/opencode/download.js`, whose `ASSETS` table names each system\'s archive.',
     '- Finding OpenCode or reading its version: `findOpenCode` and `readVersion` in `src/opencode/server.js`.',
-    '- Starting it, its capabilities, or a conversation round trip: `src/opencode/index.js`, over ACP.',
-    '- The npm install: `build/npm-check.js`, which installs it the way the install hint tells users to.',
+    '- Starting it over ACP, the capabilities it states, or the conversation round trip: `src/opencode/index.js`.',
+    '- The npm install: `build/npm-check.js`, which runs the install hint\'s `npm install -g @opencode/cli`.',
     '',
     `To reproduce: \`node build/latest-check.js --version ${v}\` and \`node build/npm-check.js --version ${v}\`.`,
   ].join('\n');
   return { title: titleOf(v), body };
 }
 
-/* Every system ran and every check held. */
 const passed = (reports) => (reports || []).length > 0 && reports.every((r) => Number(r.code) === 0);
 const passedNote = (sha, version, runUrl) => `The check passed on ${sha} against OpenCode ${version}: [the run](${runUrl}).`;
 

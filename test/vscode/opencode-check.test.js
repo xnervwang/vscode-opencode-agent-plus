@@ -3,8 +3,8 @@
 // All rights reserved.
 
 'use strict';
-/* The daily check of the newest OpenCode (.github/workflows/opencode-check.yml) and the issue it opens
-   (build/latest-issue.js): one per version, only for a check that no longer holds, quoting the lines that failed. */
+/* The daily check of the newest OpenCode (.github/workflows/opencode-check.yml) and the issues it opens and closes
+   (build/latest-issue.js). */
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -14,9 +14,9 @@ const issue = require('../../build/latest-issue');
 const ROOT = path.join(__dirname, '..', '..');
 const YML = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'opencode-check.yml'), 'utf8');
 const RUN = 'https://github.com/o/r/actions/runs/1';
-const report = (lines) => ['OpenCode 2.5.0, the newest on npm (the extension pins 2.4.1), on linux x64', ...lines, 'A check failed: 1 of the checks above did not hold.'].join('\n');
+const report = (lines) => ['OpenCode 2.5.0, the newest on npm (the extension pins 2.4.1), on linux x64', ...lines, '1 of the checks above failed.'].join('\n');
 
-test('the workflow runs once a day and by hand, checks each system, and may open issues only in its last job', () => {
+test('the workflow runs daily on three systems, and only its last job can write issues', () => {
   assert.match(YML, /schedule:\s*\n\s*#[^\n]*\n\s*- cron: '23 11 \* \* \*'/);
   assert.match(YML, /workflow_dispatch:\s*\n\s*inputs:\s*\n\s*version:/);
   assert.match(YML, /push:\s*\n\s*#[^\n]*\n\s*branches: \['ci\/\*\*'\]/);
@@ -36,7 +36,7 @@ test('a failed check opens an issue named after the version, quoting the failing
   ] });
   assert.strictEqual(got.title, 'OpenCode 2.5.0 failed the daily check');
   assert.match(got.body, /OpenCode \*\*2\.5\.0\*\*/);
-  assert.match(got.body, /no longer held on ubuntu-latest \(it held on windows-latest\)/);
+  assert.match(got.body, /failed on ubuntu-latest \(it held on windows-latest\)/);
   assert.match(got.body, /#### ubuntu-latest\n\n```\nFAIL it no longer says it can fork conversations/);
   assert.ok(!got.body.includes('ok   the release has'), 'only the failing lines are quoted');
   assert.ok(!got.body.includes('#### macos-latest'), 'a system where the check could not run is not reported as failing');
@@ -44,11 +44,11 @@ test('a failed check opens an issue named after the version, quoting the failing
   assert.match(got.body, /node build\/latest-check\.js --version 2\.5\.0/);
 });
 
-test('no issue when every check held or could only not run', () => {
+test('no issue when each system either held or could not run', () => {
   assert.strictEqual(issue.issueFor({ version: '2.5.0', runUrl: RUN, reports: [{ os: 'ubuntu-latest', code: 0, text: '' }, { os: 'macos-latest', code: 2, text: '' }] }), null);
 });
 
-/* A stand-in for github-script's client: the issues it holds, and each write it was asked for. */
+/* A fake of github-script's client that lists `issues` and records each write. */
 function fakeGithub(issues) {
   const writes = [];
   return {
@@ -72,7 +72,7 @@ const settle = (issues, reports, more = {}) => {
   return issue.settle({ github, context, core, version: '2.5.0', reports, runUrl: RUN, sha: 'abc1234', ...more }).then((done) => [done, github.writes.filter((w) => w[0] !== 'list')]);
 };
 
-test('a failed check opens one issue per version: none while one is open, and it reads every issue, open or closed', async () => {
+test('a failed check opens one issue per version, and no second one while it is open', async () => {
   const github = fakeGithub([]);
   await issue.settle({ github, context, core, version: '2.5.0', reports: failedOn, runUrl: RUN, sha: 'abc1234' });
   assert.deepStrictEqual(github.writes, [['list', 'all'], ['create', TITLE]]);
@@ -89,7 +89,7 @@ test('the first run in which every system held closes the version\'s open issue,
   assert.deepStrictEqual(await settle([], heldOn), ['none', []]);
 });
 
-test('a run in which a system could not run closes nothing, as it does not show that system holds', async () => {
+test('a run where one system could not run the check closes nothing', async () => {
   const partly = [heldOn[0], heldOn[1], { os: 'windows-latest', code: 2, text: 'could not run: npm answered 503' }];
   assert.deepStrictEqual(await settle([{ number: 7, title: TITLE, state: 'open' }], partly), ['none', []]);
 });

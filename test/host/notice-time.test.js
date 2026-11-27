@@ -21,7 +21,7 @@ const sources = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e
   return e.name.endsWith('.js') ? [p] : [];
 });
 
-test('no notification is shown without the time: show…Message is called directly only for a modal dialog', () => {
+test('only a modal dialog calls show…Message directly', () => {
   const direct = [];
   for (const file of [path.join(ROOT, 'extension.js'), ...sources(path.join(ROOT, 'src'))]) {
     fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
@@ -31,7 +31,7 @@ test('no notification is shown without the time: show…Message is called direct
   assert.deepStrictEqual(direct, []);
 });
 
-test('the wrapper puts the time in the reader\'s zone before the text once that zone is handed over, and names this machine\'s before', () => {
+test('the time is in this machine\'s zone, named, until the reader\'s zone is handed over, then in the reader\'s', () => {
   const shown = [];
   const vscode = { window: { showInformationMessage: (...a) => { shown.push(a); return Promise.resolve(); } } };
   const now = Date.now();

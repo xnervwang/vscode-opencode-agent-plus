@@ -395,10 +395,10 @@ async function missing(ctx) {
   const part = () => h.sl.evaluate(() => { const a = document.querySelector('.sl-section[data-key="account"]'); return a && !a.classList.contains('sl-hidden') ? a.innerText : null; });
   if (!(await part())) await h.expand('Account & usage').catch(() => {});
   const said = await ctx.until(async () => { const t = await part(); return t && /OpenCode/.test(t) && /Not found/.test(t) ? t : null; }, 20000);
-  check(!!said, "with OpenCode not found, Account & usage still has OpenCode's part, one row saying OpenCode was not found", said || await part());
+  check(!!said, "with OpenCode not found, Account & usage keeps OpenCode's part, with a single Not found row", said || await part());
   await h.away();
   await shot('02c-sessions-no-opencode-account', { features: ['Account & usage'],
-    expect: 'The ACCOUNT & USAGE section at the top of the list, expanded, with an OpenCode block headed by its mark that has one row: "OpenCode" and "Not found". No provider, model or cost rows.',
+    expect: 'The ACCOUNT & USAGE section at the top of the list, expanded, with an OpenCode block, headed by its mark, that has one row: "OpenCode" and "Not found". No provider, model or cost rows.',
     part: SIDEBAR });
   return h;
 }

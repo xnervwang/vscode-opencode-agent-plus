@@ -130,13 +130,13 @@ async function run(t) {
   check(JSON.stringify(answered) === '[false,false]' && !!toast && tabsAfter === tabsBefore,
     'New Conversation and Test OpenCode Connection only say to trust the workspace: no tab opens', { answered, toast, tabsBefore, tabsAfter });
   /* The notification starts with its time (src/shared/notice-time.js). VS Code runs on this machine, so the hour and
-     minute are this machine's, in the reader's zone or, before a page has said it, this one named. */
+     minute are this machine's; until a chat page reports the reader's time zone, the zone's name follows them. */
   const said = await page.evaluate((t) => { const e = [...document.querySelectorAll('.notification-toast')].find((x) => x.textContent.includes(t));
     const m = e && (e.querySelector('.notification-list-item-message') || e); return m ? m.innerText.trim() : ''; }, 'does nothing in Restricted Mode');
   const hm = (ms) => new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
   const stamp = /^\[(\d\d:\d\d)(?: [^\]]+)?\] /.exec(said);
   check(!!stamp && [Date.now(), Date.now() - 60000].map(hm).includes(stamp[1]) && said.slice(stamp[0].length) === TEXT,
-    'and the notification starts with its time in square brackets, the hour and minute of now', said);
+    'and the notification starts with the current time in square brackets', said);
   await shot('r03-command-restricted', { features: ['Restricted Mode command'],
     expect: `A notification at the bottom right says "${TEXT}", with the time before it in square brackets such as [14:05] or [14:05 UTC], and a "Manage Workspace Trust" button. No new tab opened.`,
     part: '.notifications-toasts' });

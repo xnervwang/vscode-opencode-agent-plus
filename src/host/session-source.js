@@ -83,7 +83,7 @@ const count = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n /
  *   fork(id)         Promise: opens a copy of the conversation
  *   markViewed(id, idle)  optional Promise: OpenCode's record that the turn that ended at `idle` was seen
  *   stats(from, to, timeZone)  optional Promise of OpenCode's session statistics for that span
- *   models()                 optional: { listed, count } of the last model list, without asking OpenCode again
+ *   models()                 optional: { listed, count } of the model list last read
  *   providerName(id) optional: a provider id's display name
  *   timeZone()       optional: the user's IANA time zone
  *   canDownload()    optional: whether OpenCode can be downloaded for this platform
@@ -131,7 +131,7 @@ function createSessionSource(deps) {
   let account = { id: null, at: 0, record: null };
   let accountReading = null;
   let accountKey = '';
-  /* OpenCode was not found on the last listing; the last reading of today's statistics failed. */
+  /* missing: the last listing did not find OpenCode. statsFailed: today's statistics could not be read last time. */
   let missing = false, statsFailed = false;
   /* Tells the core when Account & usage would read differently. */
   function retellAccount() {
@@ -192,8 +192,8 @@ function createSessionSource(deps) {
     });
   }
 
-  /* The one row Account & usage has when nothing else can be said, saying why: the part is never left out, so that no
-     part reads the same as no such feature. */
+  /* The single row Account & usage shows, with the reason, when there is nothing else to show. Leaving the part out
+     would look as if this extension had no usage figures at all. */
   function stateRow() {
     const m = typeof deps.models === 'function' ? deps.models() || {} : {};
     if (missing) return { label: 'OpenCode', value: 'Not found', tooltip: 'Install OpenCode 2, or set opencodeAgentPlus.opencode.path to the one you have' };

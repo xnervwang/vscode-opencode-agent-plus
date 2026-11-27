@@ -13,17 +13,17 @@ const { createBackend } = require('../../src/host/backend');
 const notFound = () => Object.assign(new Error('OpenCode was not found.'), { name: 'OpenCodeError', code: 'notFound' });
 const settle = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 
-/* A fake vscode.window that records what is shown. `pick` is the button the offer resolves with; `cancel()` presses
-   Cancel on the progress notification. */
+/* Drops the time src/shared/notice-time.js puts before a notification. */
 const unstamp = (m) => (typeof m === 'string' ? m.replace(/^\[[^\]]+\] /, '') : m);
 
+/* A fake vscode.window that records what is shown. `pick` is the button the offer resolves with; `cancel()` presses
+   Cancel on the progress notification. */
 function fakeVscode({ pick } = {}) {
   const state = { asked: [], errors: [], progress: [], reports: [] };
   const cancelled = new EventEmitter();
   const vscode = {
     ProgressLocation: { Notification: 15 },
     window: {
-      /* Recorded without the time src/shared/notice-time.js puts before a notification. */
       showInformationMessage: async (text, ...buttons) => { state.asked.push({ text: unstamp(text), buttons }); return pick; },
       showErrorMessage: async (text) => { state.errors.push(unstamp(text)); },
       withProgress: async (opts, task) => {
