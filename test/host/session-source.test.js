@@ -227,6 +227,13 @@ test('actions: what the source can do, and each one carried out or refused with 
   assert.match((await old.runSessionAction('rename', ['ses_a'], { title: 'x' })).results[0].reason, /OpenCode 2/);
 });
 
+/* OpenCode 2.4.1's session.update changes the title of an archived session and leaves time.archived as it was. */
+test('an archived conversation is renamed like any other', async () => {
+  const { source, calls } = setup({ records: [rec('ses_old', { archivedAt: 555 })] });
+  assert.deepEqual((await source.runSessionAction('rename', ['ses_old'], { title: 'Renamed while archived' })).results, [{ sessionId: 'ses_old', outcome: 'done' }]);
+  assert.deepEqual(calls.filter((c) => c[0] === 'rename'), [['rename', 'ses_old', 'Renamed while archived']]);
+});
+
 test('a turn running elsewhere stops a delete with a reason, and nothing is removed', async () => {
   const { source, calls } = setup({ records: [rec('ses_r', { busy: true })], active: ['ses_r'] });
   const r = (await source.runSessionAction('delete', ['ses_r'], {})).results[0];
