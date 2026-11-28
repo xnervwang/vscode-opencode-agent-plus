@@ -1,5 +1,5 @@
 {
-  "core": "543254048786c6094bbdf1174002f8b853026e41",
+  "core": "83c4c1196af34d171415a6b6eff71b3878e6d33f",
   "files": [
     {
       "path": "build/sync-shared.js",
@@ -54,7 +54,7 @@
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan_common.py",
       "from": "shared/plugin/hooks/plan_common.py",
-      "sha256": "15cc36ad5e918b7daee0f9ce4443ef92f02f1894ce1d7903ebb5455975db8bef"
+      "sha256": "1ee0f4f09c16babed23e9f90764dd3b617800e0d47525a223718563d65f1eacd"
     },
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan-row.py",
@@ -99,7 +99,7 @@
     {
       "path": "opencode-plugin/agent-work-plan/hooks/plan_agent.py",
       "from": "shared/plugin/opencode/plan_agent.py",
-      "sha256": "00ec2a10c6ca0fb3fddc81d718d9e4161595a791ad40a599a8d968afe08e5ddc"
+      "sha256": "ced6c65a19a22de16097b526473e9563c88b38b63f8ae7e1d52c3671c6d10479"
     },
     {
       "path": "src/shared/title-marks.js",
@@ -130,7 +130,7 @@
       "path": "opencode-plugin/skills/retitle/SKILL.md",
       "from": "shared/plugin/skills/retitle/SKILL.md",
       "fill": "shared/plugin/opencode/retitle-skill.txt",
-      "sha256": "87d6cefea7b7bd707463b64ad812efc631893ec76fa09f7881700bd88b67d5cc"
+      "sha256": "08c71acce3ca195b2c246ec04a1e92722da3ef252744771f7515469934137795"
     }
   ]
 }
