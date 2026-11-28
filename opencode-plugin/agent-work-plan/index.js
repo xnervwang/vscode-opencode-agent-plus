@@ -23,7 +23,8 @@
  *                extension (Agent Plus docs/protocol.md "Retitle requests") and waits for its answer
  *   steward      while <plans>/<session id>.steward.json exists (the extension writes it with the conversation's lead
  *                supervisor in Claude Code Plus, or with none while supervisors only observe it), each turn's text also
- *                names the lead, or says none watches it; the lead last named is kept in stewards-told/<session id>.json;
+ *                names the lead, or says no supervisor watches it, and stewards-told/<session id>.json records the lead
+ *                it named last;
  *                steward_handoff writes <session id>.handoff-<key>.json there, which the extension sends to the lead
  *                with Agent Plus's deliver(), and reads the .result.json it writes back (src/host/steward.js in the
  *                extension)
@@ -422,8 +423,8 @@ function handedSaid(r) {
   const outcome = r && typeof r.outcome === 'string' ? r.outcome : '';
   if (outcome === 'submitted') {
     const who = r && typeof r.steward === 'string' && r.steward ? ` ${nameOf({ sessionId: r.steward, title: titleOf(r.title) })}` : '';
-    return `Handed off to your lead supervisor${who}, as a notice that says it is not from the user. Say so in one sentence in your reply `
-      + 'and leave it to the supervisor.';
+    return `Handed off to your lead supervisor${who}, marked as not from the user. Tell the user so in one sentence and leave the `
+      + 'rest to the supervisor.';
   }
   if (outcome === 'uncertain') return `Unclear whether the supervisor was told: ${reason || 'no outcome came in time'}.`;
   if (outcome === 'drafted') return `Not done: it was put into the supervisor's message input, and not sent.${LEAVE_IT}`;

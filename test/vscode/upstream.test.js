@@ -33,7 +33,7 @@ test('the vscode workflow builds the pinned Agent Plus and installs the pinned t
   assert.match(VSCODE, /workflow_call:\n\s+inputs:\n\s+upstream:/);
 });
 
-test('the window tests run in full once a day and before each release, not on a push to main, and once on each system', () => {
+test('the window tests run in full once a day and before each release, never on a push to main, and once per system', () => {
   assert.match(VSCODE, /schedule:\n(\s+#.*\n)?\s+- cron: '\d+ \d+ \* \* \*'/);
   assert.doesNotMatch(VSCODE, /^  push:/m, 'a push runs only ci.yml');
   assert.match(CI, /push:\n\s+branches: \[main\]/);

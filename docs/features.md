@@ -265,11 +265,24 @@ Click the pen at the end of any row in the Work plan view to bring the plan's co
 
 To assign a supervisor, bring its Claude Code conversation to the front in Claude Code Plus. In the Supervisor panel at the bottom of the VS Code window, beside Problems, Output and Terminal, tick the conversations you want it to supervise. You can tick an OpenCode Agent Plus conversation there.
 
-A conversation has at most one lead supervisor: the supervisor that opened it, or, if no supervisor opened it, the first one that ticked it. Other supervisors that tick the conversation are observers: they read it and report to you. An observer can act on the conversation only after you agree to let it take over from the lead. If the lead's own conversation stays closed, the lead unticks the conversation it supervises, or the lead is archived, Claude Code Plus makes another supervisor that ticked the conversation its lead. For an OpenCode Agent Plus conversation, only the lead can send messages. Supervisors cannot rename it or open or close its tab.
+A conversation has at most one lead supervisor: the supervisor that opened it, otherwise the first one that ticked it.
+Other supervisors that tick the conversation are observers. They only read the conversation and report to you. An
+observer can act on the conversation only after you agree to let it take over from the lead. Claude Code Plus makes
+another supervisor that ticked the conversation its lead if the current lead's own conversation stays closed or if the
+current lead unticks the supervised conversation or is archived. For an OpenCode Agent Plus conversation, only the lead
+can send messages. Supervisors cannot rename it or open or close its tab.
 
-With Agent Plus 1.6.0 or later, the model can use `steward_handoff` to pass the lead a request that belongs in another conversation while your OpenCode Agent Plus conversation has a lead and work plans are on in [Token Mode](#token-mode). "Steward" is the old name for a supervisor. A handoff always goes to the lead. With Claude Code Plus 1.10.0 or earlier, which has no leads, the supervisor you last talked to counts as the lead.
+If your OpenCode Agent Plus conversation has a lead and you have work plans on in [Token Mode](#token-mode), Agent Plus
+1.6.0 or later lets the model use `steward_handoff` to send the lead a request that belongs in another conversation.
+"Steward" is the old name for a supervisor. With Claude Code Plus 1.10.0 or earlier, which has no leads, the supervisor
+you last talked to counts as the lead.
 
-Under those same conditions, each message the conversation sends to the model includes a note naming the lead. The model gets the full note the first time, after a lead change and after the conversation is compacted. Otherwise it gets one line. The note mentions a lead change once, naming the new and previous leads. If no VS Code window shows the lead's conversation, the note says so and tells the model to put questions for you in its work plan. No handoff is sent. If supervisors observe the conversation but none leads it, the note says no supervisor watches it, and the model has no `steward_handoff` tool.
+With Agent Plus 1.6.0 or later, each message your conversation sends to the model names the lead in a note if the
+conversation has a lead and you have work plans on in [Token Mode](#token-mode). The model gets the full note the first
+time, after a lead change and after the conversation is compacted. Otherwise it gets one line. Only the first note after
+a switch says who took over and from whom. If no VS Code window shows the lead's conversation, the note says so and
+tells the model to put questions for you in its work plan. No handoff is sent. If supervisors observe the conversation
+but none leads it, the note says no supervisor watches it, and the model has no `steward_handoff` tool.
 
 ## Conversation Brief
 

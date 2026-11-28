@@ -12,15 +12,16 @@
  *
  *   <plans>/<id>.steward.json                  { format: 1, sourceId, sessionId, stewards: [lead], lead }, lead being
  *                                              { sourceId, sessionId, title, open }; { format: 1, stewards: [], lead: null }
- *                                              while supervisors observe it and none leads it; none while it has none.
+ *                                              while supervisors observe it but none leads it; no file while it has no
+ *                                              supervisor.
  *                                              Plugins of earlier releases read only the top two fields and `stewards`
  *   <plans>/<id>.handoff-<key>.json            { format: 1, text, at }, written by the plugin
  *   <plans>/<id>.handoff-<key>.result.json     { format: 1, outcome, reason, steward?, title? }, what came of it
  *
- * The lead is asked for when a conversation opens here, whenever onDidChangeStewards fires, and at every poll, since
- * whether a window shows the lead can change without that event. A handoff goes to the lead, asked again as the request
- * is taken; the `to` that plugins of earlier releases may write is not read. A request is taken by renaming it, so only
- * one extension host sends it, and only for a conversation open in its window. The folder is watched, with a slow poll
+ * This window asks Agent Plus for the lead when a conversation opens here, whenever onDidChangeStewards fires, and at
+ * every poll, since whether a window shows the lead can change without that event. It asks once more as it takes a
+ * handoff, which goes to the lead; the `to` that plugins of earlier releases may write is ignored. Taking a request means
+ * renaming it, so only one extension host sends it, and only for a conversation open in its window. The folder is watched, with a slow poll
  * besides, only while a conversation open here has a supervisor. Deleting a conversation deletes these files
  * (src/workplan removePlan).
  */
@@ -118,9 +119,9 @@ function createStewards(deps) {
   const has = (feature, method) => Array.isArray(core.features) && core.features.includes(feature) && typeof core[method] === 'function';
 
   /*
-   * { lead, watched }: the lead of `id`, or null, and whether any supervisor looks after it. With 'stewardLead' the lead
-   * is the entry stewardsOf() marks; otherwise, and when none is marked, stewardOf() names it. An Agent Plus that has
-   * stewardsOf() but no stewardOf() keeps the lead first.
+   * { lead, watched }: the lead of `id`, or null, and whether any supervisor looks after it. The lead is the entry
+   * stewardsOf() marks when Agent Plus lists 'stewardLead', failing that stewardOf()'s answer, and with no stewardOf() at
+   * all the first entry.
    */
   function ask(id) {
     let list = [];
@@ -208,7 +209,7 @@ function createStewards(deps) {
     const at = Number(body.at) || 0;
     if (!at || now() - at > STALE_MS) return { outcome: 'notReceived', reason: `no window took the handoff within ${STALE_MS / 1000} seconds` };
     const { lead } = ask(id);
-    if (!lead) return { outcome: 'notReceived', reason: 'no supervisor leads this conversation now' };
+    if (!lead) return { outcome: 'notReceived', reason: 'no supervisor leads this conversation' };
     const who = { steward: lead.sessionId, title: lead.title };
     if (!lead.open) return { outcome: 'notReceived', reason: `its lead supervisor ${nameOf(lead)} is not open in a VS Code window now`, ...who };
     let title = '';

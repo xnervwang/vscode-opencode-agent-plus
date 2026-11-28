@@ -11,15 +11,15 @@
 #
 # What it installs from other repositories is pinned in .github/upstream.json: the Agent Plus commit it builds, and the
 # versions of the test runner's packages; VS Code's version is in run.js. To test a newer Agent Plus, change that commit.
-# Run with `upstream: latest` (against-latest.yml does so once a week), it builds Agent Plus's default branch and installs
+# With `upstream: latest`, which against-latest.yml uses once a week, it builds Agent Plus's default branch and installs
 # VS Code stable and the newest test runner instead.
 #
-# It runs in full once a day and once more in release.yml before a release publishes; a push to main runs only ci.yml.
+# A full run happens daily and from release.yml before each release is published. Pushes to main run ci.yml instead.
 name: vscode
 
 on:
   schedule:
-    # 09:41 UTC. Off the hour, when the scheduler is busiest, and apart from opencode-check.yml's 11:23.
+    # 09:41 UTC, apart from the other two scheduled workflows.
     - cron: '41 9 * * *'
   pull_request:
   # By hand: one system or all three, and with `steps` only the window test steps whose names match that regular

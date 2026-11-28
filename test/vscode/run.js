@@ -42,8 +42,8 @@
  * right; after it each is back in its group with its own conversation.
  * --restricted runs test/vscode/lib/restricted.js instead: the folder untrusted, then trusted.
  * --steward runs test/vscode/lib/steward.js instead, with the real backend and OpenCode 2: a stand-in for Claude Code Plus's
- * source names a lead and an observer for the conversation; the model hands messages to the lead, which then changes,
- * stops being open in a window and goes, and then the stand-in names none.
+ * source names a lead and an observer for the conversation, and the model hands messages to the lead while the lead
+ * changes, is closed and goes away, until the stand-in names no supervisor.
  * --title-order runs test/vscode/lib/title-order.js instead, on the fake backend, with Claude Code and Codex installed;
  * it checks where their editor title buttons and this extension's land.
  * --download runs test/vscode/lib/download.js instead, with the real backend and no OpenCode to find (no --opencode, no

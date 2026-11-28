@@ -7,11 +7,11 @@
  * The steward run of test/vscode/run.js (--steward), with OpenCode 2 and a real model. The helper extension registers
  * with Agent Plus a stand-in for Claude Code Plus's source, with the id claude-code and the 'stewards' and 'stewardList'
  * features. Its stewardsOf() names two supervisors for every opencode-plus conversation, the lead first and marked
- * `lead: true`, its stewardOf() names the lead, and its deliverAnswer() records what it is given. This process writes a
+ * `lead: true`; stewardOf() returns the lead, and deliverAnswer() keeps each answer it gets. This process writes a
  * window entry in the stand-in's plan folder, as a VS Code window showing the two supervisors would, so that Agent Plus
  * counts them open. A supervisor's message is typed into the conversation through Agent Plus's deliver(), with the line
  * Claude Code Plus puts first in it. The plugin's log (OPENCODE_AGENT_PLUS_PLAN_LOG) shows what each request held and
- * what each handoff came to.
+ * how each handoff ended.
  */
 const fs = require('fs');
 const path = require('path');
@@ -82,7 +82,7 @@ async function run(t) {
     const reg = await until(() => ext('return api.test.agentPlus.accepted ? api.test.agentPlus : null;'), 60000);
     const stand = await call(STAND_IN, { list: [{ ...DOCS, lead: true }, NIGHT], dir: standDir, folder: t.folder });
     check(!!reg && !!stand && stand.accepted && Array.isArray(stand.features) && stand.features.includes('stewardList'),
-      "Agent Plus lists 'stewardList', and a stand-in claude-code source with a lead and an observer registers beside OpenCode Agent Plus", { reg, stand });
+      "Agent Plus lists 'stewardList', and a stand-in claude-code source with a lead and an observer registers next to OpenCode Agent Plus", { reg, stand });
 
     // S2. A new conversation gets its steward file beside its plan, naming the lead only, open.
     await call('await vscode.commands.executeCommand("opencodeAgentPlus.newConversation"); return true;');
@@ -96,11 +96,11 @@ async function run(t) {
     check(!!id && file === path.join(t.plans, `${id}.steward.json`) && !!side && side.format === 1 && side.sourceId === 'claude-code' && side.sessionId === DOCS.sessionId
       && !!side.lead && side.lead.sessionId === DOCS.sessionId && side.lead.title === DOCS.title && side.lead.open === true
       && Array.isArray(side.stewards) && side.stewards.length === 1 && !JSON.stringify(side).includes(NIGHT.sessionId) && mode === 0o600,
-    'the new conversation has <plans>/<id>.steward.json, readable only by its owner, naming the lead with its title as open, and not the observer', { id, file, side, mode: mode.toString(8) });
+    'the new conversation has <plans>/<id>.steward.json, readable only by its owner, naming only the lead, with its title, as open', { id, file, side, mode: mode.toString(8) });
 
     const figures = () => chat.evaluate(() => document.querySelectorAll('#log .figures').length);
     const status = () => chat.evaluate(() => document.body.dataset.status);
-    /* Starts a turn with `start`, answers Allow once to any request on the way, and waits for the turn to end. */
+    /* Starts a turn with `start`, allows each permission request once, and waits for the turn to end. */
     const turnBy = async (start) => {
       const before = await figures();
       await start();
@@ -135,11 +135,11 @@ async function run(t) {
     const first = Date.now();
     const ended = chat ? await turn('Reply with only the word ready.') : false;
     const prompts = since(first, 'prompt'), requests = since(first, 'context');
-    /* A request OpenCode makes for itself (a title, say) may come with no tools; the turn's own requests have them. */
+    /* A request OpenCode makes for itself (one for a title, for example) may come with no tools; the turn's own requests have them. */
     const turnRequests = requests.filter((l) => Array.isArray(l.tools) && l.tools.includes('add_row'));
     check(ended && prompts.length > 0 && prompts.every((l) => l.steward === true && l.watchedText === LEAD) && turnRequests.length > 0
       && turnRequests.every((l) => l.tools.includes('steward_handoff') && l.watched >= 1),
-    "the first turn's prompt gets Claude Code Plus's whole note naming the lead, word for word, and each of its requests carries it and steward_handoff",
+    "the first turn's prompt gets Claude Code Plus's whole note naming the lead, word for word, and each of its requests carries the note and steward_handoff",
     { ended, prompts: prompts.map((l) => ({ same: l.watchedText === LEAD, text: l.watchedText })), requests: requests.map((l) => ({ watched: l.watched, kept: l.kept, steward: (l.tools || []).includes('steward_handoff') })) });
 
     // S4. The lead's message starts a turn and asks for a handoff: the note is one line now, and the handoff goes to
@@ -182,7 +182,7 @@ async function run(t) {
     const nightHanded = await stewardTurn(signed(NIGHT, `${ask} Hand it on with the steward_handoff tool, and do nothing else here.`));
     const got2 = (await gotNow()).slice(before);
     check(!!moved && JSON.stringify(noted(askedNight)) === JSON.stringify([`${NOW}\n${night(LEAD)}`]),
-      'after the lead changed the turn is told so in one line, then gets the whole note naming the new lead', { moved, noted: noted(askedNight) });
+      'after a change of lead the turn gets a line saying so, then gets the whole note naming the new lead', { moved, noted: noted(askedNight) });
     check(nightHanded && got2.length === 1 && got2[0].sessionId === NIGHT.sessionId && got2[0].text.startsWith(HEAD)
       && since(askedNight, 'handoff').some((l) => l.outcome === 'submitted' && l.steward === NIGHT.sessionId),
     'the handoff went to the new lead', { nightHanded, got: got2.map((g) => ({ to: g.sessionId, start: g.text.slice(0, 120) })), handoffs: since(askedNight, 'handoff') });
@@ -197,9 +197,9 @@ async function run(t) {
       + 'If it says it was not done, do not call it again; reply with one sentence saying what it answered.');
     const notSent = since(askedClosed, 'handoff');
     check(!!closed && closedDone && JSON.stringify(noted(askedClosed)) === JSON.stringify([night(STILL_CLOSED)]),
-      'with the lead not open the note is the one line saying so', { closed, noted: noted(askedClosed) });
+      'with the lead not open, the one-line note says so', { closed, noted: noted(askedClosed) });
     check(notSent.some((l) => l.outcome === 'notReceived' && /not open in a VS Code window/.test(String(l.reason))) && (await gotNow()).length === before2,
-      'a handoff while no window shows the lead is not sent, and says why', { notSent });
+      'no handoff is sent while no window shows the lead, and the tool says why', { notSent });
 
     // S7. Supervisors observe the conversation and none leads it: the file says so, the turn gets the line saying no
     // supervisor watches it, and steward_handoff is withdrawn.
@@ -212,7 +212,7 @@ async function run(t) {
     const unledRequests = since(askedUnled, 'context').filter((l) => Array.isArray(l.tools) && l.tools.includes('add_row'));
     check(!!unled && JSON.stringify(unled.stewards) === '[]' && unledDone && JSON.stringify(noted(askedUnled)) === JSON.stringify([NO_LEAD])
       && unledRequests.length > 0 && unledRequests.every((l) => !l.tools.includes('steward_handoff')),
-    'with no lead the file names none, the turn is told no supervisor watches it, and steward_handoff is withdrawn', { unled, noted: noted(askedUnled), tools: unledRequests.map((l) => l.tools) });
+    'with no lead the file names none, the turn gets the line that no supervisor watches it, and steward_handoff is withdrawn', { unled, noted: noted(askedUnled), tools: unledRequests.map((l) => l.tools) });
 
     // S8. The stand-in names no supervisor: the steward file goes, the folder is no longer watched, and the next turn
     // has no note. The messages before keep the note they were sent with, so a request carries no more notes naming a
@@ -220,14 +220,14 @@ async function run(t) {
     await call(SET_LIST, []);
     const removed = await until(() => !fs.existsSync(file), 15000);
     const watching = await ext('return api.test.stewardsWatching();');
-    check(!!removed && watching === false, 'once stewardsOf() and stewardOf() name no supervisor and onDidChangeStewards fires, the steward file is removed', { removed, watching });
+    check(!!removed && watching === false, 'once Agent Plus names no supervisor, the steward file is removed', { removed, watching });
     const carried = Math.max(0, ...since(first, 'context').map((l) => Number(l.watched) || 0));
     const last = Date.now();
     const done = await turn('Reply with only the word done.');
     const afterPrompts = since(last, 'prompt'), afterRequests = since(last, 'context');
     check(done && afterPrompts.length > 0 && afterPrompts.every((l) => l.steward === false) && afterRequests.some((l) => Array.isArray(l.tools) && l.tools.includes('add_row'))
       && afterRequests.every((l) => Array.isArray(l.tools) && !l.tools.includes('steward_handoff') && (Number(l.watched) || 0) <= carried),
-    'without a supervisor the next turn gets no note, and steward_handoff stays withdrawn while the plan tools stay', { done, after: afterPrompts, carried, requests: afterRequests.map((l) => ({ watched: l.watched, tools: l.tools })) });
+    'without a supervisor the next turn gets no note, and steward_handoff stays withdrawn while the plan tools remain', { done, after: afterPrompts, carried, requests: afterRequests.map((l) => ({ watched: l.watched, tools: l.tools })) });
     chat = await frameWith(page, '#input', 10000);
     await shot('S06-no-steward', { features: ['steward handoff'],
       expect: 'The same chat page with more exchanges at the end, the last being the user message "Reply with only the word done." and a reply "done" (or close to it). No error notice.',

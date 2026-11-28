@@ -35,7 +35,7 @@ const NIGHT = Object.freeze({ sourceId: 'claude-code', sessionId: 'bbbbbbbb-1111
 /* The steward file naming a lead: for an Agent Plus without 'stewardList' it has no title and counts as open. */
 const LEAD = (s, title = '', open = true) => ({ sourceId: s.sourceId, sessionId: s.sessionId, title, open });
 const ONE = (s, title, open) => ({ format: 1, sourceId: s.sourceId, sessionId: s.sessionId, stewards: [LEAD(s, title, open)], lead: LEAD(s, title, open) });
-/* The steward file of a conversation that supervisors observe and none leads. */
+/* The steward file while supervisors observe the conversation but none leads it. */
 const UNLED = Object.freeze({ format: 1, stewards: [], lead: null });
 const LEADS = ['deliver', 'stewards', 'stewardList', 'stewardLead'];
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'na-steward-dir-'));
@@ -172,7 +172,7 @@ test('two takers race for one request: it is sent once and the result is written
   } finally { a.dispose(); b.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("deliver()'s outcome and reason are written as they came; a request that cannot be sent is answered without calling deliver()", async () => {
+test("the result file keeps deliver()'s outcome and reason unchanged, and a request that cannot be sent gets its answer without a deliver() call", async () => {
   const dir = tmp();
   let title = 'New conversation';
   let open = [A];
@@ -200,7 +200,7 @@ test("deliver()'s outcome and reason are written as they came; a request that ca
     core.answer = () => null;
     core.fire();
     await s.take(request(dir, A, 'k7000000'));
-    assert.deepStrictEqual(res('k7000000'), { format: 1, outcome: 'notReceived', reason: 'no supervisor leads this conversation now' });
+    assert.deepStrictEqual(res('k7000000'), { format: 1, outcome: 'notReceived', reason: 'no supervisor leads this conversation' });
 
     open = [];
     s.opened();
@@ -240,7 +240,7 @@ test('the folder watch and the poll take requests, and a result nobody read is r
   } finally { polled.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("with 'stewardLead' the steward file names the entry stewardsOf() marks as the lead, and an empty lead while supervisors only observe", () => {
+test("with 'stewardLead' the steward file names the entry stewardsOf() marks as the lead; while supervisors only observe, its lead is empty", () => {
   const dir = tmp();
   const s = createStewards({ dir: () => dir, ids: () => [A], title: () => '', pollMs: 60000, watch: () => ({ close() {} }) });
   try {
@@ -261,7 +261,7 @@ test("with 'stewardLead' the steward file names the entry stewardsOf() marks as 
 
     core.list = () => [DOCS, NIGHT];
     core.fire();
-    assert.deepStrictEqual(read(file), UNLED, 'supervisors that only observe: the file says none leads it');
+    assert.deepStrictEqual(read(file), UNLED, 'supervisors that only observe: the file has no lead');
     assert.strictEqual(readLead(dir, A), null);
     assert.deepStrictEqual(core.asked.at(-1), ['opencode-plus', A], 'with no entry marked, stewardOf() is asked');
 
@@ -271,7 +271,7 @@ test("with 'stewardLead' the steward file names the entry stewardsOf() marks as 
     assert.deepStrictEqual(read(file), ONE(OTHER), 'no list: stewardOf() names the lead');
     core.answer = () => null;
     core.fire();
-    assert.ok(!fs.existsSync(file), 'no supervisor at all: no file');
+    assert.ok(!fs.existsSync(file), 'with no supervisor the file is removed');
   } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -285,7 +285,7 @@ test("an Agent Plus without 'stewardLead' keeps the lead first and names it with
     assert.deepStrictEqual(read(file), ONE(NIGHT, 'Night steward'), "stewardOf()'s answer, with the title from the list");
     core.answer = () => null;
     core.fire();
-    assert.deepStrictEqual(read(file), UNLED, 'stewardOf() names none while the list has supervisors: none leads it');
+    assert.deepStrictEqual(read(file), UNLED, 'supervisors listed and no stewardOf() answer: the file has no lead');
 
     const only = createStewards({ dir: () => dir, ids: () => [B], title: () => '' });
     try {
@@ -297,13 +297,13 @@ test("an Agent Plus without 'stewardLead' keeps the lead first and names it with
     fs.writeFileSync(file, JSON.stringify({ format: 1, ...STEWARD }));
     assert.deepStrictEqual(readLead(dir, A), LEAD(STEWARD), 'a file with only the two top fields names one supervisor');
     fs.writeFileSync(file, JSON.stringify({ format: 1, ...DOCS, stewards: [DOCS, NIGHT] }));
-    assert.deepStrictEqual(readLead(dir, A), LEAD(DOCS, 'Docs steward'), 'a file listing several names the first');
+    assert.deepStrictEqual(readLead(dir, A), LEAD(DOCS, 'Docs steward'), 'a file of an earlier release that lists several gives the first');
     fs.writeFileSync(file, JSON.stringify({ format: 2, ...STEWARD }));
     assert.strictEqual(readLead(dir, A), null);
   } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("a handoff goes to the lead, asked for again when the request is taken; a `to` is not read; none goes while no supervisor leads or the lead is not open", async () => {
+test("a handoff goes to the lead Agent Plus names when the request is taken, whatever `to` says, and is not sent while there is no lead or the lead is not open", async () => {
   const dir = tmp();
   const core = fakeCore({ features: LEADS, list: () => [{ ...DOCS, lead: true, open: true }, NIGHT] });
   const s = createStewards({ dir: () => dir, ids: () => [A], title: () => 'Fix the build', pollMs: 60000, watch: () => ({ close() {} }) });
@@ -329,7 +329,7 @@ test("a handoff goes to the lead, asked for again when the request is taken; a `
     core.list = () => [DOCS, NIGHT];
     core.answer = () => null;
     await s.take(request(dir, A, 'r5000000'));
-    assert.deepStrictEqual(res('r5000000'), { format: 1, outcome: 'notReceived', reason: 'no supervisor leads this conversation now' });
+    assert.deepStrictEqual(res('r5000000'), { format: 1, outcome: 'notReceived', reason: 'no supervisor leads this conversation' });
     assert.strictEqual(core.delivered.length, sent, 'neither called deliver()');
   } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
