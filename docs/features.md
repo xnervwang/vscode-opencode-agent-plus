@@ -217,13 +217,13 @@ To start a conversation, click the agent logo on the left of the New bar at the 
 
 With OpenCode 2, hover over a conversation's row and click Rename, or right-click the row and choose Rename. To copy a whole conversation into a new tab, right-click its row and choose `Fork Conversation`, the last entry in the menu. See [Forking](#forking).
 
-The model can also rename the conversation it runs in with its `set_title` tool, when you ask it to or when the title no longer says what the conversation is about. The tool's description tells it when to and when not to, such as never over a title you gave it. Only a VS Code window that has the conversation open renames it, and only after it has seen the conversation's own call, so a conversation cannot rename another one. The title loses any marks and extra spaces and is cut at 80 characters.
+The model can also rename the conversation it runs in with its `set_title` tool, when you ask it to or when the title no longer fits the work. It leaves a title you gave the conversation alone unless you ask for a new one. Only a VS Code window that has the conversation open renames it, after seeing the conversation's own call, so one conversation cannot rename another. The window strips marks and extra spaces from the title and cuts it at 80 characters.
 
 ### Archiving and deleting conversations
 
 To move a conversation to the Archived section, hover over its row and click Archive or right-click the row and choose Archive; to move it back, click Unarchive on its row in the Archived section. Agent Plus records which conversations are archived in the list. The first time the list shows a project's OpenCode conversations, Agent Plus marks any that OpenCode had already archived.
 
-Only you can delete a conversation: no model and no supervisor can, and that is by design. To delete one, right-click its row in the Archived section and choose `Delete...` to open the confirmation prompt; this works only when no window or other process has the conversation open and nothing in it is running. Before you confirm, the prompt explains that deletion removes the conversation and its subagents' sessions from OpenCode's database. OpenCode Agent Plus also deletes the work plan and the folder it keeps for the conversation.
+Only you can delete a conversation; models and supervisors cannot, by design. To delete one, right-click its row in the Archived section and choose `Delete...` to open the confirmation prompt; this works only when no window or other process has the conversation open and nothing in it is running. Before you confirm, the prompt explains that deletion removes the conversation and its subagents' sessions from OpenCode's database. OpenCode Agent Plus also deletes the work plan and the folder it keeps for the conversation.
 
 ### Account & usage
 
@@ -267,7 +267,7 @@ To assign a supervisor, bring a Claude Code conversation to the front in Claude 
 
 While an OpenCode Agent Plus conversation has a supervisor and [Token Mode](#token-mode) has work plans turned on, its model can use `steward_handoff` to pass the supervisor a request that belongs in another conversation. Under those same conditions, each message the conversation sends to the model includes a note that a supervisor is watching. The note and the tool need Agent Plus 1.6.0 or later and a Claude Code Plus release later than 1.5.0.
 
-A supervisor can send these conversations messages, rename them, and open or close their tabs. It cannot delete one; only you can, in the Conversations list.
+A supervisor can send these conversations messages, rename them, and open or close their tabs.
 
 A conversation can have more than one supervisor. The note then names each of them, and a handoff goes to the supervisor whose message started the turn, or else to the supervisor you last talked to. The model can also name one of the supervisors to hand it to. To assign multiple supervisors to one conversation, use a version of Agent Plus later than 1.6.0.
 

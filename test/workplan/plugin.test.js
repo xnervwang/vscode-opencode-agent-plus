@@ -814,7 +814,7 @@ test('set_title writes a retitle request for its own session, answers with what 
     assert.deepEqual(fs.readdirSync(dir), [], 'the answer is removed once read');
     const none = await tool.execute({ title: 'Nobody takes this' }, { sessionID: SID });
     assert.match(none.content, /^Not renamed: no VS Code window took the request/);
-    assert.deepEqual(fs.readdirSync(dir), [], 'a request nobody took is withdrawn');
+    assert.deepEqual(fs.readdirSync(dir), [], 'no file is left behind');
     assert.equal((await tool.execute({ title: '   ' }, { sessionID: SID })).content, 'Not renamed: the title is empty.');
     assert.match((await tool.execute({ title: 'x' }, { sessionID: 'not-a-session' })).content, /^Not renamed: this conversation's id/);
   } finally {

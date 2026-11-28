@@ -274,13 +274,12 @@ const HANDOFF_POLL_MS = 250;
 const NO_STEWARD = 'This conversation has no supervisor.';
 const LEAVE_IT = ' Say in your reply where it seems to belong, so the user decides.';
 
-/* set_title: the conversation asks the window hosting it for a title of its own, in the request and answer files of
+/* set_title: the conversation's request to be renamed, sent to the window hosting it in the request and answer files of
    Agent Plus's docs/protocol.md "Retitle requests" (plan_common.request_retitle on the Python side). The extension
-   (src/host/retitle.js) takes the request only for a conversation open in its window whose own set_title call it saw
-   with the same title. */
-/* The shared retitle skill (copied beside the plugin as ../skills/retitle/SKILL.md) is the tool's description: OpenCode
-   sends a tool's description with every request, which a skill of this plugin's could not be counted on to reach. The
-   frontmatter, the source line and the section on how to call it are left out. */
+   (src/host/retitle.js) renames only a conversation open in its window, and only after seeing that conversation's own
+   set_title call with the same title. */
+/* The tool's description is the shared retitle skill, ../skills/retitle/SKILL.md beside the plugin. OpenCode sends a
+   tool's description with every request, which a skill of this plugin's could not be counted on to reach. */
 function titleGuide() {
   let text = '';
   try { text = fs.readFileSync(path.join(__dirname, '..', 'skills', 'retitle', 'SKILL.md'), 'utf8'); } catch (_) { return ''; }
@@ -292,13 +291,12 @@ const TITLE_TOOL = {
   description: ("Rename this conversation: the title shown on its tab and in Agent Plus's conversation list. "
     + 'It returns whether the title was changed; do not call it again for the same title.\n\n' + titleGuide()).trim(),
   input: { type: 'object', required: ['title'], additionalProperties: false, properties: {
-    title: { type: 'string', description: "The new title, in the conversation's language, under 40 characters where it can be." } } },
+    title: { type: 'string', description: "The new title, in the conversation's language; keep it under 40 characters when you can." } } },
 };
 const RETITLE_DIR = 'retitle';
 const RETITLE_MAX_CHARS = 500;
 const RETITLE_WAIT_MS = 15000;
 const RETITLE_CLAIMED_WAIT_MS = 10000;
-/* For tests: waits shorter than the usual ones. */
 const retitleWaits = () => {
   const n = Number(process.env.OPENCODE_AGENT_PLUS_RETITLE_WAIT_MS);
   return Number.isInteger(n) && n > 0 && n < RETITLE_WAIT_MS ? [n, n] : [RETITLE_WAIT_MS, RETITLE_CLAIMED_WAIT_MS];
@@ -562,7 +560,7 @@ async function setup(ctx) {
   const windows = new Map();
   const nudgeMode = () => (['note', 'resume', 'off'].includes(process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE) ? process.env.OPENCODE_AGENT_PLUS_PLAN_NUDGE : 'note');
 
-  /* The plan tools are registered while plans are on and withdrawn while they are off; set_title stays. steward_handoff is in the set only
+  /* The plan tools are there only while plans are on; set_title always is. steward_handoff is in the set only
      while some session seen here has a steward file, so that its description is sent only while a session can use it.
      A change applies to the requests made after it and registers the whole set again. */
   let tools = null;
@@ -572,7 +570,6 @@ async function setup(ctx) {
     toolsBusy = toolsBusy.then(async () => {
       const on = enabled();
       const watched = on && state.ids().some(hasSteward);
-      /* set_title is there whether or not plans are on. */
       const want = on ? (watched ? 'plan+steward+title' : 'plan+title') : 'title';
       const canAdd = !!ctx.tool && typeof ctx.tool.transform === 'function';
       if (want === toolsSet || (want && !canAdd && !tools)) return;

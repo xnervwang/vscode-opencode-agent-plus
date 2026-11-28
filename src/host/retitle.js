@@ -11,10 +11,10 @@
  *   <key>.claimed       the request once a window has taken it, by renaming it
  *   <key>.result.json   { format: 1, key, outcome, reason, title, at }, what came of it
  *
- * Only a window with the conversation open takes its request: that window follows the conversation's events, and
- * renames only when it saw the conversation's own set_title call carrying the same title, so a request any other
- * process wrote is refused. The title is cleaned (the marks this extension draws, white space, 80 characters) and set
- * with the window's own rename. The folder, which the plugin makes, is read every second while a conversation is
+ * The window that has the conversation open takes its request. It follows the conversation's events and renames only
+ * when it saw the conversation's own set_title call carrying the same title, so a request any other process wrote is
+ * refused. The title loses the marks this extension draws and extra white space, is cut to 80
+ * characters, and is set with the window's own rename. The folder, which the plugin makes, is read every second while a conversation is
  * open here; files older than ten minutes are removed.
  */
 const fs = require('fs');
@@ -29,8 +29,8 @@ const SESSION = /^ses_[0-9A-Za-z]{8,64}$/;
 const TOOL = /(?:^|[_.:/-])set_title$/;
 const MAX_TITLE = 80;
 const POLL_MS = 1000;
-/* How long a call seen counts, and how long a request waits for its call to be seen: OpenCode reports the call to this
-   window at about the time the tool starts. */
+/* A call seen confirms a request for SEEN_MS; a request waits up to CONFIRM_MS for its call. OpenCode reports the call
+   to this window at about the time the tool starts. */
 const SEEN_MS = 5 * 60 * 1000;
 const CONFIRM_MS = 5000;
 const CONFIRM_POLL_MS = 250;
@@ -61,7 +61,7 @@ function cleanTitle(title, strip) {
  *   dir()               the plans folder; requests are in its retitle/ folder
  *   ids()               the conversations open in this window
  *   rename(id, title)   Promise: renames the conversation, in OpenCode and in this window
- *   strip(title)        optional: the title without the marks this extension draws
+ *   strip(title)        optional: takes the extension's marks off a title
  *   log(line)           optional
  *   now(), pollMs, confirmMs   optional, for tests
  */
@@ -87,8 +87,8 @@ function createRetitles(deps) {
   }
   const called = (id, title) => (calls.get(id) || []).some((c) => c.title === title && now() - c.at < SEEN_MS);
 
-  /* Follows `conversation` for its set_title calls; returns a function that stops. The history is not read: a call in it
-     belongs to an earlier request, which has had its answer. */
+  /* Follows `conversation` for its set_title calls; returns a function that stops following. The history is not read:
+     a call in it belongs to an earlier request, which has had its answer. */
   function track(id, conversation) {
     const take = (ev) => {
       if (!ev || typeof ev !== 'object' || ev.type !== 'toolCall' || !TOOL.test(String(ev.name || ''))) return;
@@ -151,7 +151,7 @@ function createRetitles(deps) {
     }
   }
 
-  /* Reads the folder while a conversation is open here. Call when the conversations open here change. */
+  /* Starts or stops reading the folder, which happens only while a conversation is open here; call it when that changes. */
   function opened() {
     const want = !gone && openIds().size > 0;
     if (want && !timer) {

@@ -980,7 +980,7 @@ function start(context, log, gate, channel) {
     log,
   });
   subs.push(stewards, manager.onDidChange(() => stewards.opened()));
-  /* A conversation open here asking for a title of its own with the plugin's set_title tool. */
+  /* set_title requests from conversations open here (src/host/retitle.js). */
   const retitles = createRetitles({
     dir: () => workplan.planDir(),
     ids: () => manager.ids(),
