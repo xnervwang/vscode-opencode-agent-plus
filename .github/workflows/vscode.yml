@@ -11,13 +11,16 @@
 #
 # What it installs from other repositories is pinned in .github/upstream.json: the Agent Plus commit it builds, and the
 # versions of the test runner's packages; VS Code's version is in run.js. To test a newer Agent Plus, change that commit.
-# Run with `upstream: latest` (against-latest.yml does so once a day), it builds Agent Plus's default branch and installs
+# Run with `upstream: latest` (against-latest.yml does so once a week), it builds Agent Plus's default branch and installs
 # VS Code stable and the newest test runner instead.
+#
+# It runs in full once a day and once more in release.yml before a release publishes; a push to main runs only ci.yml.
 name: vscode
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    # 09:41 UTC. Off the hour, when the scheduler is busiest, and apart from opencode-check.yml's 11:23.
+    - cron: '41 9 * * *'
   pull_request:
   # By hand: one system or all three, and with `steps` only the window test steps whose names match that regular
   # expression, with the steps they rely on (test/vscode/lib/steps.js). Used to try a fix of one failure on the system it
@@ -33,11 +36,6 @@ on:
         description: A regular expression of window test step names to run; empty runs them all
         type: string
         default: ''
-      times:
-        description: How many times to run them on each system
-        type: choice
-        options: ['1', '2', '3', '5']
-        default: '1'
       upstream:
         description: The pinned Agent Plus, VS Code and test runner, or the latest of each
         type: choice
@@ -99,8 +97,6 @@ jobs:
       fail-fast: false
       matrix:
         os: ${{ fromJSON(inputs.os && inputs.os != 'all' && format('["{0}"]', inputs.os) || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
-        round: ${{ fromJSON(inputs.times == '5' && '[1, 2, 3, 4, 5]' || inputs.times == '3' && '[1, 2, 3]' || inputs.times == '2' && '[1, 2]' || '[1]') }}
-    name: "run (${{ matrix.os }}${{ matrix.round > 1 && format(' #{0}', matrix.round) || '' }})"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:
@@ -146,6 +142,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: vscode-${{ runner.os }}${{ matrix.round > 1 && format('-{0}', matrix.round) || '' }}
+          name: vscode-${{ runner.os }}
           path: vscode-results
           if-no-files-found: warn

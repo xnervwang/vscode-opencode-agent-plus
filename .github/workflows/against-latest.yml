@@ -2,7 +2,7 @@
 # Copyright (c) 2026, Xnerv Wang
 # All rights reserved.
 
-# Runs the window tests of vscode.yml once a day against the newest of what it pins: Agent Plus's default branch, VS
+# Runs the window tests of vscode.yml once a week against the newest of what it pins: Agent Plus's default branch, VS
 # Code stable and the newest test runner. A red run here says one of them changed in a way this extension or its tests
 # have to follow. It does not hold up pushes, which test against the versions in .github/upstream.json. GitHub sends the
 # failure to whoever last changed the schedule below.
@@ -10,8 +10,8 @@ name: against-latest
 
 on:
   schedule:
-    # 10:47 UTC. Not on the hour, when the scheduler is busiest and runs are likeliest to be dropped.
-    - cron: '47 10 * * *'
+    # Sundays at 10:47 UTC. Not on the hour, when the scheduler is busiest and runs are likeliest to be dropped.
+    - cron: '47 10 * * 0'
   workflow_dispatch:
 
 permissions:

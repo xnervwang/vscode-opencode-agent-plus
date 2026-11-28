@@ -3,7 +3,7 @@
 // All rights reserved.
 
 'use strict';
-/* The pins in .github/upstream.json and the two workflows that read them. */
+/* The pins in .github/upstream.json, the two workflows that read them, and when the window tests run. */
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -14,6 +14,8 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const PINS = JSON.parse(read('.github/upstream.json'));
 const VSCODE = read('.github/workflows/vscode.yml');
 const LATEST = read('.github/workflows/against-latest.yml');
+const RELEASE = read('.github/workflows/release.yml');
+const CI = read('.github/workflows/ci.yml');
 
 test('upstream.json pins an Agent Plus commit and exact versions of the test runner', () => {
   assert.deepStrictEqual(Object.keys(PINS).sort(), ['agentPlus', 'playwrightCore', 'testElectron']);
@@ -31,20 +33,24 @@ test('the vscode workflow builds the pinned Agent Plus and installs the pinned t
   assert.match(VSCODE, /workflow_call:\n\s+inputs:\n\s+upstream:/);
 });
 
-test('dispatched by hand, the vscode workflow can repeat the run on each system', () => {
-  assert.match(VSCODE, /times:\n[\s\S]*?options: \['1', '2', '3', '5'\]/);
-  assert.match(VSCODE, /round: \$\{\{ fromJSON\(/);
-  assert.match(VSCODE, /name: vscode-\$\{\{ runner\.os \}\}\$\{\{ matrix\.round > 1 && format\('-\{0\}', matrix\.round\) \|\| '' \}\}/);
+test('the window tests run in full once a day and before each release, not on a push to main, and once on each system', () => {
+  assert.match(VSCODE, /schedule:\n(\s+#.*\n)?\s+- cron: '\d+ \d+ \* \* \*'/);
+  assert.doesNotMatch(VSCODE, /^  push:/m, 'a push runs only ci.yml');
+  assert.match(CI, /push:\n\s+branches: \[main\]/);
+  assert.doesNotMatch(VSCODE, /times:|matrix\.round/, 'no repeated rounds');
+  assert.match(VSCODE, /name: vscode-\$\{\{ runner\.os \}\}\n/);
+  assert.match(RELEASE, /  vscode:\n\s+uses: \.\/\.github\/workflows\/vscode\.yml\n\s+with:\n\s+upstream: pinned/);
+  assert.match(RELEASE, /  publish:\n\s+needs: vscode\n/, 'nothing is published unless the window tests pass');
 });
 
-test('against-latest runs the vscode workflow once a day with the latest upstream', () => {
-  assert.match(LATEST, /schedule:\n(\s+#.*\n)?\s+- cron: '\d+ \d+ \* \* \*'/);
+test('against-latest runs the vscode workflow once a week with the latest upstream', () => {
+  assert.match(LATEST, /schedule:\n(\s+#.*\n)?\s+- cron: '\d+ \d+ \* \* \d'/);
   assert.match(LATEST, /uses: \.\/\.github\/workflows\/vscode\.yml\n\s+with:\n\s+upstream: latest/);
 });
 
 /* YAML reads " #" in an unquoted value as the start of a comment. */
 test('no unquoted workflow value holding an expression has a " #" in it', () => {
-  for (const [name, text] of [['vscode.yml', VSCODE], ['against-latest.yml', LATEST]]) {
+  for (const [name, text] of [['vscode.yml', VSCODE], ['against-latest.yml', LATEST], ['release.yml', RELEASE]]) {
     const cut = text.split('\n').filter((l) => /^\s*-?\s*[\w-]+: [^'"\s].*\$\{\{.* #/.test(l));
     assert.deepStrictEqual(cut, [], name);
   }
