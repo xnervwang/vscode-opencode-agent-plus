@@ -555,29 +555,34 @@ test('after a compaction the notes are sent again, separately from the plan, so 
   await stop();
 });
 
-/* ---------- the steward line and steward_handoff ---------- */
+/* ---------- the lead supervisor's note and steward_handoff ---------- */
 
-/* The line Claude Code Plus's own conversations get (its hooks/steward.py watched(), with two example stewards),
-   with the two changes this plugin makes: the steward_handoff tool for the relay command,
-   and the tool's `to` for --to. */
-const CCPLUS_ONE = 'A supervisor, "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444), watches this one for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the supervisor "<title>" (<session id>) for the user:`, which names the supervisor that sent it. Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered.';
-const CCPLUS_MANY = 'Supervisors "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444) and "Night steward" (bbbbbbbb-1111-4222-8333-444444444444) watch this one for the user through Claude Code Plus: they read your work plan and latest reply, and speak for the user by typing messages here, which come as the user\'s own. Each such message starts with the line `Sent by the supervisor "<title>" (<session id>) for the user:`, which names the supervisor that sent it. Do not send them status messages; put questions for the user in your plan as rows waiting on the user, where they see them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 \'<plugin>/hooks/steward-relay.py\' --handoff with a here-document holding the user\'s words, where it should go (a session id, or a folder for a new conversation) and why, and say in one sentence what it answered. It goes to the supervisor whose message started this turn, or else to the one the user last typed to; to hand it to another of them, add --to and that supervisor\'s session id.';
+/* What Claude Code Plus's own conversations are told (its hooks/steward.py watched() and still_led(), with the lead
+   "Docs steward"), and the one change this plugin makes: the steward_handoff tool for the relay command. */
+const DECISIONS = "Release, push a tag, approve, merge or speak for the user in public only on the user's own words: what the user types here, or what your lead supervisor's messages say apart from sentences marked as the supervisor's arrangement.";
+const CCPLUS_LEAD = `Your lead supervisor is "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444). It watches this conversation for the user through Claude Code Plus: it reads your work plan and latest reply, and speaks for the user by typing messages here, which come as the user's own. Each such message starts with the line \`Sent by the supervisor "<title>" (<session id>) for the user:\`. ${DECISIONS} Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them. If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by another one), do not start background work for it here: run python3 '<plugin>/hooks/steward-relay.py' --handoff with a here-document holding the user's words, where it should go (a session id, or a folder for a new conversation) and why; it goes to your lead supervisor. Say in one sentence what it answered.`;
+const CCPLUS_CLOSED = 'It is not open in a VS Code window now, so put questions for the user in your plan as rows waiting on the user for now.';
+const CCPLUS_STILL = `Your lead supervisor is still "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444). ${DECISIONS}`;
+const CCPLUS_STILL_CLOSED = `Your lead supervisor is still "Docs steward" (aaaaaaaa-1111-4222-8333-444444444444); it is not open in a VS Code window now, so put questions for the user in your plan. ${DECISIONS}`;
+const CCPLUS_NOW = 'Your lead supervisor is now "Night steward" (was "Docs steward").';
+const NO_LEAD = 'No supervisor watches this conversation now; put questions for the user in your plan.';
 const once = (text, from, to) => { assert.equal(text.split(from).length, 2, `once in the original: ${from}`); return text.replace(from, to); };
-const ours = (text) => once(once(text, "run python3 '<plugin>/hooks/steward-relay.py' --handoff with a here-document holding", 'call the steward_handoff tool with'),
-  "add --to and that supervisor's session id", "set the tool's `to` to that supervisor's session id");
-const ONE_TEXT = once(CCPLUS_ONE, "run python3 '<plugin>/hooks/steward-relay.py' --handoff with a here-document holding", 'call the steward_handoff tool with');
-const MANY_TEXT = ours(CCPLUS_MANY);
+const LEAD_TEXT = once(CCPLUS_LEAD, "run python3 '<plugin>/hooks/steward-relay.py' --handoff with a here-document holding", 'call the steward_handoff tool with');
 const DOCS = { sourceId: 'claude-code', sessionId: 'aaaaaaaa-1111-4222-8333-444444444444', title: 'Docs steward' };
 const NIGHT = { sourceId: 'claude-code', sessionId: 'bbbbbbbb-1111-4222-8333-444444444444', title: 'Night steward' };
+/* The note naming `who` instead of the Docs steward. */
+const naming = (text, who) => text.split(`"Docs steward" (${DOCS.sessionId})`).join(who.title ? `"${who.title}" (${who.sessionId})` : who.sessionId);
 const STEWARD_ID = DOCS.sessionId;
 const PLAN_TOOLS = ['set_row', 'add_row', 'set_summary', 'set_status', 'set_title'];
-/* The steward file as the extension writes it. */
-const watch = (env, id = SID, list = [DOCS]) => fs.writeFileSync(path.join(env.plans, `${id}.steward.json`),
-  JSON.stringify({ format: 1, sourceId: list[0].sourceId, sessionId: list[0].sessionId, stewards: list }));
+const NO_STEWARD = 'Not done: no supervisor leads this conversation now. Say in your reply where it seems to belong, so the user decides.';
+/* The steward file as the extension writes it: `lead`, or none while supervisors only observe. */
+const watch = (env, id = SID, lead = DOCS, open = true) => fs.writeFileSync(path.join(env.plans, `${id}.steward.json`),
+  JSON.stringify(lead ? { format: 1, sourceId: lead.sourceId, sessionId: lead.sessionId, stewards: [{ ...lead, open }], lead: { ...lead, open } }
+    : { format: 1, stewards: [], lead: null }));
 const toolNames = (f) => f.liveTools().flatMap((r) => r.added).map((t) => t.name);
 const handoffFiles = (env) => fs.readdirSync(env.plans).filter((n) => n.includes('.handoff-'));
 
-test('the steward line after the plan and the steward_handoff tool come with a steward file, and go without one or with plans off', async () => {
+test("the lead's note after the plan and the steward_handoff tool come with a steward file, and go without one or with plans off", async () => {
   const env = makeEnv();
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
@@ -589,61 +594,88 @@ test('the steward line after the plan and the steward_handoff tool come with a s
   watch(env);
   const second = prompt(SID, 'msg_2', 'x');
   await f.hooks.prompt(second);
-  assert.equal(second.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_2\n\n${ONE_TEXT}\n</system-update>`, "with one steward, the text is Claude Code Plus's one-steward line");
+  assert.equal(second.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_2\n\n${LEAD_TEXT}\n</system-update>`, "the first turn with a lead gets Claude Code Plus's whole note");
   assert.deepEqual(toolNames(f), [...PLAN_TOOLS, 'steward_handoff'], 'registered again as one set, steward_handoff last');
   assert.equal(f.liveTools().length, 1);
   const tool = f.tool('steward_handoff');
   assert.deepEqual(tool.input.required, ['text']);
   assert.equal(tool.input.additionalProperties, false);
-  assert.deepEqual(Object.keys(tool.input.properties), ['text', 'to']);
-  assert.equal(tool.input.properties.to.type, 'string');
+  assert.deepEqual(Object.keys(tool.input.properties), ['text'], 'no `to`: a handoff goes to the lead');
   assert.deepEqual(tool.options, { codemode: false });
   assert.ok(tool.description.length < 250, 'a short description');
+  const third = prompt(SID, 'msg_3', 'x');
+  await f.hooks.prompt(third);
+  assert.equal(third.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_3\n\n${CCPLUS_STILL}\n</system-update>`, 'then one line');
 
   /* Tools are per OpenCode process, so the other session gets steward_handoff as well; there it answers that the
-     conversation has no steward. */
-  const other = prompt(OTHER, 'msg_3', 'x');
+     conversation has no lead. */
+  const other = prompt(OTHER, 'msg_4', 'x');
   await f.hooks.prompt(other);
-  assert.ok(!other.metadata.agentWorkPlan.includes('through Claude Code Plus'));
-  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no supervisor.');
+  assert.ok(!other.metadata.agentWorkPlan.includes('supervisor'));
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, NO_STEWARD);
   fs.writeFileSync(path.join(env.plans, `${OTHER}.steward.json`), '{"format": 1, "sourceId": "claude-code"}');
-  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, 'This conversation has no supervisor.', 'a file without a steward counts as none');
-  assert.equal((await tool.execute({ text: 'x' }, { sessionID: 'not-a-session' })).content, 'This conversation has no supervisor.');
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, NO_STEWARD, 'a file without a supervisor counts as none');
+  watch(env, OTHER, null);
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: OTHER })).content, NO_STEWARD, 'supervisors that only observe take no handoff');
+  assert.equal((await tool.execute({ text: 'x' }, { sessionID: 'not-a-session' })).content, NO_STEWARD);
 
   env.config({ enabled: false });
-  const off = prompt(SID, 'msg_4', 'x');
+  const off = prompt(SID, 'msg_5', 'x');
   await f.hooks.prompt(off);
-  assert.ok(!off.metadata.agentWorkPlan || !off.metadata.agentWorkPlan.includes('through Claude Code Plus'), 'plans off: no steward line');
+  assert.ok(!off.metadata.agentWorkPlan || !off.metadata.agentWorkPlan.includes('supervisor'), 'plans off: no note');
   assert.deepEqual(toolNames(f), ['set_title'], 'plans off: only set_title');
 
   env.config({ enabled: true });
   fs.unlinkSync(path.join(env.plans, `${SID}.steward.json`));
-  const gone = prompt(SID, 'msg_5', 'x');
+  fs.unlinkSync(path.join(env.plans, `${OTHER}.steward.json`));
+  const gone = prompt(SID, 'msg_6', 'x');
   await f.hooks.prompt(gone);
-  assert.equal(gone.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_5\n</system-update>`);
-  assert.deepEqual(toolNames(f), PLAN_TOOLS, 'no steward left: steward_handoff withdrawn');
+  assert.equal(gone.metadata.agentWorkPlan, `<system-update>\nPLAN ${SID} msg_6\n</system-update>`);
+  assert.deepEqual(toolNames(f), PLAN_TOOLS, 'no lead left: steward_handoff withdrawn');
   await stop();
 });
 
-test("two stewards get Claude Code Plus's line for several, in the steward file's order, and so do more stewards, untitled ones and old-format files", async () => {
+test('the note is whole on the first turn, after the lead changes and after a compaction, and one line otherwise; a change of lead is said once; none leads: one line', async () => {
   const env = makeEnv();
   const f = fakeCtx();
   const stop = await plugin.setup(f.ctx);
-  const line = async (msg) => { const ev = prompt(SID, msg, 'x'); await f.hooks.prompt(ev); return ev.metadata.agentWorkPlan; };
-  watch(env, SID, [DOCS, NIGHT]);
-  assert.equal(await line('msg_1'), `<system-update>\nPLAN ${SID} msg_1\n\n${MANY_TEXT}\n</system-update>`);
-  watch(env, SID, [NIGHT, DOCS]);
-  assert.ok((await line('msg_2')).includes(`Supervisors "Night steward" (${NIGHT.sessionId}) and "Docs steward" (${DOCS.sessionId}) watch this one`), 'the order is the file\'s');
-  const third = { sourceId: 'claude-code', sessionId: 'cccccccc-1111-4222-8333-444444444444', title: '' };
-  watch(env, SID, [DOCS, NIGHT, third]);
-  assert.equal(await line('msg_3'), `<system-update>\nPLAN ${SID} msg_3\n\n${MANY_TEXT.replace(`and "Night steward" (${NIGHT.sessionId})`,
-    `, "Night steward" (${NIGHT.sessionId}) and ${third.sessionId}`).replace(`"Docs steward" (${DOCS.sessionId}) ,`, `"Docs steward" (${DOCS.sessionId}),`)}\n</system-update>`,
-  'three: commas and a last "and"; one without a title is named by its session id');
+  const note = async (msg) => {
+    const ev = prompt(SID, msg, 'x');
+    await f.hooks.prompt(ev);
+    return ev.metadata.agentWorkPlan.replace(`<system-update>\nPLAN ${SID} ${msg}\n\n`, '').replace(/\n<\/system-update>$/, '');
+  };
+  const told = path.join(env.plans, 'stewards-told', `${SID}.json`);
+  watch(env);
+  assert.equal(await note('msg_1'), LEAD_TEXT);
+  assert.deepEqual(JSON.parse(fs.readFileSync(told, 'utf8')), { lead: DOCS.sessionId, title: 'Docs steward', compacted: '' });
+  if (POSIX_MODES) assert.equal(fs.statSync(told).mode & 0o777, 0o600);
+  assert.equal(await note('msg_2'), CCPLUS_STILL);
+  fs.writeFileSync(path.join(env.plans, `${SID}.compacted`), '2026-11-28T05:00:00+00:00\n');
+  assert.equal(await note('msg_3'), LEAD_TEXT, 'after a compaction the whole note again');
+  assert.equal(await note('msg_4'), CCPLUS_STILL);
+
+  watch(env, SID, DOCS, false);
+  assert.equal(await note('msg_5'), CCPLUS_STILL_CLOSED, 'a lead no window shows: still one line, saying so');
+  watch(env, SID, NIGHT);
+  assert.equal(await note('msg_6'), `${CCPLUS_NOW}\n${naming(LEAD_TEXT, NIGHT)}`, 'another lead: a line saying so, then the whole note');
+  assert.equal(await note('msg_7'), naming(CCPLUS_STILL, NIGHT));
+  watch(env, SID, NIGHT, false);
+  fs.unlinkSync(told);
+  assert.equal(await note('msg_8'), naming(once(LEAD_TEXT, 'Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them.', CCPLUS_CLOSED), NIGHT),
+    'without the record the turn counts as the first; the whole note for a lead not open');
+
+  watch(env, SID, null);
+  assert.equal(await note('msg_9'), NO_LEAD, 'supervisors that only observe: the line saying none watches it');
+  assert.equal(await note('msg_10'), NO_LEAD);
+  watch(env);
+  assert.equal(await note('msg_11'), LEAD_TEXT, 'a lead again: the whole note, with no line about a change since none was named before');
+
   fs.writeFileSync(path.join(env.plans, `${SID}.steward.json`), JSON.stringify({ format: 1, sourceId: 'claude-code', sessionId: DOCS.sessionId }));
-  assert.equal(await line('msg_4'), `<system-update>\nPLAN ${SID} msg_4\n\n${ONE_TEXT.replace(`"Docs steward" (${DOCS.sessionId})`, DOCS.sessionId)}\n</system-update>`,
-    'an older extension\'s file with only the two top fields names one steward, by its session id');
-  watch(env, SID, [{ ...DOCS, title: 'Docs\n   steward ' }, { sourceId: 'claude-code' }]);
-  assert.equal(await line('msg_5'), `<system-update>\nPLAN ${SID} msg_5\n\n${ONE_TEXT}\n</system-update>`, 'an unusable entry is left out and a title kept on one line');
+  assert.equal(await note('msg_12'), naming(CCPLUS_STILL, { sessionId: DOCS.sessionId }), "a file of an earlier release, the lead by its session id alone");
+  fs.writeFileSync(path.join(env.plans, `${SID}.steward.json`), JSON.stringify({ format: 1, sourceId: 'claude-code', sessionId: NIGHT.sessionId,
+    stewards: [{ ...NIGHT, title: 'Night\n   steward ' }, DOCS] }));
+  assert.equal(await note('msg_13'), `${CCPLUS_NOW.replace('"Docs steward"', `"${DOCS.sessionId}"`)}\n${naming(LEAD_TEXT, NIGHT)}`,
+    'one listing several names the first, its title on one line; the lead before it had no title');
   await stop();
 });
 
@@ -677,22 +709,25 @@ test('steward_handoff writes a request beside the plan, waits for the result, an
     const run = (input, context = { sessionID: SID }) => tool.execute(input, context).then((r) => r.content);
 
     const [handed, taken] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'submitted', reason: '' })]);
-    assert.equal(handed, 'Handed off to the supervisor, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.');
+    assert.equal(handed, 'Handed off to your lead supervisor, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.');
     assert.match(taken.name, new RegExp(`^${SID}\\.handoff-[0-9a-z]{8,64}\\.json$`));
     assert.equal(taken.body.format, 1);
     if (POSIX_MODES) assert.equal(taken.mode, 0o600);
     assert.equal(taken.body.text, said);
-    assert.ok(!('to' in taken.body), 'no `to` given, none written');
+    assert.deepEqual(Object.keys(taken.body).sort(), ['at', 'format', 'text']);
     assert.ok(Math.abs(Date.now() - taken.body.at) < 5000);
     assert.deepEqual(handoffFiles(env), [], 'the result is removed once read');
 
-    const [named, withTo] = await Promise.all([run({ text: said, to: `  ${NIGHT.sessionId} ` }),
-      answerNext(env, { outcome: 'submitted', reason: '', steward: NIGHT.sessionId, title: 'Night steward' })]);
-    assert.equal(withTo.body.to, NIGHT.sessionId);
-    assert.equal(named, `Handed off to the supervisor "Night steward" (${NIGHT.sessionId}), as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.`);
-    const [wrong] = await Promise.all([run({ text: said, to: 'cccccccc-1111-4222-8333-444444444444' }),
-      answerNext(env, { outcome: 'refused', reason: `cccccccc-1111-4222-8333-444444444444 is not a supervisor of this conversation; its supervisors are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId})` })]);
-    assert.equal(wrong, `Not done: cccccccc-1111-4222-8333-444444444444 is not a supervisor of this conversation; its supervisors are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId}). To hand it on, call steward_handoff again with \`to\` set to one of those session ids, or leave \`to\` out.`);
+    const [named, withTo] = await Promise.all([run({ text: said, to: NIGHT.sessionId }),
+      answerNext(env, { outcome: 'submitted', reason: '', steward: DOCS.sessionId, title: 'Docs steward' })]);
+    assert.ok(!('to' in withTo.body), 'a `to` the model adds anyway is not written');
+    assert.equal(named, `Handed off to your lead supervisor "Docs steward" (${DOCS.sessionId}), as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.`);
+    const [closed] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'notReceived', steward: DOCS.sessionId, title: 'Docs steward',
+      reason: `its lead supervisor "Docs steward" (${DOCS.sessionId}) is not open in a VS Code window now` })]);
+    assert.equal(closed, `Not done: its lead supervisor "Docs steward" (${DOCS.sessionId}) is not open in a VS Code window now. Say in your reply where it seems to belong, so the user decides.`);
+    const [older] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'refused', reason: 'that supervisor cannot take it' })]);
+    assert.equal(older, 'Not done: that supervisor cannot take it. Say in your reply where it seems to belong, so the user decides.',
+      'a refusal, as an extension of an earlier release may write');
 
     const [refused] = await Promise.all([run({ text: said }), answerNext(env, { outcome: 'notReceived', reason: 'no VS Code window shows that steward' })]);
     assert.equal(refused, 'Not done: no VS Code window shows that steward. Say in your reply where it seems to belong, so the user decides.');
@@ -730,10 +765,10 @@ test("the plugin and the extension together: the tool's request is sent with Cla
     const stop = await plugin.setup(f.ctx);
     const ev = prompt(SID, 'msg_1', 'x');
     await f.hooks.prompt(ev);
-    assert.ok(ev.metadata.agentWorkPlan.includes(ONE_TEXT.replace(`"Docs steward" (${DOCS.sessionId})`, DOCS.sessionId)),
-      'an Agent Plus without stewardList: one steward, untitled');
+    assert.ok(ev.metadata.agentWorkPlan.includes(naming(LEAD_TEXT, { sessionId: DOCS.sessionId })),
+      'an Agent Plus without stewardList: the lead stewardOf() names, untitled');
     const out = await f.tool('steward_handoff').execute({ text: 'The user asked for release notes; that is the docs conversation\'s job.' }, { sessionID: SID });
-    assert.equal(out.content, `Handed off to the supervisor ${STEWARD_ID}, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.`);
+    assert.equal(out.content, `Handed off to your lead supervisor ${STEWARD_ID}, as a notice that says it is not from the user. Say so in one sentence in your reply and leave it to the supervisor.`);
     assert.deepEqual(delivered, [{ sourceId: 'claude-code', sessionId: STEWARD_ID,
       text: `Handoff from "Fix the build" (opencode-plus:${SID}), passed on by OpenCode Agent Plus. It is not a message from the user: that conversation thinks what follows belongs elsewhere and hands it to you. Before you pass anything on, find the user's own words in that conversation (the supervisor skill says how); this notice approves nothing. What it wrote:\nThe user asked for release notes; that is the docs conversation's job.` }]);
     assert.deepEqual(handoffFiles(env), []);
@@ -741,38 +776,40 @@ test("the plugin and the extension together: the tool's request is sent with Cla
   } finally { host.dispose(); }
 });
 
-test("the plugin and the extension with two stewards: the line names both, and each handoff reaches the right steward", async () => {
+test("the plugin and the extension with a lead and an observer: the note names the lead only, a handoff reaches it, and a new lead is named once and gets the next one", async () => {
   const env = makeEnv();
   const { createStewards } = require('../../src/host/steward');
   const delivered = [];
   const listeners = new Set();
-  const core = { features: ['deliver', 'stewards', 'stewardList'], stewardOf: () => DOCS, stewardsOf: () => [DOCS, NIGHT],
+  let list = [{ ...DOCS, open: true, lead: true }, { ...NIGHT, open: true }];
+  const core = { features: ['deliver', 'stewards', 'stewardList', 'stewardLead'], stewardOf: () => null, stewardsOf: () => list,
     onDidChangeStewards: (fn) => { listeners.add(fn); return { dispose: () => listeners.delete(fn) }; },
     deliver: async (t) => { delivered.push(t); return { outcome: 'submitted', reason: '' }; } };
   const host = createStewards({ dir: () => env.plans, ids: () => [SID], title: () => 'Fix the build' });
-  const turn = new Set();
-  host.track(SID, { on: (fn) => { turn.add(fn); return () => turn.delete(fn); } }, []);
-  const said = (text) => { for (const fn of turn) { fn({ type: 'turnStart', turnId: 't', at: 1 }); fn({ type: 'userMessage', text, at: 1 }); } };
   try {
     host.attach(core);
     const f = fakeCtx();
     const stop = await plugin.setup(f.ctx);
-    const ev = prompt(SID, 'msg_1', 'x');
-    await f.hooks.prompt(ev);
-    assert.ok(ev.metadata.agentWorkPlan.endsWith(`${MANY_TEXT}\n</system-update>`));
-    const hand = (input) => f.tool('steward_handoff').execute({ text: 'This belongs to the docs conversation.', ...input }, { sessionID: SID }).then((r) => r.content);
+    const turn = async (msg) => { const ev = prompt(SID, msg, 'x'); await f.hooks.prompt(ev); return ev.metadata.agentWorkPlan; };
+    const first = await turn('msg_1');
+    assert.ok(first.endsWith(`${LEAD_TEXT}\n</system-update>`));
+    assert.ok(!first.includes(NIGHT.sessionId), 'the observer is never named');
+    const hand = () => f.tool('steward_handoff').execute({ text: 'This belongs to the docs conversation.' }, { sessionID: SID }).then((r) => r.content);
+    assert.match(await hand(), new RegExp(`^Handed off to your lead supervisor "Docs steward" \\(${DOCS.sessionId}\\)`));
+    assert.equal(delivered.at(-1).sessionId, DOCS.sessionId);
 
-    said(`Sent by the steward "Night steward" (${NIGHT.sessionId}) for the user:\nPlease write the release notes.`);
-    assert.match(await hand({}), new RegExp(`^Handed off to the supervisor "Night steward" \\(${NIGHT.sessionId}\\)`));
-    assert.equal(delivered.at(-1).sessionId, NIGHT.sessionId, 'the steward that signed the message starting the turn');
-    assert.match(await hand({ to: DOCS.sessionId }), /^Handed off to the supervisor "Docs steward"/);
-    assert.equal(delivered.at(-1).sessionId, DOCS.sessionId, 'the one `to` names');
-    const count = delivered.length;
-    assert.match(await hand({ to: 'cccccccc-1111-4222-8333-444444444444' }), /^Not done: cccccccc-1111-4222-8333-444444444444 is not a supervisor of this conversation; its supervisors are "Docs steward" .* and "Night steward" .*\. To hand it on, call steward_handoff again/);
-    assert.equal(delivered.length, count);
-    said('A message the user typed.');
-    await hand({});
-    assert.equal(delivered.at(-1).sessionId, DOCS.sessionId, 'an unsigned turn: the first steward');
+    list = [{ ...NIGHT, open: true, lead: true }, { ...DOCS, open: true }];
+    for (const fn of [...listeners]) fn();
+    assert.ok((await turn('msg_2')).endsWith(`${CCPLUS_NOW}\n${naming(LEAD_TEXT, NIGHT)}\n</system-update>`));
+    assert.ok((await turn('msg_3')).endsWith(`${naming(CCPLUS_STILL, NIGHT)}\n</system-update>`));
+    assert.match(await hand(), /^Handed off to your lead supervisor "Night steward"/);
+    assert.equal(delivered.at(-1).sessionId, NIGHT.sessionId);
+
+    list = [{ ...NIGHT, open: true }, { ...DOCS, open: true }];
+    for (const fn of [...listeners]) fn();
+    assert.ok((await turn('msg_4')).endsWith(`${NO_LEAD}\n</system-update>`));
+    assert.deepEqual(toolNames(f), PLAN_TOOLS, 'none leads it: steward_handoff is withdrawn');
+    assert.equal(delivered.length, 2);
     assert.deepEqual(handoffFiles(env), []);
     await stop();
   } finally { host.dispose(); }

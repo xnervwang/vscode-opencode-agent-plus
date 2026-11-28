@@ -4,8 +4,8 @@
 
 'use strict';
 /*
- * src/host/steward.js: which steward looks after a conversation, kept beside its plan for the plugin, and the handoffs
- * the plugin asks this extension to send.
+ * src/host/steward.js: the lead supervisor of a conversation, kept beside its plan for the plugin, and the handoffs the
+ * plugin asks this extension to send to it.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -20,7 +20,7 @@ fake.install(vscode);
 process.env.OPENCODE_AGENT_PLUS_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'na-steward-'));
 process.env.OPENCODE_AGENT_PLUS_TEST_BACKEND = path.join(ROOT, 'test', 'vscode', 'fake-backend.js');
 process.env.OPENCODE_AGENT_PLUS_TEST_CONTROL = '1';
-const { createStewards, handoffText, readSteward, readStewards, senderOf, STALE_MS, ORPHAN_MS } = require('../../src/host/steward');
+const { createStewards, handoffText, readLead, STALE_MS, ORPHAN_MS } = require('../../src/host/steward');
 const workplan = require('../../src/workplan');
 /* Windows keeps no owner, group and other bits: the mode a file is written with only sets its read-only flag, so it
    reads back 0o666. The folders these files live in belong to the user. */
@@ -32,10 +32,12 @@ const STEWARD = Object.freeze({ sourceId: 'claude-code', sessionId: '3f2b6c1e-00
 const OTHER = Object.freeze({ sourceId: 'claude-code', sessionId: '3f2b6c1e-0000-4000-8000-00000000000b' });
 const DOCS = Object.freeze({ sourceId: 'claude-code', sessionId: 'aaaaaaaa-1111-4222-8333-444444444444', title: 'Docs steward' });
 const NIGHT = Object.freeze({ sourceId: 'claude-code', sessionId: 'bbbbbbbb-1111-4222-8333-444444444444', title: 'Night steward' });
-/* A steward file written for an Agent Plus without 'stewardList': one steward, with no title. */
-const ONE = (s) => ({ format: 1, sourceId: s.sourceId, sessionId: s.sessionId, stewards: [{ sourceId: s.sourceId, sessionId: s.sessionId, title: '' }] });
-/* The first line Claude Code Plus puts in a steward's message (its src/stewards.js fromLine). */
-const SIGNED = (s, body) => `Sent by the supervisor "${s.title}" (${s.sessionId}) for the user:\n${body}`;
+/* The steward file naming a lead: for an Agent Plus without 'stewardList' it has no title and counts as open. */
+const LEAD = (s, title = '', open = true) => ({ sourceId: s.sourceId, sessionId: s.sessionId, title, open });
+const ONE = (s, title, open) => ({ format: 1, sourceId: s.sourceId, sessionId: s.sessionId, stewards: [LEAD(s, title, open)], lead: LEAD(s, title, open) });
+/* The steward file of a conversation that supervisors observe and none leads. */
+const UNLED = Object.freeze({ format: 1, stewards: [], lead: null });
+const LEADS = ['deliver', 'stewards', 'stewardList', 'stewardLead'];
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'na-steward-dir-'));
 const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const until = async (check, ms = 3000) => {
@@ -198,7 +200,7 @@ test("deliver()'s outcome and reason are written as they came; a request that ca
     core.answer = () => null;
     core.fire();
     await s.take(request(dir, A, 'k7000000'));
-    assert.deepStrictEqual(res('k7000000'), { format: 1, outcome: 'notReceived', reason: 'no supervisor looks after this conversation' });
+    assert.deepStrictEqual(res('k7000000'), { format: 1, outcome: 'notReceived', reason: 'no supervisor leads this conversation now' });
 
     open = [];
     s.opened();
@@ -238,131 +240,128 @@ test('the folder watch and the poll take requests, and a result nobody read is r
   } finally { polled.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("with 'stewardList' the steward file lists every steward with its title, the first at the top; without an answer it falls back to stewardOf()", () => {
+test("with 'stewardLead' the steward file names the entry stewardsOf() marks as the lead, and an empty lead while supervisors only observe", () => {
   const dir = tmp();
   const s = createStewards({ dir: () => dir, ids: () => [A], title: () => '', pollMs: 60000, watch: () => ({ close() {} }) });
   try {
-    const core = fakeCore({ features: ['deliver', 'stewards', 'stewardList'], answer: () => DOCS,
-      list: () => [DOCS, { ...NIGHT, title: '  Night\n  steward ' }, { sourceId: 'claude-code' }, { ...DOCS, sessionId: DOCS.sessionId.toUpperCase() }] });
+    const core = fakeCore({ features: LEADS, answer: () => null,
+      list: () => [{ ...DOCS, title: '  Docs\n  steward ', open: true, lead: true }, { ...NIGHT, open: true }, { sourceId: 'claude-code', lead: true }] });
     assert.strictEqual(s.attach(core), true);
     const file = path.join(dir, `${A}.steward.json`);
-    assert.deepStrictEqual(read(file), { format: 1, sourceId: DOCS.sourceId, sessionId: DOCS.sessionId, stewards: [DOCS, NIGHT] },
-      'an entry without a session id is left out, one named twice is kept once, and a title is trimmed to one line');
-    assert.deepStrictEqual(core.listed, [['opencode-plus', A]]);
-    assert.deepStrictEqual(core.asked, [], 'stewardOf() is not called while stewardsOf() answers');
-    assert.deepStrictEqual(readStewards(dir, A), [DOCS, NIGHT]);
-    assert.deepStrictEqual(readSteward(dir, A), { sourceId: DOCS.sourceId, sessionId: DOCS.sessionId });
+    assert.deepStrictEqual(read(file), ONE(DOCS, 'Docs steward'), 'only the lead is written, its title on one line; the observer is left out');
+    assert.deepStrictEqual(core.asked, [], 'stewardOf() is not called while stewardsOf() marks a lead');
+    assert.deepStrictEqual(readLead(dir, A), LEAD(DOCS, 'Docs steward'));
 
-    core.list = () => [{ ...NIGHT, title: 'Night shift' }, DOCS];
+    core.list = () => [{ ...NIGHT, title: 'Night shift', lead: true }, DOCS];
     core.fire();
-    assert.deepStrictEqual(read(file).stewards.map((e) => [e.sessionId, e.title]), [[NIGHT.sessionId, 'Night shift'], [DOCS.sessionId, 'Docs steward']],
-      'a new order and a new title are written when onDidChangeStewards fires');
-    assert.strictEqual(read(file).sessionId, NIGHT.sessionId);
+    assert.deepStrictEqual(read(file), ONE(NIGHT, 'Night shift', true), 'another lead is written when onDidChangeStewards fires');
+    core.list = () => [{ ...NIGHT, title: 'Night shift', lead: true, open: false }, DOCS];
+    core.fire();
+    assert.strictEqual(read(file).lead.open, false, 'a lead no window shows');
+
+    core.list = () => [DOCS, NIGHT];
+    core.fire();
+    assert.deepStrictEqual(read(file), UNLED, 'supervisors that only observe: the file says none leads it');
+    assert.strictEqual(readLead(dir, A), null);
+    assert.deepStrictEqual(core.asked.at(-1), ['opencode-plus', A], 'with no entry marked, stewardOf() is asked');
 
     core.list = () => [];
     core.answer = () => OTHER;
     core.fire();
-    assert.deepStrictEqual(read(file), ONE(OTHER), 'when stewardsOf() returns none, stewardOf() is called, as for an Agent Plus without the list');
+    assert.deepStrictEqual(read(file), ONE(OTHER), 'no list: stewardOf() names the lead');
     core.answer = () => null;
     core.fire();
-    assert.ok(!fs.existsSync(file));
+    assert.ok(!fs.existsSync(file), 'no supervisor at all: no file');
+  } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("an Agent Plus without 'stewardLead' keeps the lead first and names it with stewardOf(); files of earlier releases name their first supervisor", () => {
+  const dir = tmp();
+  const s = createStewards({ dir: () => dir, ids: () => [A], title: () => '', pollMs: 60000, watch: () => ({ close() {} }) });
+  try {
+    const core = fakeCore({ features: ['deliver', 'stewards', 'stewardList'], answer: () => NIGHT, list: () => [NIGHT, DOCS] });
+    s.attach(core);
+    const file = path.join(dir, `${A}.steward.json`);
+    assert.deepStrictEqual(read(file), ONE(NIGHT, 'Night steward'), "stewardOf()'s answer, with the title from the list");
+    core.answer = () => null;
+    core.fire();
+    assert.deepStrictEqual(read(file), UNLED, 'stewardOf() names none while the list has supervisors: none leads it');
 
     const only = createStewards({ dir: () => dir, ids: () => [B], title: () => '' });
     try {
-      assert.strictEqual(only.attach({ features: ['stewardList'], stewardsOf: () => [NIGHT], onDidChangeStewards: () => ({ dispose() {} }) }), true,
+      assert.strictEqual(only.attach({ features: ['stewardList'], stewardsOf: () => [NIGHT, DOCS], onDidChangeStewards: () => ({ dispose() {} }) }), true,
         "'stewardList' without 'stewards' is enough");
-      assert.deepStrictEqual(readStewards(dir, B), [NIGHT]);
+      assert.deepStrictEqual(readLead(dir, B), LEAD(NIGHT, 'Night steward'), 'without stewardOf() the first entry is the lead');
     } finally { only.dispose(); }
 
-    fs.writeFileSync(path.join(dir, `${A}.steward.json`), JSON.stringify({ format: 1, ...STEWARD }));
-    assert.deepStrictEqual(readStewards(dir, A), [{ ...STEWARD, title: '' }], 'a file with only the two top fields names one steward');
-    fs.writeFileSync(path.join(dir, `${A}.steward.json`), JSON.stringify({ format: 2, ...STEWARD }));
-    assert.deepStrictEqual(readStewards(dir, A), []);
+    fs.writeFileSync(file, JSON.stringify({ format: 1, ...STEWARD }));
+    assert.deepStrictEqual(readLead(dir, A), LEAD(STEWARD), 'a file with only the two top fields names one supervisor');
+    fs.writeFileSync(file, JSON.stringify({ format: 1, ...DOCS, stewards: [DOCS, NIGHT] }));
+    assert.deepStrictEqual(readLead(dir, A), LEAD(DOCS, 'Docs steward'), 'a file listing several names the first');
+    fs.writeFileSync(file, JSON.stringify({ format: 2, ...STEWARD }));
+    assert.strictEqual(readLead(dir, A), null);
   } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('the signed first line of a message names its supervisor the way Claude Code Plus reads it', () => {
-  assert.strictEqual(senderOf(SIGNED(NIGHT, 'body')), NIGHT.sessionId);
-  assert.strictEqual(senderOf(`Sent by the steward (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'steward, untitled');
-  assert.strictEqual(senderOf(`Sent by the steward "Night steward" (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'steward, titled');
-  assert.strictEqual(senderOf(`sent by the SUPERVISOR (${NIGHT.sessionId}) for the user:\nbody`), NIGHT.sessionId, 'supervisor, mixed case');
-  assert.strictEqual(senderOf(`Sent by the manager (${NIGHT.sessionId}) for the user:\nbody`), '', 'another word');
-  assert.strictEqual(senderOf(`  \r\nSent by the steward "A \\"quoted\\" one" (${NIGHT.sessionId.toUpperCase()}) for the user:  \r\nbody`), NIGHT.sessionId,
-    'leading blank lines, trailing spaces, upper case');
-  assert.strictEqual(senderOf(`Sent by the steward "x" (${NIGHT.sessionId}) for the user: please`), '', 'text after the colon');
-  assert.strictEqual(senderOf(`hello\n${SIGNED(NIGHT, 'body')}`), '', 'only the first line counts');
-  assert.strictEqual(senderOf('Sent by the steward "x" (ses_notauuid0000) for the user:'), '');
-  assert.strictEqual(senderOf(''), '');
-});
-
-test("a handoff goes to the steward `to` names, else to the one whose signed message started the turn, else to the first; a `to` naming none of them is refused", async () => {
+test("a handoff goes to the lead, asked for again when the request is taken; a `to` is not read; none goes while no supervisor leads or the lead is not open", async () => {
   const dir = tmp();
-  const core = fakeCore({ features: ['deliver', 'stewards', 'stewardList'], answer: () => DOCS, list: () => [DOCS, NIGHT] });
-  const s = createStewards({ dir: () => dir, ids: () => [A, B], title: () => 'Fix the build', pollMs: 60000, watch: () => ({ close() {} }) });
-  const listeners = new Set();
-  const conv = { on: (fn) => { listeners.add(fn); return () => listeners.delete(fn); } };
-  const fire = (...evs) => { for (const e of evs) for (const fn of [...listeners]) fn(e); };
-  const res = (id, key) => read(path.join(dir, `${id}.handoff-${key}.result.json`));
-  const to = () => core.delivered.at(-1).sessionId;
+  const core = fakeCore({ features: LEADS, list: () => [{ ...DOCS, lead: true, open: true }, NIGHT] });
+  const s = createStewards({ dir: () => dir, ids: () => [A], title: () => 'Fix the build', pollMs: 60000, watch: () => ({ close() {} }) });
+  const res = (key) => read(path.join(dir, `${A}.handoff-${key}.result.json`));
   try {
     s.attach(core);
-    const stop = s.track(A, conv, []);
-
     await s.take(request(dir, A, 'r1000000'));
-    assert.strictEqual(to(), DOCS.sessionId, 'nothing signed: the first steward, the one the user spoke with last');
-    assert.deepStrictEqual(res(A, 'r1000000'), { format: 1, outcome: 'submitted', reason: '', steward: DOCS.sessionId, title: 'Docs steward' });
+    assert.deepStrictEqual(core.delivered.at(-1), { sourceId: DOCS.sourceId, sessionId: DOCS.sessionId, text: TITLED(A, 'Move this to the docs conversation.') });
+    assert.deepStrictEqual(res('r1000000'), { format: 1, outcome: 'submitted', reason: '', steward: DOCS.sessionId, title: 'Docs steward' });
 
-    fire({ type: 'turnStart', turnId: 't1', at: 1 }, { type: 'userMessage', text: SIGNED(NIGHT, 'Move the docs work over.'), at: 1 });
-    assert.strictEqual(s.firstLine(A), `Sent by the supervisor "Night steward" (${NIGHT.sessionId}) for the user:`);
-    await s.take(request(dir, A, 'r2000000'));
-    assert.strictEqual(to(), NIGHT.sessionId, 'the steward whose message started this turn');
-    assert.deepStrictEqual(core.delivered.at(-1), { sourceId: NIGHT.sourceId, sessionId: NIGHT.sessionId, text: TITLED(A, 'Move this to the docs conversation.') },
-      'the handoff text is the same whoever gets it');
+    await s.take(request(dir, A, 'r2000000', { to: NIGHT.sessionId }));
+    assert.strictEqual(core.delivered.at(-1).sessionId, DOCS.sessionId, "a `to` naming an observer, as a plugin of an earlier release may write, still goes to the lead");
 
-    fire({ type: 'userMessage', text: SIGNED(DOCS, 'a plugin note'), synthetic: true, at: 2 });
-    await s.take(request(dir, A, 'r3000000', { to: DOCS.sessionId }));
-    assert.strictEqual(to(), DOCS.sessionId, '`to` wins over the signed line, and a synthetic message changes nothing');
-    assert.strictEqual(s.firstLine(A), `Sent by the supervisor "Night steward" (${NIGHT.sessionId}) for the user:`);
-    await s.take(request(dir, A, 'r4000000', { to: `  claude-code:${NIGHT.sessionId.toUpperCase()} ` }));
-    assert.strictEqual(to(), NIGHT.sessionId, '`to` may be sourceId:sessionId, in any case');
+    core.list = () => [{ ...NIGHT, lead: true }, DOCS];
+    await s.take(request(dir, A, 'r3000000'));
+    assert.strictEqual(core.delivered.at(-1).sessionId, NIGHT.sessionId, 'a new lead gets it before onDidChangeStewards has rewritten the file');
 
     const sent = core.delivered.length;
-    const wrong = 'cccccccc-1111-4222-8333-444444444444';
-    await s.take(request(dir, A, 'r5000000', { to: wrong }));
-    assert.deepStrictEqual(res(A, 'r5000000'), { format: 1, outcome: 'refused',
-      reason: `${wrong} is not a supervisor of this conversation; its supervisors are "Docs steward" (${DOCS.sessionId}) and "Night steward" (${NIGHT.sessionId})` });
-    assert.strictEqual(core.delivered.length, sent, 'a refused handoff does not call deliver()');
-
-    fire({ type: 'turnStart', turnId: 't2', at: 3, unsolicited: true });
-    await s.take(request(dir, A, 'r6000000'));
-    assert.strictEqual(to(), DOCS.sessionId, 'a turn OpenCode started on its own has no message: the first steward');
-
-    fire({ type: 'turnStart', turnId: 't3', at: 4 }, { type: 'userMessage', text: SIGNED({ title: 'Gone', sessionId: 'dddddddd-1111-4222-8333-444444444444' }, 'x'), at: 4 });
-    await s.take(request(dir, A, 'r7000000'));
-    assert.strictEqual(to(), DOCS.sessionId, 'a signed line naming a steward not in the list goes to the first steward');
-    stop();
-    assert.strictEqual(listeners.size, 0);
-
-    s.track(B, { on: () => () => {} }, [{ type: 'turnStart', turnId: 'h1', at: 1 }, { type: 'userMessage', text: 'not signed', at: 1 }, { type: 'turnEnd', at: 2 },
-      { type: 'turnStart', turnId: 'h2', at: 3 }, { type: 'userMessage', text: `Sent by the steward (${NIGHT.sessionId}) for the user:\nfrom history`, at: 3 }]);
-    await s.take(request(dir, B, 'r8000000'));
-    assert.strictEqual(to(), NIGHT.sessionId, 'a conversation opened from history starts from its latest message');
-
-    core.list = () => [DOCS];
-    core.fire();
-    await s.take(request(dir, A, 'r9000000', { to: wrong }));
-    assert.strictEqual(res(A, 'r9000000').reason, `${wrong} is not a supervisor of this conversation; its supervisor is "Docs steward" (${DOCS.sessionId})`);
+    core.list = () => [{ ...NIGHT, lead: true, open: false }, DOCS];
+    await s.take(request(dir, A, 'r4000000'));
+    assert.deepStrictEqual(res('r4000000'), { format: 1, outcome: 'notReceived',
+      reason: `its lead supervisor "Night steward" (${NIGHT.sessionId}) is not open in a VS Code window now`, steward: NIGHT.sessionId, title: 'Night steward' });
+    core.list = () => [DOCS, NIGHT];
+    core.answer = () => null;
+    await s.take(request(dir, A, 'r5000000'));
+    assert.deepStrictEqual(res('r5000000'), { format: 1, outcome: 'notReceived', reason: 'no supervisor leads this conversation now' });
+    assert.strictEqual(core.delivered.length, sent, 'neither called deliver()');
   } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('removePlan takes the steward file and any handoff left behind with the conversation', () => {
+test('the poll writes the file again when a window stops showing the lead, which fires no onDidChangeStewards', async () => {
+  const dir = tmp();
+  let open = true;
+  const core = fakeCore({ features: LEADS, list: () => [{ ...DOCS, lead: true, open }] });
+  const s = createStewards({ dir: () => dir, ids: () => [A], title: () => '', pollMs: 40, watch: () => ({ close() {} }) });
+  try {
+    s.attach(core);
+    const file = path.join(dir, `${A}.steward.json`);
+    assert.strictEqual(read(file).lead.open, true);
+    open = false;
+    assert.ok(await until(() => read(file).lead.open === false), 'rewritten by the poll');
+    open = true;
+    assert.ok(await until(() => read(file).lead.open === true));
+  } finally { s.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("removePlan takes the steward file, any handoff left behind and the plugin's record of the lead with the conversation", () => {
   const dir = tmp();
   try {
-    const mine = [`${A}.json`, `${A}.steward.json`, `${A}.handoff-abcdef12.json`, `${A}.handoff-abcdef12.result.json`, `${A}.handoff-abcdef13.taken-4242`, `${A}.handoff-abcdef14.tmp`];
+    const mine = [`${A}.json`, `${A}.steward.json`, `${A}.handoff-abcdef12.json`, `${A}.handoff-abcdef12.result.json`, `${A}.handoff-abcdef13.taken-4242`, `${A}.handoff-abcdef14.tmp`,
+      path.join('stewards-told', `${A}.json`)];
     const kept = [`${B}.steward.json`, `${B}.handoff-abcdef12.json`, `${A}.handoff-x.json`, `${A}.handoffs.json`];
+    fs.mkdirSync(path.join(dir, 'stewards-told'));
+    fs.writeFileSync(path.join(dir, 'stewards-told', `${B}.json`), '{}');
     for (const n of [...mine, ...kept]) fs.writeFileSync(path.join(dir, n), '{}');
     assert.deepStrictEqual(workplan.removePlan(A, dir).sort(), mine.slice().sort());
-    assert.deepStrictEqual(fs.readdirSync(dir).sort(), kept.slice().sort());
+    assert.deepStrictEqual(fs.readdirSync(dir).sort(), [...kept, 'stewards-told'].sort());
+    assert.deepStrictEqual(fs.readdirSync(path.join(dir, 'stewards-told')), [`${B}.json`]);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

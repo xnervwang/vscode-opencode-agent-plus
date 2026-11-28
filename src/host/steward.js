@@ -4,22 +4,25 @@
 
 'use strict';
 /*
- * Stewards in Claude Code Plus may look after a conversation open here: Agent Plus's optional 'stewardList' (or, in an
- * Agent Plus without it, 'stewards') says which. OpenCode's plugin cannot ask Agent Plus, so the answer for each
- * conversation open in this window is kept beside its plan, and the handoffs that the plugin's steward_handoff tool
- * writes there are sent from here with deliver():
+ * Claude Code Plus keeps the supervisors of a conversation open here. One of them, its lead, acts on it and gets its
+ * handoffs; the others only observe it. Agent Plus marks the lead in stewardsOf() when it lists 'stewardLead'; an Agent
+ * Plus without that feature keeps the lead first and names it with stewardOf(). OpenCode's plugin cannot ask Agent Plus,
+ * so the lead of each conversation open in this window is kept beside its plan, and the handoffs that the plugin's
+ * steward_handoff tool writes there are sent from here with deliver():
  *
- *   <plans>/<id>.steward.json                  { format: 1, sourceId, sessionId, stewards: [{ sourceId, sessionId, title }] },
- *                                              the first steward at the top as well; none while it has no steward
- *   <plans>/<id>.handoff-<key>.json            { format: 1, text, at, to? }, written by the plugin
+ *   <plans>/<id>.steward.json                  { format: 1, sourceId, sessionId, stewards: [lead], lead }, lead being
+ *                                              { sourceId, sessionId, title, open }; { format: 1, stewards: [], lead: null }
+ *                                              while supervisors observe it and none leads it; none while it has none.
+ *                                              Plugins of earlier releases read only the top two fields and `stewards`
+ *   <plans>/<id>.handoff-<key>.json            { format: 1, text, at }, written by the plugin
  *   <plans>/<id>.handoff-<key>.result.json     { format: 1, outcome, reason, steward?, title? }, what came of it
  *
- * stewardsOf() (or stewardOf()) is called for a conversation when it opens here and whenever onDidChangeStewards fires.
- * A handoff goes to one steward: the one its `to` names, else the one whose signed message started the conversation's
- * current turn, else the first listed, which is the one the user spoke with last. A `to` that names none of them is
- * refused. A request is taken by renaming it, so only one extension host sends it, and only for a conversation open in
- * its window. The folder is watched, with a slow poll besides, only while a conversation open here has a steward.
- * Deleting a conversation deletes these files (src/workplan removePlan).
+ * The lead is asked for when a conversation opens here, whenever onDidChangeStewards fires, and at every poll, since
+ * whether a window shows the lead can change without that event. A handoff goes to the lead, asked again as the request
+ * is taken; the `to` that plugins of earlier releases may write is not read. A request is taken by renaming it, so only
+ * one extension host sends it, and only for a conversation open in its window. The folder is watched, with a slow poll
+ * besides, only while a conversation open here has a supervisor. Deleting a conversation deletes these files
+ * (src/workplan removePlan).
  */
 const fs = require('fs');
 const path = require('path');
@@ -32,8 +35,8 @@ const REQUEST = /^(ses_[0-9A-Za-z]{8,64})\.handoff-([0-9A-Za-z]{8,64})\.json$/;
 const RESULT = /^(ses_[0-9A-Za-z]{8,64})\.handoff-[0-9A-Za-z]{8,64}\.result\.json$/;
 /* deliver() takes at most this many characters. */
 const MAX_TEXT = 20000;
-/* Agent Plus's own limits for stewardsOf(). */
-const MAX_STEWARDS = 20;
+/* Agent Plus reads at most this many entries of a source's stewardsOf() list. */
+const MAX_LISTED = 200;
 const MAX_TITLE = 200;
 const POLL_MS = 5000;
 /* A request older than this may be answered after its tool has stopped waiting (45 seconds, and deliver() can take about
@@ -42,12 +45,6 @@ const STALE_MS = 10000;
 /* The plugin's tool waits 45 seconds at most, so a result older than this has no reader left. */
 const ORPHAN_MS = 120000;
 const NO_TITLE = 'New conversation';
-/* The line Claude Code Plus puts first in each message a steward sends (its src/stewards.js FROM). Older releases
-   write "steward" there and newer ones "supervisor". */
-const FROM = /^Sent by the (?:supervisor|steward) (?:"(.*)" )?\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\) for the user:[ \t]*$/i;
-const FIRST_LINE_CHARS = 1000;
-/* How many conversations keep their latest message; past it, the oldest is dropped. */
-const MAX_TRACKED = 200;
 
 /* The message the steward gets: Claude Code Plus's src/relay.js handoffText, naming this extension. Its steward takes a
    message that starts "Handoff from " as not typed by the user. */
@@ -60,71 +57,25 @@ function handoffText(sessionId, title, text) {
 
 const usable = (s) => !!s && typeof s === 'object' && typeof s.sourceId === 'string' && !!s.sourceId && typeof s.sessionId === 'string' && !!s.sessionId;
 const titleOf = (t) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE) : '');
-const entryOf = (s) => (usable(s) ? { sourceId: s.sourceId, sessionId: s.sessionId, title: titleOf(s.title) } : null);
+const same = (a, b) => a.sourceId === b.sourceId && a.sessionId.toLowerCase() === b.sessionId.toLowerCase();
+/* { sourceId, sessionId, title, open } for a usable supervisor; `open` is false only when Agent Plus says no window
+   shows it. */
+const leadOf = (s, title = s.title, open = s.open) => ({ sourceId: s.sourceId, sessionId: s.sessionId, title: titleOf(title), open: open !== false });
 
-/* The usable entries of `list`, without repeats and at most MAX_STEWARDS of them. */
-function entries(list) {
-  const out = [], seen = new Set();
-  for (const s of Array.isArray(list) ? list.slice(0, MAX_STEWARDS * 2) : []) {
-    const e = entryOf(s);
-    const key = e && `${e.sourceId}\n${e.sessionId.toLowerCase()}`;
-    if (!e || seen.has(key) || out.length >= MAX_STEWARDS) continue;
-    seen.add(key);
-    out.push(e);
-  }
-  return out;
-}
-
-/* The stewards in <plans>/<id>.steward.json, first first; a file with only the two top fields names one. */
-function readStewards(dir, sessionId) {
+/* The lead in <plans>/<id>.steward.json, or null. A file of an earlier release, without `lead`, names its first
+   supervisor, the one its handoffs went to. */
+function readLead(dir, sessionId) {
   try {
     const s = JSON.parse(fs.readFileSync(path.join(dir, `${sessionId}${SUFFIX}`), 'utf8'));
-    if (!s || s.format !== FORMAT) return [];
-    const list = entries(s.stewards);
-    if (list.length) return list;
-    return usable(s) ? [{ sourceId: s.sourceId, sessionId: s.sessionId, title: '' }] : [];
-  } catch (_) { return []; }
+    if (!s || s.format !== FORMAT) return null;
+    if ('lead' in s) return usable(s.lead) ? leadOf(s.lead) : null;
+    const first = Array.isArray(s.stewards) ? s.stewards.find(usable) : null;
+    return first ? leadOf(first) : usable(s) ? leadOf(s, '', true) : null;
+  } catch (_) { return null; }
 }
 
-/* The first steward in <plans>/<id>.steward.json, or null. */
-function readSteward(dir, sessionId) {
-  const s = readStewards(dir, sessionId)[0];
-  return s ? { sourceId: s.sourceId, sessionId: s.sessionId } : null;
-}
-
-/* The steward session id in the signed first line of `text`, in lower case, or ''. */
-function senderOf(text) {
-  const m = FROM.exec(String(text || '').replace(/^\s+/, '').split(/\r?\n/)[0]);
-  return m ? m[2].toLowerCase() : '';
-}
-
-/* How the plugin's text names stewards: "title" (session id), or the session id alone. */
+/* How the plugin's text names a supervisor: "title" (session id), or the session id alone. */
 const nameOf = (s) => (s.title && s.title !== s.sessionId ? `"${s.title}" (${s.sessionId})` : s.sessionId);
-const namesOf = (list) => {
-  const names = list.map(nameOf);
-  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] || '');
-};
-
-/* Finds the steward in `list` that `to` names, by its session id or as sourceId:sessionId; null if there is none. */
-function named(list, to) {
-  const want = String(to).trim().toLowerCase();
-  return list.find((s) => s.sessionId.toLowerCase() === want || `${s.sourceId}:${s.sessionId}`.toLowerCase() === want) || null;
-}
-
-/*
- * Whom a handoff goes to: { steward } or { refused: reason }. `to` is what the tool named, `starter` the steward id the
- * first line of the turn's message named.
- */
-function recipient(list, to, starter) {
-  if (typeof to === 'string' && to.trim()) {
-    const s = named(list, to);
-    if (s) return { steward: s };
-    const shown = to.trim().slice(0, 100);
-    return { refused: `${shown} is not a supervisor of this conversation; its ${list.length === 1 ? 'supervisor is' : 'supervisors are'} ${namesOf(list)}` };
-  }
-  const started = starter ? list.find((s) => s.sessionId.toLowerCase() === starter) : null;
-  return { steward: started || list[0] };
-}
 
 function writeJson(file, body) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
@@ -156,8 +107,6 @@ function createStewards(deps) {
   const fileOf = (id) => path.join(deps.dir(), `${id}${SUFFIX}`);
   /* What was last written for each conversation open here: a JSON text, or '' for none. */
   const known = new Map();
-  /* The first line of the user message that started each tracked conversation's current turn, or ''. */
-  const firstLines = new Map();
   let core = null;
   let sub = null;
   let watcher = null;
@@ -168,29 +117,46 @@ function createStewards(deps) {
   const openIds = () => { try { return new Set(deps.ids()); } catch (_) { return new Set(); } };
   const has = (feature, method) => Array.isArray(core.features) && core.features.includes(feature) && typeof core[method] === 'function';
 
-  /* Asks stewardsOf() when Agent Plus has it; when it has not, or that gives none, asks stewardOf() and makes its
-     answer a list of one. */
+  /*
+   * { lead, watched }: the lead of `id`, or null, and whether any supervisor looks after it. With 'stewardLead' the lead
+   * is the entry stewardsOf() marks; otherwise, and when none is marked, stewardOf() names it. An Agent Plus that has
+   * stewardsOf() but no stewardOf() keeps the lead first.
+   */
   function ask(id) {
     let list = [];
     if (has('stewardList', 'stewardsOf')) {
-      try { list = entries(core.stewardsOf(SOURCE_ID, id)); } catch (e) { log(`stewardsOf ${id}: ${(e && e.message) || e}`); }
+      try {
+        const got = core.stewardsOf(SOURCE_ID, id);
+        list = Array.isArray(got) ? got.slice(0, MAX_LISTED).filter(usable) : [];
+      } catch (e) { log(`stewardsOf ${id}: ${(e && e.message) || e}`); }
     }
-    if (!list.length && has('stewards', 'stewardOf')) {
-      try { list = entries([core.stewardOf(SOURCE_ID, id)]); } catch (e) { log(`stewardOf ${id}: ${(e && e.message) || e}`); }
+    const marked = core.features.includes('stewardLead') ? list.find((s) => s.lead === true) : null;
+    if (marked) return { lead: leadOf(marked), watched: true };
+    if (has('stewards', 'stewardOf')) {
+      let s = null;
+      try { s = core.stewardOf(SOURCE_ID, id); } catch (e) { log(`stewardOf ${id}: ${(e && e.message) || e}`); }
+      if (usable(s)) {
+        const listed = list.find((e) => same(e, s));
+        return { lead: leadOf(s, listed ? listed.title : '', listed ? listed.open : true), watched: true };
+      }
+      return { lead: null, watched: list.length > 0 };
     }
-    return list;
+    return { lead: list.length ? leadOf(list[0]) : null, watched: list.length > 0 };
   }
 
   /* Writes or removes the file of `id` when the answer differs from the last one; `force` touches it anyway. */
   function settle(id, force) {
-    const list = ask(id);
-    const text = list.length ? JSON.stringify({ format: FORMAT, sourceId: list[0].sourceId, sessionId: list[0].sessionId, stewards: list }) : '';
+    const { lead, watched } = ask(id);
+    const body = lead ? { format: FORMAT, sourceId: lead.sourceId, sessionId: lead.sessionId, stewards: [lead], lead }
+      : watched ? { format: FORMAT, stewards: [], lead: null } : null;
+    const text = body ? JSON.stringify(body) : '';
     if (!force && known.get(id) === text) return;
     known.set(id, text);
     try {
-      if (text) {
-        writeJson(fileOf(id), JSON.parse(text));
-        log(`the supervisors of ${id}: ${list.map((s) => `${s.sourceId}:${s.sessionId}`).join(', ')}`);
+      if (body) {
+        writeJson(fileOf(id), body);
+        log(lead ? `the lead supervisor of ${id}: ${lead.sourceId}:${lead.sessionId}${lead.open ? '' : ' (not open in a window)'}`
+          : `${id} has supervisors but no lead`);
       } else {
         try { fs.unlinkSync(fileOf(id)); log(`${id} has no supervisor`); } catch (e) { if (e.code !== 'ENOENT') throw e; }
       }
@@ -205,7 +171,7 @@ function createStewards(deps) {
         watcher = watchDir(deps.dir(), () => scan());
         if (watcher && typeof watcher.on === 'function') watcher.on('error', () => { try { watcher.close(); } catch (_) { /* gone */ } watcher = null; });
       } catch (e) { watcher = null; log(`watching the plans folder failed: ${(e && e.message) || e}`); }
-      timer = setInterval(scan, pollMs);
+      timer = setInterval(() => { refresh(true); scan(); }, pollMs);
       if (timer.unref) timer.unref();
       scan();
     } else if (!want && timer) {
@@ -237,24 +203,23 @@ function createStewards(deps) {
   }
 
   async function handle(id, body) {
-    const list = readStewards(deps.dir(), id);
-    if (!list.length) return { outcome: 'notReceived', reason: 'no supervisor looks after this conversation' };
     const said = body && typeof body.text === 'string' ? body.text : '';
     if (!said.trim()) return { outcome: 'notReceived', reason: 'the handoff had no text' };
     const at = Number(body.at) || 0;
     if (!at || now() - at > STALE_MS) return { outcome: 'notReceived', reason: `no window took the handoff within ${STALE_MS / 1000} seconds` };
-    const to = recipient(list, body.to, senderOf(firstLines.get(id)));
-    if (to.refused) return { outcome: 'refused', reason: to.refused };
-    const steward = to.steward;
+    const { lead } = ask(id);
+    if (!lead) return { outcome: 'notReceived', reason: 'no supervisor leads this conversation now' };
+    const who = { steward: lead.sessionId, title: lead.title };
+    if (!lead.open) return { outcome: 'notReceived', reason: `its lead supervisor ${nameOf(lead)} is not open in a VS Code window now`, ...who };
     let title = '';
     try { title = String(deps.title(id) || ''); } catch (_) { /* none */ }
     const text = handoffText(id, title === NO_TITLE ? '' : title, said);
     if (text.length > MAX_TEXT) return { outcome: 'notReceived', reason: `the text is over the ${MAX_TEXT} characters Agent Plus sends once its heading is added` };
     if (!core || typeof core.deliver !== 'function') return { outcome: 'notReceived', reason: 'Agent Plus cannot send messages in this window' };
     let r;
-    try { r = await core.deliver({ sourceId: steward.sourceId, sessionId: steward.sessionId, text }); } catch (e) { r = { outcome: 'notReceived', reason: String((e && e.message) || e) }; }
+    try { r = await core.deliver({ sourceId: lead.sourceId, sessionId: lead.sessionId, text }); } catch (e) { r = { outcome: 'notReceived', reason: String((e && e.message) || e) }; }
     const outcome = r && typeof r.outcome === 'string' ? r.outcome : 'notReceived';
-    return { outcome, reason: r && typeof r.reason === 'string' ? r.reason : '', steward: steward.sessionId, title: steward.title };
+    return { outcome, reason: r && typeof r.reason === 'string' ? r.reason : '', ...who };
   }
 
   const taking = (name) => { take(name).catch((e) => log(`handoff ${name}: ${(e && e.message) || e}`)); };
@@ -279,25 +244,6 @@ function createStewards(deps) {
     }
   }
 
-  /* Keeps the first line of the latest message the user (or a steward for the user) sent in `conversation`. A turn
-     OpenCode starts on its own has none. */
-  function track(id, conversation, history) {
-    const note = (line) => {
-      firstLines.delete(id);
-      firstLines.set(id, line);
-      while (firstLines.size > MAX_TRACKED) firstLines.delete(firstLines.keys().next().value);
-    };
-    const take = (ev) => {
-      if (!ev || typeof ev !== 'object') return;
-      if (ev.type === 'turnStart') note('');
-      else if (ev.type === 'userMessage' && ev.synthetic !== true) note(String(ev.text || '').replace(/^\s+/, '').split(/\r?\n/)[0].slice(0, FIRST_LINE_CHARS));
-    };
-    for (const ev of Array.isArray(history) ? history : []) take(ev);
-    let off = null;
-    try { off = conversation && typeof conversation.on === 'function' ? conversation.on(take) : null; } catch (_) { /* nothing to follow */ }
-    return () => { try { if (typeof off === 'function') off(); else if (off && off.dispose) off.dispose(); } catch (_) { /* gone */ } };
-  }
-
   return {
     fileOf,
     /* Without 'stewardList' or 'stewards' in agentPlus.features this does nothing. */
@@ -315,8 +261,6 @@ function createStewards(deps) {
     /* Call when the conversations open here change. */
     opened() { refresh(false); },
     refresh: () => refresh(true),
-    track,
-    firstLine: (id) => firstLines.get(id) || '',
     /* Looks for requests now, as the poll would. */
     scan,
     take,
@@ -330,5 +274,4 @@ function createStewards(deps) {
   };
 }
 
-module.exports = { createStewards, handoffText, readSteward, readStewards, senderOf, recipient, namesOf, SUFFIX, SOURCE_ID, REQUEST, RESULT, FROM,
-  MAX_TEXT, MAX_STEWARDS, STALE_MS, ORPHAN_MS, POLL_MS, FORMAT };
+module.exports = { createStewards, handoffText, readLead, nameOf, SUFFIX, SOURCE_ID, REQUEST, RESULT, MAX_TEXT, STALE_MS, ORPHAN_MS, POLL_MS, FORMAT };

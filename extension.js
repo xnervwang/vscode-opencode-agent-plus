@@ -263,7 +263,6 @@ function start(context, log, gate, channel) {
       conv.saved = historyFor(events);
       conv.on(onAuth);
       replies.track(id, conv, events);
-      stewards.track(id, conv, events);
       retitles.track(id, conv);
       return conv;
     },

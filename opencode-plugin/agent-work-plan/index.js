@@ -21,10 +21,12 @@
  *   tools        set_row, add_row, set_summary, set_status, each one run of plan-row.py; steward_handoff too while a session
  *                this instance has seen has a steward; set_title, plans on or off, which writes a retitle request for the
  *                extension (Agent Plus docs/protocol.md "Retitle requests") and waits for its answer
- *   steward      while <plans>/<session id>.steward.json exists (the extension writes it, with every steward in Claude Code
- *                Plus that looks after the conversation), each turn's text also names them; steward_handoff writes
- *                <session id>.handoff-<key>.json there, which the extension sends to one of them with Agent Plus's
- *                deliver(), and reads the .result.json it writes back (src/host/steward.js in the extension)
+ *   steward      while <plans>/<session id>.steward.json exists (the extension writes it with the conversation's lead
+ *                supervisor in Claude Code Plus, or with none while supervisors only observe it), each turn's text also
+ *                names the lead, or says none watches it; the lead last named is kept in stewards-told/<session id>.json;
+ *                steward_handoff writes <session id>.handoff-<key>.json there, which the extension sends to the lead
+ *                with Agent Plus's deliver(), and reads the .result.json it writes back (src/host/steward.js in the
+ *                extension)
  *   events       session.compaction.ended runs resume-work-plan.py and the two notes again; session.usage.updated is recorded;
  *                session.execution.succeeded runs nudge-work-plan.py and keeps what it says as a synthetic message
  *
@@ -229,40 +231,38 @@ const TOOLS = [
 ];
 const TOOL_NAMES = TOOLS.map((t) => t.name);
 
-/* The same limits as the extension's src/host/steward.js. */
-const MAX_STEWARDS = 20;
+/* The same limit as the extension's src/host/steward.js. */
 const MAX_TITLE = 200;
-const MAX_TO = 200;
-/* In the steward line whatever the number of stewards; the plugin's log counts the messages that carry it. */
-const WATCHED_MARK = 'this one for the user through Claude Code Plus:';
+/* In every line naming the lead; the plugin's log counts the messages that carry it. */
+const WATCHED_MARK = 'Your lead supervisor is ';
 /* The same naming as Claude Code Plus's steward_table.py name_of(). */
 const nameOf = (s) => (s.title && s.title !== s.sessionId ? `"${s.title}" (${s.sessionId})` : s.sessionId);
 
-/* Claude Code Plus's steward.py watched(), with the steward_handoff tool and its `to` in place of the relay command and
-   its --to. `list` holds the conversation's stewards, starting with the one the user spoke with most recently. */
-function watchedText(list) {
-  const names = list.map(nameOf);
-  const several = names.length > 1;
-  const who = several ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
-  return `${several ? 'Supervisors' : 'A supervisor,'} ${who}${several ? ' watch' : ', watches'} this one for the user through Claude Code Plus: `
-    + `${several ? 'they read' : 'it reads'} your work plan and latest reply, and ${several ? 'speak' : 'speaks'} for the user by typing `
-    + 'messages here, which come as the user\'s own. Each such message starts with the line '
-    + '`Sent by the supervisor "<title>" (<session id>) for the user:`, which names the supervisor that sent it. '
-    + `Do not send ${several ? 'them' : 'it'} status messages; put questions for the user in your plan as rows waiting on the user, `
-    + `where ${several ? 'they see' : 'it sees'} them. If a message plainly belongs elsewhere (meant for another conversation, `
-    + 'unrelated to the work here, or better done by another one), do not start background work for it here: call the '
-    + 'steward_handoff tool with the user\'s words, where it should go (a session id, or a folder for a new conversation) '
-    + 'and why, and say in one sentence what it answered.'
-    + (several ? ' It goes to the supervisor whose message started this turn, or else to the one the user last typed to; to hand '
-      + 'it to another of them, set the tool\'s `to` to that supervisor\'s session id.' : '');
+/* Claude Code Plus's steward.py: FIRST_LINE, DECISIONS, NO_LEAD, and watched() and still_led(), with the
+   steward_handoff tool in place of the relay command. */
+const FIRST_LINE = '`Sent by the supervisor "<title>" (<session id>) for the user:`';
+const DECISIONS = "Release, push a tag, approve, merge or speak for the user in public only on the user's own words: what the user "
+  + "types here, or what your lead supervisor's messages say apart from sentences marked as the supervisor's arrangement.";
+const NO_LEAD = 'No supervisor watches this conversation now; put questions for the user in your plan.';
+function watchedText(lead) {
+  return `Your lead supervisor is ${nameOf(lead)}. It watches this conversation for the user through Claude Code Plus: it reads your `
+    + 'work plan and latest reply, and speaks for the user by typing messages here, which come as the user\'s own. '
+    + `Each such message starts with the line ${FIRST_LINE}. ${DECISIONS} `
+    + (lead.open ? 'Do not send it status messages; put questions for the user in your plan as rows waiting on the user, where it sees them.'
+      : 'It is not open in a VS Code window now, so put questions for the user in your plan as rows waiting on the user for now.')
+    + ' If a message plainly belongs elsewhere (meant for another conversation, unrelated to the work here, or better done by '
+    + 'another one), do not start background work for it here: call the steward_handoff tool with the user\'s words, where it '
+    + 'should go (a session id, or a folder for a new conversation) and why; it goes to your lead supervisor. Say in one sentence '
+    + 'what it answered.';
 }
+const stillLed = (lead) => `Your lead supervisor is still ${nameOf(lead)}`
+  + `${lead.open ? '' : '; it is not open in a VS Code window now, so put questions for the user in your plan'}. ${DECISIONS}`;
 const STEWARD_TOOL = {
   name: 'steward_handoff',
-  description: 'Hand a message that belongs elsewhere to a supervisor watching this conversation. '
+  description: 'Hand a message that belongs elsewhere to the lead supervisor of this conversation. '
     + 'It returns whether the supervisor got it; do not call it again for the same message.',
   input: { type: 'object', required: ['text'], additionalProperties: false, properties: {
-    text: { type: 'string', description: "The user's words, where it should go (a session id, or a folder for a new conversation) and why." },
-    to: { type: 'string', description: 'The session id of the supervisor who should get the message; leave it out for the default one.' } } },
+    text: { type: 'string', description: "The user's words, where it should go (a session id, or a folder for a new conversation) and why." } } },
 };
 /* deliver() settles within about 40 seconds once a window has the request. */
 const HANDOFF_WAIT_MS = 45000;
@@ -271,8 +271,8 @@ const handoffWait = () => {
   return Number.isInteger(n) && n > 0 && n < HANDOFF_WAIT_MS ? n : HANDOFF_WAIT_MS;
 };
 const HANDOFF_POLL_MS = 250;
-const NO_STEWARD = 'This conversation has no supervisor.';
 const LEAVE_IT = ' Say in your reply where it seems to belong, so the user decides.';
+const NO_STEWARD = `Not done: no supervisor leads this conversation now.${LEAVE_IT}`;
 
 /* set_title: the conversation's request to be renamed, sent to the window hosting it in the request and answer files of
    Agent Plus's docs/protocol.md "Retitle requests" (plan_common.request_retitle on the Python side). The extension
@@ -358,31 +358,72 @@ async function retitle(sessionID, input, context) {
 const usable = (s) => !!s && typeof s === 'object' && typeof s.sourceId === 'string' && !!s.sourceId && typeof s.sessionId === 'string' && !!s.sessionId;
 const titleOf = (t) => (typeof t === 'string' ? t.replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE) : '');
 
-/* The stewards listed in the conversation's steward file, in their order there, read as the extension's readStewards()
-   reads them. */
-function stewardsOf(sessionID) {
+/*
+ * { watched, lead } from the conversation's steward file, read as the extension's readLead() reads it: whether any
+ * supervisor looks after it, and its lead { sourceId, sessionId, title, open } or null. A file of an earlier release,
+ * without `lead`, names its first supervisor.
+ */
+function leadOf(sessionID) {
   let s;
-  try { s = JSON.parse(fs.readFileSync(stewardPath(sessionID), 'utf8')); } catch (_) { return []; }
-  if (!s || s.format !== 1) return [];
-  const list = (Array.isArray(s.stewards) ? s.stewards.slice(0, MAX_STEWARDS) : []).filter(usable)
-    .map((e) => ({ sourceId: e.sourceId, sessionId: e.sessionId, title: titleOf(e.title) }));
-  if (list.length) return list;
-  return usable(s) ? [{ sourceId: s.sourceId, sessionId: s.sessionId, title: '' }] : [];
+  try { s = JSON.parse(fs.readFileSync(stewardPath(sessionID), 'utf8')); } catch (_) { return { watched: false, lead: null }; }
+  if (!s || s.format !== 1) return { watched: false, lead: null };
+  const lead = (e, title = e.title) => ({ sourceId: e.sourceId, sessionId: e.sessionId, title: titleOf(title), open: e.open !== false });
+  if ('lead' in s) return { watched: true, lead: usable(s.lead) ? lead(s.lead) : null };
+  const first = Array.isArray(s.stewards) ? s.stewards.find(usable) : null;
+  const found = first ? lead(first) : usable(s) ? lead(s, '') : null;
+  return { watched: !!found, lead: found };
 }
 
-const hasSteward = (sessionID) => stewardsOf(sessionID).length > 0;
+const hasSteward = (sessionID) => !!leadOf(sessionID).lead;
+
+const toldPath = (sessionID) => path.join(plansDir(), 'stewards-told', `${sessionID}.json`);
+
+/*
+ * What the conversation is told this turn about its lead supervisor, as steward.py managed_note() tells a Claude Code
+ * conversation: the whole note on the first turn, when the lead changed and after a compaction, otherwise one line; a
+ * line once when the lead changed; NO_LEAD when supervisors observe it and none leads it. '' when none looks after it.
+ * The lead named is kept in stewards-told/<session id>.json.
+ */
+function managedNote(sessionID) {
+  const { watched, lead } = leadOf(sessionID);
+  if (!watched) return '';
+  const file = toldPath(sessionID);
+  let told = {}, first = false;
+  try {
+    const got = JSON.parse(fs.readFileSync(file, 'utf8'));
+    told = got && typeof got === 'object' ? got : {};
+  } catch (_) { first = true; }
+  let compacted = '';
+  try { compacted = fs.readFileSync(path.join(plansDir(), `${sessionID}.compacted`), 'utf8').trim(); } catch (_) { /* none yet */ }
+  const id = lead ? lead.sessionId : '';
+  const title = lead ? lead.title || lead.sessionId : '';
+  const changed = !first && told.lead !== id;
+  const lines = [];
+  if (changed && id && told.lead) lines.push(`Your lead supervisor is now "${title}" (was "${told.title || told.lead}").`);
+  if (!lead) lines.push(NO_LEAD);
+  else lines.push(first || changed || (told.compacted || '') !== compacted ? watchedText(lead) : stillLed(lead));
+  const record = { lead: id, title, compacted };
+  if (JSON.stringify(record) !== JSON.stringify({ lead: told.lead, title: told.title, compacted: told.compacted })) {
+    const tmp = `${file}.${process.pid}.tmp`;
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(tmp, JSON.stringify(record), { mode: 0o600 });
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
+      log('told', { sessionID, error: String((e && e.message) || e) });
+    }
+  }
+  return lines.join('\n');
+}
 
 function handedSaid(r) {
   const reason = r && typeof r.reason === 'string' && r.reason ? r.reason : '';
   const outcome = r && typeof r.outcome === 'string' ? r.outcome : '';
   if (outcome === 'submitted') {
     const who = r && typeof r.steward === 'string' && r.steward ? ` ${nameOf({ sessionId: r.steward, title: titleOf(r.title) })}` : '';
-    return `Handed off to the supervisor${who}, as a notice that says it is not from the user. Say so in one sentence in your reply `
+    return `Handed off to your lead supervisor${who}, as a notice that says it is not from the user. Say so in one sentence in your reply `
       + 'and leave it to the supervisor.';
-  }
-  if (outcome === 'refused') {
-    return `Not done: ${reason || 'that supervisor cannot take it'}. To hand it on, call steward_handoff again with \`to\` set to one of `
-      + 'those session ids, or leave `to` out.';
   }
   if (outcome === 'uncertain') return `Unclear whether the supervisor was told: ${reason || 'no outcome came in time'}.`;
   if (outcome === 'drafted') return `Not done: it was put into the supervisor's message input, and not sent.${LEAVE_IT}`;
@@ -391,17 +432,16 @@ function handedSaid(r) {
 
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* Hands `input.text` to the steward through the extension, and says what came of it. Never retries. */
+/* Hands `input.text` to the lead supervisor through the extension, and says what came of it. Never retries. */
 async function handoff(sessionID, input, context) {
   if (!SESSION.test(String(sessionID || '')) || !hasSteward(sessionID)) return NO_STEWARD;
   const text = input && typeof input.text === 'string' ? input.text.trim() : '';
   if (!text) return "Not done: the text was empty. Give the user's words, where the message should go and why.";
-  const to = input && typeof input.to === 'string' ? input.to.trim().slice(0, MAX_TO) : '';
   const key = `${process.pid.toString(36)}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`.replace(/[^0-9a-z]/g, '');
   const base = path.join(plansDir(), `${sessionID}.handoff-${key}`);
   const request = `${base}.json`, result = `${base}.result.json`;
   try {
-    fs.writeFileSync(`${base}.tmp`, JSON.stringify({ format: 1, text, at: Date.now(), ...(to ? { to } : {}) }), { mode: 0o600 });
+    fs.writeFileSync(`${base}.tmp`, JSON.stringify({ format: 1, text, at: Date.now() }), { mode: 0o600 });
     fs.renameSync(`${base}.tmp`, request);
   } catch (e) {
     try { fs.unlinkSync(`${base}.tmp`); } catch (_) { /* never written */ }
@@ -415,14 +455,14 @@ async function handoff(sessionID, input, context) {
     try { r = JSON.parse(fs.readFileSync(result, 'utf8')); } catch (_) { /* not yet */ }
     if (r) {
       try { fs.unlinkSync(result); } catch (_) { /* gone */ }
-      log('handoff', { sessionID, to, outcome: r.outcome, reason: r.reason, steward: r.steward });
+      log('handoff', { sessionID, outcome: r.outcome, reason: r.reason, steward: r.steward });
       return handedSaid(r);
     }
     await sleepMs(HANDOFF_POLL_MS);
   }
   let untaken = false;
   try { fs.unlinkSync(request); untaken = true; } catch (_) { /* taken */ }
-  log('handoff', { sessionID, to, outcome: untaken ? 'untaken' : 'unanswered', aborted: !!(signal && signal.aborted) });
+  log('handoff', { sessionID, outcome: untaken ? 'untaken' : 'unanswered', aborted: !!(signal && signal.aborted) });
   if (signal && signal.aborted && untaken) return 'Not done: the turn was stopped before a window took the handoff.';
   if (untaken) return `Not done: no VS Code window took the handoff within ${wait / 1000} seconds.${LEAVE_IT}`;
   return 'Unclear whether the supervisor was told: a window took the handoff, but no result came back in time.';
@@ -622,11 +662,10 @@ async function setup(ctx) {
     const texts = await withRecord(usageLines(s), (file) => hookTexts(scripts, {
       hook_event_name: 'UserPromptSubmit', session_id: sessionID, turn_id: s.turnId, prompt: said,
       cwd: (ctx.location && ctx.location.directory) || '', transcript_path: file, in_panel: true, ...usageFields(s) }));
-    const stewards = on ? stewardsOf(sessionID) : [];
-    const watched = stewards.length ? watchedText(stewards) : '';
+    const watched = on ? managedNote(sessionID) : '';
     const all = [on ? pending : '', notesAfter, ...scripts.map((n) => texts[n]), watched].filter(Boolean).join('\n\n');
     if (all) ev.metadata = { ...(ev.metadata || {}), [META_KEY]: wrap(all) };
-    log('prompt', { sessionID, turnId: s.turnId, chars: all.length, resumed: !!pending, plan: on, steward: !!watched, stewards: stewards.length, watchedText: watched });
+    log('prompt', { sessionID, turnId: s.turnId, chars: all.length, resumed: !!pending, plan: on, steward: !!watched, watchedText: watched });
   }));
 
   registrations.push(await ctx.session.hook('context', (ev) => {

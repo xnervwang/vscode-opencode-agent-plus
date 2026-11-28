@@ -26,9 +26,12 @@ const NEEDS_V2 = 'The work plan needs OpenCode 2';
    files of plan_common.py. */
 const SIDE_SUFFIXES = Object.freeze(['.json', '.turn', '.nudged', '.settled', '.offered', '.watermark', '.tz', '.images-told',
   '.compacted', '.briefed', '.injected']);
-/* Beside a plan this extension also keeps the latest reply (src/host/reply-file.js) and the conversation's steward
-   (src/host/steward.js). */
+/* Beside a plan this extension also keeps the latest reply (src/host/reply-file.js) and the conversation's lead
+   supervisor (src/host/steward.js). */
 const OWN_SUFFIXES = Object.freeze(['.reply.json', '.steward.json']);
+/* The plugin's record of the lead supervisor it last named to the conversation, as Claude Code Plus's steward.py keeps
+   its own: stewards-told/<session id>.json. */
+const TOLD_DIR = 'stewards-told';
 /* The handoffs to the steward, their results and their temporary files: <session id>.handoff-<key>.json and so on. */
 const HANDOFF = /^\.handoff-[0-9A-Za-z]{8,64}(\.result\.json|\.json|\.taken-\d+|\.\d+\.tmp|\.tmp)$/;
 
@@ -173,14 +176,15 @@ function planPath(sessionId) {
 
 /*
  * Removes a deleted conversation's plan, the files the hooks and this extension keep beside it, any handoff to its steward
- * left behind, and its rows moved to closed/. Agent Plus only reads the plans folder, so nothing else clears them. Only
+ * left behind, its rows moved to closed/ and the plugin's record in stewards-told/. Agent Plus only reads the plans folder, so nothing else clears them. Only
  * names built from a session id of OpenCode's shape are touched. Returns the names removed, relative to `dir`.
  */
 function removePlan(sessionId, dir = planDir()) {
   if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return [];
   let handoffs = [];
   try { handoffs = fs.readdirSync(dir).filter((n) => n.startsWith(sessionId) && HANDOFF.test(n.slice(sessionId.length))).sort(); } catch (_) { /* no folder */ }
-  const names = [...SIDE_SUFFIXES, ...OWN_SUFFIXES].map((s) => `${sessionId}${s}`).concat(handoffs, path.join('closed', `${sessionId}.json`));
+  const names = [...SIDE_SUFFIXES, ...OWN_SUFFIXES].map((s) => `${sessionId}${s}`)
+    .concat(handoffs, path.join('closed', `${sessionId}.json`), path.join(TOLD_DIR, `${sessionId}.json`));
   const removed = [];
   for (const name of names) {
     try { fs.unlinkSync(path.join(dir, name)); removed.push(name); } catch (_) { /* not there */ }
